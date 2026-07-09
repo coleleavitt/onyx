@@ -12,6 +12,7 @@ DOCKER_ENV="$COMPOSE_DIR/.env"
 MODE="dev"
 SETUP="auto"
 INSTALL_PLAYWRIGHT="auto"
+CLEAN_ORPHANS=1
 PIDS=()
 STOPPING=0
 
@@ -22,8 +23,11 @@ Usage:
   ./run.sh --infra-only    Start only Postgres/OpenSearch/Redis/MinIO.
   ./run.sh --docker        Start the full Docker Compose stack from prebuilt images.
   ./run.sh --check         Verify local commands/env needed by source dev mode.
+  ./run.sh --clean-only    Stop orphaned source-dev workers from this checkout.
   ./run.sh --setup         Force uv sync, Playwright install, and bun install before starting.
   ./run.sh --no-setup      Skip dependency setup checks.
+  ./run.sh --no-clean-orphans
+                           Do not stop pre-existing source-dev workers before starting.
 
 Source dev serves Onyx at http://localhost:3000 and keeps logs in this terminal.
 USAGE
@@ -231,6 +235,76 @@ run_migrations() {
   (cd "$BACKEND_DIR" && "$ROOT_DIR/.venv/bin/alembic" upgrade head)
 }
 
+matching_dev_process_groups() {
+  ps -eo pid=,pgid=,cmd= | awk -v root="$ROOT_DIR" '
+    {
+      pid = $1
+      pgid = $2
+      $1 = ""
+      $2 = ""
+      cmd = $0
+      is_match = 0
+
+      if (cmd ~ /^[[:space:]]*(\/usr\/bin\/|\/bin\/)?bash -c / || cmd ~ /^[[:space:]]*rg / || cmd ~ /^[[:space:]]*awk /) {
+        next
+      }
+
+      if (index(cmd, root "/.venv/bin/celery -A onyx.background")) {
+        is_match = 1
+      }
+      if (index(cmd, root "/.venv/bin/python") && index(cmd, root "/.venv/bin/celery -A onyx.background")) {
+        is_match = 1
+      }
+      if (index(cmd, root "/.venv/bin/uvicorn onyx.main:app") || index(cmd, root "/.venv/bin/uvicorn model_server.main:app")) {
+        is_match = 1
+      }
+      if (index(cmd, root "/.venv/bin/python") && index(cmd, root "/.venv/bin/uvicorn") && (index(cmd, "onyx.main:app") || index(cmd, "model_server.main:app"))) {
+        is_match = 1
+      }
+      if (index(cmd, root "/backend/./scripts/dev_run_background_jobs.py") || index(cmd, root "/backend/scripts/dev_run_background_jobs.py")) {
+        is_match = 1
+      }
+      if (cmd ~ /^[[:space:]]*bun run dev([[:space:]]|$)/) {
+        is_match = 1
+      }
+      if (index(cmd, root "/web/node_modules/.bin/next dev")) {
+        is_match = 1
+      }
+
+      if (is_match) {
+        print pgid
+      }
+    }
+  ' | sort -n -u
+}
+
+cleanup_orphan_dev_processes() {
+  [[ "$CLEAN_ORPHANS" -eq 1 ]] || return 0
+
+  local current_pgid
+  current_pgid="$(ps -o pgid= -p "$$" | tr -d ' ')"
+
+  local pgids=()
+  while IFS= read -r pgid; do
+    [[ -n "$pgid" ]] || continue
+    [[ "$pgid" == "$current_pgid" ]] && continue
+    pgids+=("$pgid")
+  done < <(matching_dev_process_groups)
+
+  [[ "${#pgids[@]}" -gt 0 ]] || return 0
+
+  log "stopping orphaned source-dev process groups: ${pgids[*]}"
+  for pgid in "${pgids[@]}"; do
+    kill -TERM -- "-$pgid" >/dev/null 2>&1 || true
+  done
+
+  sleep 2
+
+  for pgid in "${pgids[@]}"; do
+    kill -KILL -- "-$pgid" >/dev/null 2>&1 || true
+  done
+}
+
 start_service() {
   local name="$1"
   local dir="$2"
@@ -268,10 +342,12 @@ stop_services() {
   done
 
   wait "${PIDS[@]}" >/dev/null 2>&1 || true
+  cleanup_orphan_dev_processes
 }
 
 run_source_dev() {
   ensure_local_env_files
+  cleanup_orphan_dev_processes
   setup_dependencies
   start_infra
   run_migrations
@@ -308,6 +384,11 @@ run_docker_stack() {
   log "Onyx Docker stack is running at http://localhost:3000"
 }
 
+run_clean_only() {
+  cleanup_orphan_dev_processes
+  log "orphan cleanup complete"
+}
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --docker)
@@ -315,6 +396,9 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --check)
       MODE="check"
+      ;;
+    --clean-only)
+      MODE="clean"
       ;;
     --infra-only)
       MODE="infra"
@@ -326,6 +410,9 @@ while [[ "$#" -gt 0 ]]; do
     --no-setup)
       SETUP="never"
       INSTALL_PLAYWRIGHT="never"
+      ;;
+    --no-clean-orphans)
+      CLEAN_ORPHANS=0
       ;;
     -h|--help)
       usage
@@ -351,5 +438,8 @@ case "$MODE" in
     ;;
   check)
     check_source_dev
+    ;;
+  clean)
+    run_clean_only
     ;;
 esac
