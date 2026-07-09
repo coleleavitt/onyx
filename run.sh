@@ -13,6 +13,7 @@ MODE="dev"
 SETUP="auto"
 INSTALL_PLAYWRIGHT="auto"
 PIDS=()
+STOPPING=0
 
 usage() {
   cat <<'USAGE'
@@ -20,6 +21,7 @@ Usage:
   ./run.sh                 Start source dev mode: infra + web + model server + jobs + API.
   ./run.sh --infra-only    Start only Postgres/OpenSearch/Redis/MinIO.
   ./run.sh --docker        Start the full Docker Compose stack from prebuilt images.
+  ./run.sh --check         Verify local commands/env needed by source dev mode.
   ./run.sh --setup         Force uv sync, Playwright install, and bun install before starting.
   ./run.sh --no-setup      Skip dependency setup checks.
 
@@ -136,6 +138,8 @@ ensure_local_env_files() {
   load_env_file "$VSCODE_ENV"
   load_env_file "$VSCODE_WEB_ENV"
 
+  export VIRTUAL_ENV="$ROOT_DIR/.venv"
+  export PATH="$VIRTUAL_ENV/bin:$PATH"
   export AUTH_TYPE="${AUTH_TYPE:-basic}"
   export DEV_MODE="${DEV_MODE:-true}"
   export PYTHONPATH="${PYTHONPATH:-$BACKEND_DIR}"
@@ -198,6 +202,20 @@ setup_dependencies() {
   fi
 }
 
+check_source_dev() {
+  ensure_local_env_files
+  require_cmd uv
+  require_cmd bun
+  require_cmd docker
+  require_cmd setsid
+  require_cmd python
+  require_cmd alembic
+  require_cmd uvicorn
+  require_cmd celery
+
+  log "source dev command check passed"
+}
+
 compose() {
   (cd "$COMPOSE_DIR" && docker compose -f docker-compose.yml -f docker-compose.dev.yml "$@")
 }
@@ -218,23 +236,37 @@ start_service() {
   local dir="$2"
   shift 2
 
-  (
-    cd "$dir"
+  # shellcheck disable=SC2016
+  setsid bash -c '
+    cd "$1" || exit
+    shift
     exec "$@"
-  ) > >(sed -u "s/^/[$name] /") 2> >(sed -u "s/^/[$name] /" >&2) &
+  ' _ "$dir" "$@" > >(sed -u "s/^/[$name] /") 2> >(sed -u "s/^/[$name] /" >&2) &
 
   PIDS+=("$!")
 }
 
 stop_services() {
+  if [[ "$STOPPING" -eq 1 ]]; then
+    return 0
+  fi
+  STOPPING=1
+
   if [[ "${#PIDS[@]}" -eq 0 ]]; then
     return 0
   fi
 
   log "stopping local services"
   for pid in "${PIDS[@]}"; do
-    kill "$pid" >/dev/null 2>&1 || true
+    kill -TERM -- "-$pid" >/dev/null 2>&1 || kill "$pid" >/dev/null 2>&1 || true
   done
+
+  sleep 2
+
+  for pid in "${PIDS[@]}"; do
+    kill -KILL -- "-$pid" >/dev/null 2>&1 || true
+  done
+
   wait "${PIDS[@]}" >/dev/null 2>&1 || true
 }
 
@@ -244,7 +276,8 @@ run_source_dev() {
   start_infra
   run_migrations
 
-  trap stop_services EXIT INT TERM
+  trap stop_services EXIT
+  trap 'stop_services; exit 130' INT TERM
 
   log "starting source dev services"
   start_service "web" "$WEB_DIR" bun run dev
@@ -280,6 +313,9 @@ while [[ "$#" -gt 0 ]]; do
     --docker)
       MODE="docker"
       ;;
+    --check)
+      MODE="check"
+      ;;
     --infra-only)
       MODE="infra"
       ;;
@@ -312,5 +348,8 @@ case "$MODE" in
     ;;
   docker)
     run_docker_stack
+    ;;
+  check)
+    check_source_dev
     ;;
 esac
