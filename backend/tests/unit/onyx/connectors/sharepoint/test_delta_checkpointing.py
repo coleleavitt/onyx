@@ -4,7 +4,7 @@ Validates that:
 - Delta drives process one page per _load_from_checkpoint call
 - Checkpoints persist the delta next_link for resumption
 - Crash + resume skips already-processed pages
-- BFS (folder-scoped) drives process all items in one call
+- Folder-scoped drives use delta pages plus path-prefix filtering
 - 410 Gone triggers a full-resync URL in the checkpoint
 - Duplicate document IDs across delta pages are deduplicated
 """
@@ -40,7 +40,7 @@ DRIVE_ID = "fake-drive-id"
 _START_TS = datetime(2025, 6, 1, tzinfo=timezone.utc).timestamp()
 _END_TS = datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp()
 
-# For BFS tests we use epoch so no token is generated
+# For full-crawl tests we use epoch so no timestamp token is generated
 _EPOCH_START: float = 0.0
 
 
@@ -332,28 +332,34 @@ class TestDeltaPerPageCheckpointing:
         assert final_cp.current_drive_delta_next_link is None
 
 
-class TestBfsPathNoCheckpointing:
-    """Folder-scoped (BFS) drives should process all items in one call
-    because the BFS queue cannot be cheaply serialised."""
+class TestFolderDeltaCheckpointing:
+    """Folder-scoped drives use delta pages, filtered to the requested folder."""
 
-    def test_bfs_processes_all_at_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_folder_delta_filters_to_requested_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         connector = _setup_connector(monkeypatch)
         _mock_convert(monkeypatch)
 
-        items = [_make_item("x"), _make_item("y"), _make_item("z")]
+        inside = _make_item("x", "x.pdf")
+        inside.parent_reference_path = "/drives/d1/root:/Engineering/Docs"
+        nested = _make_item("y", "y.pdf")
+        nested.parent_reference_path = "/drives/d1/root:/Engineering/Docs/Nested"
+        outside = _make_item("z", "z.pdf")
+        outside.parent_reference_path = "/drives/d1/root:/Engineering/Other"
 
-        def fake_iter_paged(
+        def fake_fetch_page(
             self: SharepointConnector,  # noqa: ARG001
+            page_url: str,  # noqa: ARG001
             drive_id: str,  # noqa: ARG001
-            folder_path: str | None = None,  # noqa: ARG001
             start: datetime | None = None,  # noqa: ARG001
             end: datetime | None = None,  # noqa: ARG001
             page_size: int = 200,  # noqa: ARG001
-        ) -> Generator[DriveItemData, None, None]:
-            yield from items
+        ) -> tuple[list[DriveItemData], str | None]:
+            return [inside, nested, outside], None
 
         monkeypatch.setattr(
-            SharepointConnector, "_iter_drive_items_paged", fake_iter_paged
+            SharepointConnector, "_fetch_one_delta_page", fake_fetch_page
         )
 
         checkpoint = _build_ready_checkpoint(folder_path="Engineering/Docs")
@@ -362,7 +368,7 @@ class TestBfsPathNoCheckpointing:
         )
         yielded, final_cp = _consume_generator(gen)
 
-        assert len(_docs_from(yielded)) == 3
+        assert [doc.id for doc in _docs_from(yielded)] == ["x", "y"]
         assert final_cp.current_drive_name is None
         assert final_cp.current_drive_id is None
         assert final_cp.current_drive_delta_next_link is None

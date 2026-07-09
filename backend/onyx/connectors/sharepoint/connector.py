@@ -244,6 +244,86 @@ class SiteDrive(BaseModel):
     web_url: str | None
 
 
+class SharepointListData(BaseModel):
+    """A non-document-library SharePoint list, as listed from Graph."""
+
+    id: str
+    name: str
+    display_name: str
+    web_url: str | None = None
+    template: str | None = None
+    hidden: bool = False
+    system: bool = False
+    created_datetime: datetime | None = None
+    last_modified_datetime: datetime | None = None
+
+    @classmethod
+    def from_graph_json(cls, item: dict[str, Any]) -> "SharepointListData":
+        list_info = item.get("list", {}) if isinstance(item.get("list"), dict) else {}
+        return cls(
+            id=item["id"],
+            name=item.get("name") or item.get("displayName") or item["id"],
+            display_name=item.get("displayName") or item.get("name") or item["id"],
+            web_url=item.get("webUrl"),
+            template=list_info.get("template"),
+            hidden=bool(list_info.get("hidden")),
+            system=bool(item.get("system")),
+            created_datetime=_parse_graph_datetime(item.get("createdDateTime")),
+            last_modified_datetime=_parse_graph_datetime(
+                item.get("lastModifiedDateTime")
+            ),
+        )
+
+    @property
+    def is_document_library(self) -> bool:
+        return self.template == "documentLibrary"
+
+
+class SharepointListItemData(BaseModel):
+    """A SharePoint list item with expanded fields."""
+
+    id: str
+    web_url: str | None = None
+    fields: dict[str, Any] = Field(default_factory=dict)
+    content_type_name: str | None = None
+    content_type_id: str | None = None
+    created_datetime: datetime | None = None
+    last_modified_datetime: datetime | None = None
+    created_by_display_name: str | None = None
+    created_by_email: str | None = None
+    last_modified_by_display_name: str | None = None
+    last_modified_by_email: str | None = None
+
+    @classmethod
+    def from_graph_json(cls, item: dict[str, Any]) -> "SharepointListItemData":
+        content_type = (
+            item.get("contentType", {})
+            if isinstance(item.get("contentType"), dict)
+            else {}
+        )
+        created_by = _graph_identity_user(item.get("createdBy"))
+        modified_by = _graph_identity_user(item.get("lastModifiedBy"))
+        return cls(
+            id=item["id"],
+            web_url=item.get("webUrl"),
+            fields=item.get("fields", {})
+            if isinstance(item.get("fields"), dict)
+            else {},
+            content_type_name=content_type.get("name"),
+            content_type_id=content_type.get("id"),
+            created_datetime=_parse_graph_datetime(item.get("createdDateTime")),
+            last_modified_datetime=_parse_graph_datetime(
+                item.get("lastModifiedDateTime")
+            ),
+            created_by_display_name=created_by.get("displayName"),
+            created_by_email=created_by.get("email")
+            or created_by.get("userPrincipalName"),
+            last_modified_by_display_name=modified_by.get("displayName"),
+            last_modified_by_email=modified_by.get("email")
+            or modified_by.get("userPrincipalName"),
+        )
+
+
 class ResolvedDriveItem(BaseModel):
     """The result of mapping a failed item's link back to a fetchable item."""
 
@@ -440,6 +520,14 @@ class SharepointConnectorCheckpoint(ConnectorCheckpoint):
     current_drive_delta_next_link: str | None = None
 
     process_site_pages: bool = False
+    site_pages_done: bool = False
+    process_lists: bool = False
+    lists_done: bool = False
+    cached_lists: deque[SharepointListData] | None = None
+    current_list: SharepointListData | None = None
+    current_list_next_link: str | None = None
+    seen_list_item_ids: set[str] = Field(default_factory=set)
+    search_done: bool = False
 
     # Track yielded hierarchy nodes by their raw_node_id (URLs) to avoid duplicates
     seen_hierarchy_node_raw_ids: set[str] = Field(default_factory=set)
@@ -456,6 +544,139 @@ class SharepointAuthMethod(Enum):
 
 class SizeCapExceeded(Exception):
     """Exception raised when the size cap is exceeded."""
+
+
+def _parse_graph_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _graph_identity_user(identity_set: Any) -> dict[str, Any]:
+    if not isinstance(identity_set, dict):
+        return {}
+    user = identity_set.get("user")
+    return user if isinstance(user, dict) else {}
+
+
+def _stringify_metadata_value(value: Any) -> str | list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned or None
+    if isinstance(value, bool | int | float):
+        return str(value)
+    if isinstance(value, list):
+        values: list[str] = []
+        for item in value:
+            item_value = _stringify_metadata_value(item)
+            if isinstance(item_value, str):
+                values.append(item_value)
+            elif isinstance(item_value, list):
+                values.extend(item_value)
+        return values or None
+    if isinstance(value, dict):
+        labels: list[str] = []
+        for candidate in (
+            "Label",
+            "label",
+            "TermGuid",
+            "termGuid",
+            "LookupValue",
+            "lookupValue",
+        ):
+            candidate_value = value.get(candidate)
+            if candidate_value:
+                labels.append(str(candidate_value))
+        if labels:
+            return labels
+        return str(value)
+    return str(value)
+
+
+def _append_unique_text(lines: list[str], seen: set[str], value: Any) -> None:
+    if not isinstance(value, str):
+        return
+    text = html.unescape(re.sub(r"<[^>]+>", " ", value))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text or text in seen:
+        return
+    seen.add(text)
+    lines.append(text)
+
+
+def _extract_graph_text_values(value: Any, lines: list[str], seen: set[str]) -> None:
+    """Best-effort text extraction from loosely-shaped Graph webpart/list fields."""
+    if isinstance(value, str):
+        _append_unique_text(lines, seen, value)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _extract_graph_text_values(item, lines, seen)
+        return
+    if not isinstance(value, dict):
+        return
+
+    for key in (
+        "title",
+        "displayName",
+        "description",
+        "text",
+        "innerHtml",
+        "caption",
+        "altText",
+        "value",
+        "serverRelativeUrl",
+        "webUrl",
+    ):
+        _append_unique_text(lines, seen, value.get(key))
+
+    for key in (
+        "searchablePlainTexts",
+        "links",
+        "imageSources",
+        "serverProcessedContent",
+        "properties",
+        "data",
+        "items",
+        "webparts",
+        "columns",
+        "horizontalSections",
+        "verticalSection",
+    ):
+        _extract_graph_text_values(value.get(key), lines, seen)
+
+
+def _metadata_from_fields(
+    fields: dict[str, Any],
+    *,
+    prefix: str = "field",
+) -> dict[str, str | list[str]]:
+    metadata: dict[str, str | list[str]] = {}
+    for key, value in fields.items():
+        if key.startswith("@") or key in {"id", "ContentTypeId"}:
+            continue
+        metadata_value = _stringify_metadata_value(value)
+        if metadata_value is not None:
+            metadata[f"{prefix}:{key}"] = metadata_value
+    return metadata
+
+
+def _format_fields_for_text(fields: dict[str, Any]) -> str:
+    lines: list[str] = []
+    for key, value in sorted(fields.items()):
+        if key.startswith("@") or key in {"id", "ContentTypeId"}:
+            continue
+        metadata_value = _stringify_metadata_value(value)
+        if metadata_value is None:
+            continue
+        if isinstance(metadata_value, list):
+            rendered = ", ".join(metadata_value)
+        else:
+            rendered = metadata_value
+        lines.append(f"{key}: {rendered}")
+    return "\n".join(lines)
 
 
 def _log_and_raise_for_status(response: requests.Response) -> None:
@@ -782,6 +1003,8 @@ def _convert_driveitem_to_document_with_permissions(
     access_token: str | None = None,
     treat_sharing_link_as_public: bool = False,
     raw_file_callback: RawFileCallback | None = None,
+    version_summaries: list[str] | None = None,
+    activity_summaries: list[str] | None = None,
 ) -> Document | ConnectorFailure | None:
     if not driveitem.name or not driveitem.id:
         raise ValueError("DriveItem name/id is required")
@@ -916,6 +1139,21 @@ def _convert_driveitem_to_document_with_permissions(
                 TextSection(link=driveitem.web_url, text=extraction_result.text_content)
             )
 
+    if version_summaries:
+        sections.append(
+            TextSection(
+                link=driveitem.web_url,
+                text="Versions:\n" + "\n".join(version_summaries),
+            )
+        )
+    if activity_summaries:
+        sections.append(
+            TextSection(
+                link=driveitem.web_url,
+                text="Recent activity:\n" + "\n".join(activity_summaries),
+            )
+        )
+
     if include_permissions and ctx is not None:
         logger.info("Getting external access for %s", driveitem.name)
         sdk_item = driveitem.to_sdk_driveitem(graph_client)
@@ -947,7 +1185,12 @@ def _convert_driveitem_to_document_with_permissions(
                 email=driveitem.last_modified_by_email or "",
             )
         ],
-        metadata={"drive": drive_name},
+        metadata={
+            "sharepoint_item_type": "document",
+            "drive": drive_name,
+            **({"version_summary": version_summaries} if version_summaries else {}),
+            **({"activity_summary": activity_summaries} if activity_summaries else {}),
+        },
         parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
         file_id=staged_file_id,
     )
@@ -979,70 +1222,11 @@ def _convert_sitepage_to_document(
     # Extract content from canvas layout if available
     canvas_layout = site_page.get("canvasLayout", {})
     if canvas_layout:
-        horizontal_sections = canvas_layout.get("horizontalSections", [])
-        for section in horizontal_sections:
-            columns = section.get("columns", [])
-            for column in columns:
-                webparts = column.get("webparts", [])
-                for webpart in webparts:
-                    # Extract text from different types of webparts
-                    webpart_type = webpart.get("@odata.type", "")
-
-                    # Extract text from text webparts
-                    if webpart_type == "#microsoft.graph.textWebPart":
-                        inner_html = webpart.get("innerHtml", "")
-                        if inner_html:
-                            # Basic HTML to text conversion
-                            # Remove HTML tags but preserve some structure
-                            text_content = re.sub(r"<br\s*/?>", "\n", inner_html)
-                            text_content = re.sub(r"<li>", "• ", text_content)
-                            text_content = re.sub(r"</li>", "\n", text_content)
-                            text_content = re.sub(
-                                r"<h[1-6][^>]*>", "\n## ", text_content
-                            )
-                            text_content = re.sub(r"</h[1-6]>", "\n", text_content)
-                            text_content = re.sub(r"<p[^>]*>", "\n", text_content)
-                            text_content = re.sub(r"</p>", "\n", text_content)
-                            text_content = re.sub(r"<[^>]+>", "", text_content)
-                            # Decode HTML entities
-                            text_content = html.unescape(text_content)
-                            # Clean up extra whitespace
-                            text_content = re.sub(
-                                r"\n\s*\n", "\n\n", text_content
-                            ).strip()
-                            if text_content:
-                                page_text += f"{text_content}\n\n"
-
-                    # Extract text from standard webparts
-                    elif webpart_type == "#microsoft.graph.standardWebPart":
-                        data = webpart.get("data", {})
-
-                        # Extract from serverProcessedContent
-                        server_content = data.get("serverProcessedContent", {})
-                        searchable_texts = server_content.get(
-                            "searchablePlainTexts", []
-                        )
-
-                        for text_item in searchable_texts:
-                            if isinstance(text_item, dict):
-                                key = text_item.get("key", "")
-                                value = text_item.get("value", "")
-                                if value:
-                                    # Add context based on key
-                                    if key == "title":
-                                        page_text += f"## {value}\n\n"
-                                    else:
-                                        page_text += f"{value}\n\n"
-
-                        # Extract description if available
-                        description = data.get("description", "")
-                        if description:
-                            page_text += f"{description}\n\n"
-
-                        # Extract title if available
-                        webpart_title = data.get("title", "")
-                        if webpart_title and webpart_title != description:
-                            page_text += f"## {webpart_title}\n\n"
+        extracted_lines: list[str] = []
+        seen_texts: set[str] = set()
+        _extract_graph_text_values(canvas_layout, extracted_lines, seen_texts)
+        if extracted_lines:
+            page_text += "\n\n".join(extracted_lines) + "\n\n"
 
     page_text = page_text.strip()
 
@@ -1096,6 +1280,14 @@ def _convert_sitepage_to_document(
     else:
         external_access = ExternalAccess.empty()
 
+    metadata: dict[str, str | list[str]] = {}
+    if site_name:
+        metadata["site"] = site_name
+    if promotion_kind := site_page.get("promotionKind"):
+        metadata["page_promotion_kind"] = str(promotion_kind)
+    if page_layout := site_page.get("pageLayout"):
+        metadata["page_layout"] = str(page_layout)
+
     doc = Document(
         id=site_page["id"],
         sections=[TextSection(link=web_url, text=page_text)],
@@ -1104,16 +1296,108 @@ def _convert_sitepage_to_document(
         semantic_identifier=semantic_identifier,
         doc_updated_at=last_modified_datetime or created_datetime,
         primary_owners=primary_owners,
-        metadata=(
-            {
-                "site": site_name,
-            }
-            if site_name
-            else {}
-        ),
+        metadata=metadata,
         parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
     )
     return doc
+
+
+def _sharepoint_list_item_doc_id(
+    site_id: str,
+    list_id: str,
+    item_id: str,
+) -> str:
+    return f"sharepoint_list_item::{site_id}::{list_id}::{item_id}"
+
+
+def _list_item_title(item: SharepointListItemData) -> str:
+    for key in ("Title", "LinkTitle", "Name", "FileLeafRef"):
+        value = item.fields.get(key)
+        if value:
+            return str(value)
+    return f"List item {item.id}"
+
+
+def _convert_listitem_to_document(
+    item: SharepointListItemData,
+    *,
+    site_id: str,
+    site_url: str,
+    list_data: SharepointListData,
+    ctx: ClientContext | None,
+    graph_client: GraphClient,
+    include_permissions: bool = False,
+    include_field_metadata: bool = True,
+    version_summaries: list[str] | None = None,
+    activity_summaries: list[str] | None = None,
+    parent_hierarchy_raw_node_id: str | None = None,
+) -> Document:
+    title = _list_item_title(item)
+    fields_text = _format_fields_for_text(item.fields)
+    text_parts = [f"# {title}", f"List: {list_data.display_name}"]
+    if item.content_type_name:
+        text_parts.append(f"Content type: {item.content_type_name}")
+    if fields_text:
+        text_parts.append(fields_text)
+    if version_summaries:
+        text_parts.append("Versions:\n" + "\n".join(version_summaries))
+    if activity_summaries:
+        text_parts.append("Recent activity:\n" + "\n".join(activity_summaries))
+
+    metadata: dict[str, str | list[str]] = {
+        "sharepoint_item_type": "list_item",
+        "site": site_url,
+        "list": list_data.display_name,
+        "list_id": list_data.id,
+    }
+    if list_data.template:
+        metadata["list_template"] = list_data.template
+    if item.content_type_name:
+        metadata["content_type"] = item.content_type_name
+    if item.content_type_id:
+        metadata["content_type_id"] = item.content_type_id
+    if include_field_metadata:
+        metadata.update(_metadata_from_fields(item.fields))
+
+    primary_owners: list[BasicExpertInfo] = []
+    if item.created_by_display_name or item.created_by_email:
+        primary_owners.append(
+            BasicExpertInfo(
+                display_name=item.created_by_display_name,
+                email=item.created_by_email,
+            )
+        )
+
+    if include_permissions:
+        if ctx is None:
+            raise ValueError("ClientContext is required for permissions")
+        external_access = get_sharepoint_external_access(
+            ctx=ctx,
+            graph_client=graph_client,
+            list_name=list_data.display_name,
+            list_item_id=item.id,
+            add_prefix=True,
+        )
+    else:
+        external_access = ExternalAccess.empty()
+
+    return Document(
+        id=_sharepoint_list_item_doc_id(site_id, list_data.id, item.id),
+        sections=[
+            TextSection(
+                link=item.web_url or list_data.web_url or site_url,
+                text="\n\n".join(text_parts).strip(),
+            )
+        ],
+        source=DocumentSource.SHAREPOINT,
+        external_access=external_access,
+        semantic_identifier=title,
+        title=title,
+        doc_updated_at=item.last_modified_datetime or item.created_datetime,
+        primary_owners=primary_owners or None,
+        metadata=metadata,
+        parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
+    )
 
 
 def _convert_driveitem_to_slim_document(
@@ -1183,6 +1467,13 @@ class SharepointConnector(
         excluded_paths: list[str] = [],
         include_site_pages: bool = True,
         include_site_documents: bool = True,
+        include_lists: bool = False,
+        include_hidden_lists: bool = False,
+        include_document_library_lists: bool = False,
+        include_list_field_metadata: bool = True,
+        include_version_metadata: bool = False,
+        include_activity_metadata: bool = False,
+        microsoft_search_queries: list[str] = [],
         treat_sharing_link_as_public: bool = False,
         authority_host: str = DEFAULT_AUTHORITY_HOST,
         graph_api_host: str = DEFAULT_GRAPH_API_HOST,
@@ -1200,6 +1491,15 @@ class SharepointConnector(
         self.msal_app: msal.ConfidentialClientApplication | None = None
         self.include_site_pages = include_site_pages
         self.include_site_documents = include_site_documents
+        self.include_lists = include_lists
+        self.include_hidden_lists = include_hidden_lists
+        self.include_document_library_lists = include_document_library_lists
+        self.include_list_field_metadata = include_list_field_metadata
+        self.include_version_metadata = include_version_metadata
+        self.include_activity_metadata = include_activity_metadata
+        self.microsoft_search_queries = [
+            query.strip() for query in microsoft_search_queries if query.strip()
+        ]
         self.sp_tenant_domain: str | None = None
         self._credential_json: dict[str, Any] | None = None
         self._cached_rest_ctx: ClientContext | None = None
@@ -1223,10 +1523,16 @@ class SharepointConnector(
 
     def validate_connector_settings(self) -> None:
         # Validate that at least one content type is enabled
-        if not self.include_site_documents and not self.include_site_pages:
+        if (
+            not self.include_site_documents
+            and not self.include_site_pages
+            and not self.include_lists
+            and not self.microsoft_search_queries
+        ):
             raise ConnectorValidationError(
                 "At least one content type must be enabled. "
-                "Please check either 'Include Site Documents' or 'Include Site Pages' (or both)."
+                "Please check 'Include Site Documents', 'Include Site Pages', "
+                "'Include SharePoint Lists', or provide Microsoft Search queries."
             )
 
         # Ensure sites are sharepoint urls
@@ -1554,19 +1860,16 @@ class SharepointConnector(
             all held in memory at once.
         """
         try:
-            if site_descriptor.folder_path:
-                yield from self._iter_drive_items_paged(
-                    drive_id=drive_id,
-                    folder_path=site_descriptor.folder_path,
-                    start=start,
-                    end=end,
-                )
-            else:
-                yield from self._iter_drive_items_delta(
-                    drive_id=drive_id,
-                    start=start,
-                    end=end,
-                )
+            for item in self._iter_drive_items_delta(
+                drive_id=drive_id,
+                start=start,
+                end=end,
+            ):
+                if site_descriptor.folder_path and not self._is_driveitem_in_folder(
+                    item, site_descriptor.folder_path
+                ):
+                    continue
+                yield item
 
         except Exception as e:
             err_str = str(e)
@@ -1580,6 +1883,19 @@ class SharepointConnector(
             logger.warning(
                 "Failed to process site: %s - %s", site_descriptor.url, err_str
             )
+
+    @staticmethod
+    def _is_driveitem_in_folder(
+        driveitem: DriveItemData,
+        folder_path: str,
+    ) -> bool:
+        item_path = _build_item_relative_path(
+            driveitem.parent_reference_path, driveitem.name
+        )
+        normalized_folder = folder_path.strip("/")
+        return item_path == normalized_folder or item_path.startswith(
+            f"{normalized_folder}/"
+        )
 
     def _fetch_driveitems(
         self,
@@ -1864,6 +2180,188 @@ class SharepointConnector(
         )
         return self._try_expand_single_page(site_pages_base, page_id, metadata)
 
+    def _site_id_for_descriptor(self, site_descriptor: SiteDescriptor) -> str:
+        site = self.graph_client.sites.get_by_url(site_descriptor.url)
+        site.execute_query()
+        return cast(str, site.id)
+
+    def _fetch_lists(
+        self,
+        site_id: str,
+    ) -> Generator[SharepointListData, None, None]:
+        """Yield configured SharePoint lists for a site via Graph."""
+        page_url: str | None = f"{self.graph_api_base}/sites/{site_id}/lists"
+        params: dict[str, str] | None = {
+            "$select": "id,name,displayName,webUrl,list,system,createdDateTime,lastModifiedDateTime",
+            "$top": "200",
+        }
+
+        while page_url:
+            data = self._graph_api_get_json(page_url, params)
+            params = None
+            for raw_list in data.get("value", []):
+                list_data = SharepointListData.from_graph_json(raw_list)
+                if list_data.system and not self.include_hidden_lists:
+                    continue
+                if list_data.hidden and not self.include_hidden_lists:
+                    continue
+                if (
+                    list_data.is_document_library
+                    and not self.include_document_library_lists
+                ):
+                    continue
+                yield list_data
+            page_url = data.get("@odata.nextLink")
+
+    def _fetch_list_items(
+        self,
+        site_id: str,
+        list_id: str,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> Generator[SharepointListItemData, None, None]:
+        """Yield list items with expanded fields for a SharePoint list."""
+        page_url: str | None = (
+            f"{self.graph_api_base}/sites/{site_id}/lists/{list_id}/items"
+        )
+        params: dict[str, str] | None = {"$expand": "fields", "$top": "200"}
+
+        while page_url:
+            data = self._graph_api_get_json(page_url, params)
+            params = None
+            for raw_item in data.get("value", []):
+                if "deleted" in raw_item:
+                    continue
+                item = SharepointListItemData.from_graph_json(raw_item)
+                modified = item.last_modified_datetime or item.created_datetime
+                if modified is not None:
+                    if start is not None and modified < start:
+                        continue
+                    if end is not None and modified > end:
+                        continue
+                yield item
+            page_url = data.get("@odata.nextLink")
+
+    def _fetch_versions_summary(self, url: str, limit: int = 5) -> list[str]:
+        data = self._graph_api_get_json(url, {"$top": str(limit)})
+        summaries: list[str] = []
+        for item in data.get("value", []):
+            version_id = item.get("id")
+            modified = item.get("lastModifiedDateTime")
+            modified_by = _graph_identity_user(item.get("lastModifiedBy"))
+            actor = modified_by.get("displayName") or modified_by.get("email")
+            parts = [str(part) for part in (version_id, modified, actor) if part]
+            if parts:
+                summaries.append(" - ".join(parts))
+        return summaries
+
+    def _fetch_activity_summary(self, url: str, limit: int = 5) -> list[str]:
+        data = self._graph_api_get_json(url, {"$top": str(limit)})
+        summaries: list[str] = []
+        for item in data.get("value", []):
+            actor = item.get("actor", {})
+            actor_user = _graph_identity_user(actor)
+            actor_name = actor_user.get("displayName") or actor_user.get("email")
+            action = ", ".join(item.get("action", {}).keys())
+            timestamp = item.get("times", {}).get("recordedTime")
+            parts = [str(part) for part in (timestamp, actor_name, action) if part]
+            if parts:
+                summaries.append(" - ".join(parts))
+        return summaries
+
+    def _process_list_item(
+        self,
+        *,
+        site_id: str,
+        site_url: str,
+        list_data: SharepointListData,
+        item: SharepointListItemData,
+        checkpoint: SharepointConnectorCheckpoint,
+        include_permissions: bool,
+    ) -> Generator[Document | ConnectorFailure, None, None]:
+        doc_id = _sharepoint_list_item_doc_id(site_id, list_data.id, item.id)
+        if doc_id in checkpoint.seen_list_item_ids:
+            return
+
+        version_summaries: list[str] | None = None
+        activity_summaries: list[str] | None = None
+        try:
+            if self.include_version_metadata:
+                try:
+                    version_summaries = self._fetch_versions_summary(
+                        f"{self.graph_api_base}/sites/{site_id}/lists/{list_data.id}/items/{item.id}/versions"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch list item version metadata for %s/%s: %s",
+                        list_data.display_name,
+                        item.id,
+                        e,
+                    )
+            if self.include_activity_metadata:
+                try:
+                    activity_summaries = self._fetch_activity_summary(
+                        f"{self.graph_api_base}/sites/{site_id}/lists/{list_data.id}/items/{item.id}/activities"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch list item activity metadata for %s/%s: %s",
+                        list_data.display_name,
+                        item.id,
+                        e,
+                    )
+
+            ctx: ClientContext | None = None
+            if include_permissions:
+                ctx = self._create_rest_client_context(site_url)
+
+            doc = _convert_listitem_to_document(
+                item,
+                site_id=site_id,
+                site_url=site_url,
+                list_data=list_data,
+                ctx=ctx,
+                graph_client=self.graph_client,
+                include_permissions=include_permissions,
+                include_field_metadata=self.include_list_field_metadata,
+                version_summaries=version_summaries,
+                activity_summaries=activity_summaries,
+                parent_hierarchy_raw_node_id=site_url,
+            )
+            checkpoint.seen_list_item_ids.add(doc_id)
+            yield doc
+        except Exception as e:
+            yield ConnectorFailure(
+                failed_document=DocumentFailure(
+                    document_id=doc_id,
+                    document_link=item.web_url or list_data.web_url,
+                ),
+                failure_message=(
+                    f"SharePoint list item '{list_data.display_name}/{item.id}': {e}"
+                ),
+                exception=e,
+            )
+
+    def _fetch_list_documents(
+        self,
+        site_descriptor: SiteDescriptor,
+        checkpoint: SharepointConnectorCheckpoint,
+        start: datetime | None,
+        end: datetime | None,
+        include_permissions: bool,
+    ) -> Generator[Document | ConnectorFailure, None, None]:
+        site_id = self._site_id_for_descriptor(site_descriptor)
+        for list_data in self._fetch_lists(site_id):
+            for item in self._fetch_list_items(site_id, list_data.id, start, end):
+                yield from self._process_list_item(
+                    site_id=site_id,
+                    site_url=site_descriptor.url,
+                    list_data=list_data,
+                    item=item,
+                    checkpoint=checkpoint,
+                    include_permissions=include_permissions,
+                )
+
     def _acquire_token(self) -> dict[str, Any]:
         """
         Acquire token via MSAL
@@ -1941,6 +2439,138 @@ class SharepointConnector(
         raise RuntimeError(
             f"Graph API request failed after {GRAPH_API_MAX_RETRIES + 1} attempts: {url}"
         )
+
+    def _graph_api_post_json(
+        self,
+        url: str,
+        json_body: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Make an authenticated POST request to the Graph API with retry."""
+        access_token = self._get_graph_access_token()
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
+
+        for attempt in range(GRAPH_API_MAX_RETRIES + 1):
+            response = requests.post(
+                url,
+                headers=headers,
+                json=json_body,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            if response.status_code in GRAPH_API_RETRYABLE_STATUSES:
+                if attempt < GRAPH_API_MAX_RETRIES:
+                    parsed_retry_after = parse_retry_after_seconds(
+                        response.headers.get("Retry-After")
+                    )
+                    wait = min(
+                        parsed_retry_after
+                        if parsed_retry_after is not None
+                        else float(2**attempt),
+                        60,
+                    )
+                    logger.warning(
+                        "Graph API POST %s on attempt %s, retrying in %ss: %s",
+                        response.status_code,
+                        attempt + 1,
+                        wait,
+                        url,
+                    )
+                    time.sleep(wait)
+                    access_token = self._get_graph_access_token()
+                    headers["Authorization"] = f"Bearer {access_token}"
+                    continue
+            _log_and_raise_for_status(response)
+            return response.json()
+
+        raise RuntimeError(
+            f"Graph API POST failed after {GRAPH_API_MAX_RETRIES + 1} attempts: {url}"
+        )
+
+    def _fetch_microsoft_search_documents(
+        self,
+        include_permissions: bool,
+    ) -> Generator[Document | ConnectorFailure, None, None]:
+        if include_permissions:
+            logger.warning(
+                "Skipping Microsoft Search supplemental results during permission-sync indexing; search hits do not carry authoritative item permissions."
+            )
+            return
+
+        for query_index, query in enumerate(self.microsoft_search_queries):
+            offset = 0
+            page_size = 100
+            while True:
+                body = {
+                    "requests": [
+                        {
+                            "entityTypes": ["driveItem", "listItem", "list", "site"],
+                            "query": {"queryString": query},
+                            "from": offset,
+                            "size": page_size,
+                        }
+                    ]
+                }
+                try:
+                    data = self._graph_api_post_json(
+                        f"{self.graph_api_base}/search/query", body
+                    )
+                except Exception as e:
+                    yield _create_entity_failure(
+                        f"microsoft_search|{query}",
+                        f"Microsoft Search query failed: {e}",
+                        exception=e,
+                    )
+                    break
+
+                hits_containers = data.get("value", [{}])[0].get("hitsContainers", [])
+                hits = [
+                    hit
+                    for container in hits_containers
+                    for hit in container.get("hits", [])
+                ]
+                if not hits:
+                    break
+
+                for hit in hits:
+                    resource = hit.get("resource", {})
+                    hit_id = hit.get("hitId") or resource.get("id")
+                    if not hit_id:
+                        continue
+                    web_url = resource.get("webUrl")
+                    title = (
+                        resource.get("name")
+                        or resource.get("displayName")
+                        or hit.get("summary")
+                        or str(hit_id)
+                    )
+                    summary = hit.get("summary") or ""
+                    fields_text = _format_fields_for_text(resource)
+                    text = "\n\n".join(
+                        part
+                        for part in (
+                            f"# {title}",
+                            summary,
+                            fields_text,
+                        )
+                        if part
+                    )
+                    yield Document(
+                        id=f"sharepoint_search::{query_index}::{hit_id}",
+                        sections=[TextSection(link=web_url, text=text)],
+                        source=DocumentSource.SHAREPOINT,
+                        semantic_identifier=str(title),
+                        title=str(title),
+                        metadata={
+                            "sharepoint_item_type": "microsoft_search_result",
+                            "microsoft_search_query": query,
+                        },
+                    )
+
+                if len(hits) < page_size:
+                    break
+                offset += page_size
 
     def _iter_drive_items_paged(
         self,
@@ -2333,6 +2963,37 @@ class SharepointConnector(
                             e,
                             exc_info=True,
                         )
+
+            if self.include_lists:
+                for item_or_failure in self._fetch_list_documents(
+                    site_descriptor,
+                    temp_checkpoint,
+                    start,
+                    end,
+                    include_permissions,
+                ):
+                    if isinstance(item_or_failure, ConnectorFailure):
+                        logger.warning(
+                            "Skipping slim list item failure for %s: %s",
+                            site_descriptor.url,
+                            item_or_failure.failure_message,
+                        )
+                        continue
+                    doc_batch.append(
+                        SlimDocument(
+                            id=item_or_failure.id,
+                            external_access=(
+                                item_or_failure.external_access
+                                if include_permissions
+                                and item_or_failure.external_access is not None
+                                else ExternalAccess.empty()
+                            ),
+                            parent_hierarchy_raw_node_id=site_descriptor.url,
+                        )
+                    )
+                    if len(doc_batch) >= SLIM_BATCH_SIZE:
+                        yield doc_batch
+                        doc_batch = []
         yield doc_batch
 
     def load_credentials(self, credentials: dict[str, Any]) -> dict[str, Any] | None:
@@ -2666,6 +3327,35 @@ class SharepointConnector(
                 ctx = self._create_rest_client_context(site_url)
 
             access_token = self._get_graph_access_token()
+            version_summaries: list[str] | None = None
+            activity_summaries: list[str] | None = None
+            if self.include_version_metadata and driveitem.drive_id:
+                try:
+                    version_summaries = self._fetch_versions_summary(
+                        f"{self.graph_api_base}/drives/{driveitem.drive_id}/items/{driveitem.id}/versions"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch version metadata for %s: %s",
+                        driveitem.web_url,
+                        e,
+                    )
+            if self.include_activity_metadata and driveitem.drive_id:
+                try:
+                    activity_summaries = self._fetch_activity_summary(
+                        f"{self.graph_api_base}/drives/{driveitem.drive_id}/items/{driveitem.id}/activities"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to fetch activity metadata for %s: %s",
+                        driveitem.web_url,
+                        e,
+                    )
+            conversion_kwargs: dict[str, Any] = {}
+            if version_summaries:
+                conversion_kwargs["version_summaries"] = version_summaries
+            if activity_summaries:
+                conversion_kwargs["activity_summaries"] = activity_summaries
             doc_or_failure = _convert_driveitem_to_document_with_permissions(
                 driveitem,
                 drive_name,
@@ -2677,6 +3367,7 @@ class SharepointConnector(
                 access_token=access_token,
                 treat_sharing_link_as_public=self.treat_sharing_link_as_public,
                 raw_file_callback=self.raw_file_callback,
+                **conversion_kwargs,
             )
 
             if isinstance(doc_or_failure, Document):
@@ -2726,6 +3417,18 @@ class SharepointConnector(
             raise ConnectorMissingCredentialError("Sharepoint")
 
         checkpoint = copy.deepcopy(checkpoint)
+
+        if (
+            not self.include_site_documents
+            and not self.include_site_pages
+            and not self.include_lists
+        ):
+            if self.microsoft_search_queries and not checkpoint.search_done:
+                yield from self._fetch_microsoft_search_documents(include_permissions)
+                checkpoint.search_done = True
+                return checkpoint
+            checkpoint.has_more = False
+            return checkpoint
 
         # Phase 1: Initialize cached_site_descriptors if needed
         if (
@@ -2903,14 +3606,9 @@ class SharepointConnector(
                     checkpoint,
                 )
 
-            # For non-folder-scoped drives, use delta API with per-page
-            # checkpointing.  Build the initial URL and fall through to 3b.
-            if not site_descriptor.folder_path:
-                checkpoint.current_drive_delta_next_link = self._build_delta_start_url(
-                    drive_id, start_dt
-                )
-            # else: BFS path — delta_next_link stays None;
-            # Phase 3b will use _iter_drive_items_paged.
+            checkpoint.current_drive_delta_next_link = self._build_delta_start_url(
+                drive_id, start_dt
+            )
 
         # Phase 3b: Process items from the current drive
         if (
@@ -2927,8 +3625,14 @@ class SharepointConnector(
             drive_web_url = checkpoint.current_drive_web_url
 
             # --- determine item source ---
-            driveitems: Iterable[DriveItemData]
+            driveitems: Iterable[DriveItemData] = []
             has_more_delta_pages = False
+
+            if not checkpoint.current_drive_delta_next_link:
+                checkpoint.current_drive_delta_next_link = self._build_delta_start_url(
+                    checkpoint.current_drive_id,
+                    start_dt,
+                )
 
             if checkpoint.current_drive_delta_next_link:
                 # Delta path: fetch one page at a time for checkpointing
@@ -2954,21 +3658,22 @@ class SharepointConnector(
                     self._clear_drive_checkpoint_state(checkpoint)
                     return checkpoint
 
-                driveitems = page_items
+                if site_descriptor.folder_path:
+                    driveitems = [
+                        item
+                        for item in page_items
+                        if self._is_driveitem_in_folder(
+                            item, site_descriptor.folder_path
+                        )
+                    ]
+                else:
+                    driveitems = page_items
                 has_more_delta_pages = next_url is not None
                 if next_url:
                     checkpoint.current_drive_delta_next_link = next_url
-            else:
-                # BFS path (folder-scoped): process all items at once
-                driveitems = self._iter_drive_items_paged(
-                    drive_id=checkpoint.current_drive_id,
-                    folder_path=site_descriptor.folder_path,
-                    start=start_dt,
-                    end=end_dt,
-                )
 
             item_count = 0
-            # Outer try catches BFS-generator failures mid-iteration;
+            # Outer try catches generator failures mid-iteration;
             # per-item errors are still caught by the inner try below.
             try:
                 for driveitem in driveitems:
@@ -3018,6 +3723,7 @@ class SharepointConnector(
         if (
             self.include_site_pages
             and not checkpoint.process_site_pages
+            and not checkpoint.site_pages_done
             and checkpoint.current_site_descriptor is not None
         ):
             logger.info(
@@ -3129,6 +3835,54 @@ class SharepointConnector(
                     (start_dt, end_dt),
                     e,
                 )
+            checkpoint.site_pages_done = True
+            checkpoint.process_site_pages = False
+
+        if (
+            self.include_lists
+            and not checkpoint.process_lists
+            and not checkpoint.lists_done
+            and checkpoint.current_site_descriptor is not None
+        ):
+            logger.info(
+                "Processing SharePoint lists for site: %s",
+                checkpoint.current_site_descriptor.url,
+            )
+            checkpoint.process_lists = True
+            return checkpoint
+
+        # Phase 6: Process custom lists
+        if checkpoint.process_lists and checkpoint.current_site_descriptor is not None:
+            site_descriptor = checkpoint.current_site_descriptor
+            start_dt = datetime.fromtimestamp(start, tz=timezone.utc)
+            end_dt = datetime.fromtimestamp(end, tz=timezone.utc)
+            try:
+                yield from self._fetch_list_documents(
+                    site_descriptor,
+                    checkpoint,
+                    start_dt,
+                    end_dt,
+                    include_permissions,
+                )
+                logger.info(
+                    "Finished processing SharePoint lists for site: %s",
+                    site_descriptor.url,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Skipping SharePoint lists for %s: %s",
+                    site_descriptor.url,
+                    e,
+                    exc_info=True,
+                )
+                yield _create_entity_failure(
+                    f"{site_descriptor.url}|lists",
+                    f"Failed to fetch SharePoint lists: {e}",
+                    (start_dt, end_dt),
+                    e,
+                )
+            checkpoint.lists_done = True
+            checkpoint.process_lists = False
 
         # If no more drives, move to next site if available
         if (
@@ -3145,6 +3899,12 @@ class SharepointConnector(
             )
             checkpoint.cached_drive_names = None  # Reset for new site
             checkpoint.process_site_pages = False
+            checkpoint.site_pages_done = False
+            checkpoint.process_lists = False
+            checkpoint.lists_done = False
+            checkpoint.cached_lists = None
+            checkpoint.current_list = None
+            checkpoint.current_list_next_link = None
             logger.info(
                 "Finished site '%s', moving to next site: %s",
                 current_site,
@@ -3158,6 +3918,11 @@ class SharepointConnector(
             yield from self._yield_site_hierarchy_node(
                 checkpoint.current_site_descriptor, checkpoint
             )
+            return checkpoint
+
+        if self.microsoft_search_queries and not checkpoint.search_done:
+            yield from self._fetch_microsoft_search_documents(include_permissions)
+            checkpoint.search_done = True
             return checkpoint
 
         # No more sites or drives - we're done

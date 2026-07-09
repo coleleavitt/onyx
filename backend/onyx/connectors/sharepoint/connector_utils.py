@@ -16,6 +16,8 @@ def get_sharepoint_external_access(
     drive_item: DriveItem | None = None,
     drive_name: str | None = None,
     site_page: dict[str, Any] | None = None,
+    list_name: str | None = None,
+    list_item_id: str | None = None,
     add_prefix: bool = False,
     treat_sharing_link_as_public: bool = False,
 ) -> ExternalAccess:
@@ -36,13 +38,15 @@ def get_sharepoint_external_access(
     )
 
     external_access = get_external_access_func(
-        ctx,
-        graph_client,
-        drive_name,
-        drive_item,
-        site_page,
-        add_prefix,
-        treat_sharing_link_as_public,
+        client_context=ctx,
+        graph_client=graph_client,
+        drive_name=drive_name,
+        drive_item=drive_item,
+        site_page=site_page,
+        add_prefix=add_prefix,
+        treat_sharing_link_as_public=treat_sharing_link_as_public,
+        list_name=list_name,
+        list_item_id=list_item_id,
     )
 
     return external_access

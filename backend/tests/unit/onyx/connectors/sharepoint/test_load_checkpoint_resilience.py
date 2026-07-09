@@ -1,7 +1,7 @@
 """Tests for resilience wrappers added to SharepointConnector._load_from_checkpoint.
 
 Covers three failure modes that previously aborted the whole attempt:
-- G1: BFS-mode generator (`_iter_drive_items_paged`) raising mid-iteration.
+- G1: drive delta page fetching raising during drive processing.
 - G2: `_fetch_site_pages` raising a non-Graph 4xx in Phase 5.
 - G3: A single site page failing to convert in Phase 5.
 
@@ -155,40 +155,34 @@ def _build_phase5_checkpoint() -> SharepointConnectorCheckpoint:
 
 
 # ---------------------------------------------------------------------------
-# G1 — BFS-mode generator failures mid-iteration
+# G1 — delta page failures
 # ---------------------------------------------------------------------------
 
 
-class TestBfsIterationFailure:
-    """When `_iter_drive_items_paged` (BFS path) raises after yielding some
-    items, items emitted before the raise are kept, an EntityFailure is
-    yielded for the drive, the drive checkpoint state is cleared, and the
-    generator returns cleanly instead of aborting the attempt."""
+class TestDeltaPageFailure:
+    """When `_fetch_one_delta_page` raises, an EntityFailure is yielded for the
+    drive, checkpoint state is cleared, and the run does not abort."""
 
-    def test_bfs_generator_failure_yields_entity_failure(
+    def test_delta_page_failure_yields_entity_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         connector = _setup_connector(monkeypatch)
         _mock_convert(monkeypatch)
 
-        good_items = [_make_item("a"), _make_item("b")]
-
-        def fake_iter_paged(
+        def fake_fetch_page(
             self: SharepointConnector,  # noqa: ARG001
+            page_url: str,  # noqa: ARG001
             drive_id: str,  # noqa: ARG001
-            folder_path: str | None = None,  # noqa: ARG001
             start: datetime | None = None,  # noqa: ARG001
             end: datetime | None = None,  # noqa: ARG001
             page_size: int = 200,  # noqa: ARG001
-        ) -> Generator[DriveItemData, None, None]:
-            yield from good_items
-            raise RuntimeError("graph 500 mid-page")
+        ) -> tuple[list[DriveItemData], str | None]:
+            raise RuntimeError("graph 500")
 
         monkeypatch.setattr(
-            SharepointConnector, "_iter_drive_items_paged", fake_iter_paged
+            SharepointConnector, "_fetch_one_delta_page", fake_fetch_page
         )
 
-        # folder_path forces BFS mode
         checkpoint = _build_phase3_checkpoint(folder_path="Engineering/Docs")
         gen = connector._load_from_checkpoint(
             _EPOCH_START, _END_TS, checkpoint, include_permissions=False
@@ -198,13 +192,13 @@ class TestBfsIterationFailure:
         docs = _docs_from(yielded)
         failures = _failures_from(yielded)
 
-        assert [d.id for d in docs] == ["a", "b"]
+        assert docs == []
         assert len(failures) == 1
         failed_entity = failures[0].failed_entity
         assert failed_entity is not None
         assert isinstance(failed_entity, EntityFailure)
-        assert failed_entity.entity_id == f"{SITE_URL}|{DRIVE_NAME}|bfs_iter"
-        assert "graph 500 mid-page" in failures[0].failure_message
+        assert failed_entity.entity_id == f"{SITE_URL}|{DRIVE_NAME}"
+        assert "graph 500" in failures[0].failure_message
 
         # Drive state cleared so resume doesn't loop on the broken drive.
         assert final_cp.current_drive_name is None
@@ -212,30 +206,27 @@ class TestBfsIterationFailure:
         assert final_cp.current_drive_web_url is None
         assert final_cp.current_drive_delta_next_link is None
 
-    def test_bfs_generator_failure_at_start_still_yields_failure(
+    def test_delta_page_failure_without_folder_still_yields_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A raise before any item is yielded still produces an EntityFailure
-        rather than crashing the attempt."""
         connector = _setup_connector(monkeypatch)
         _mock_convert(monkeypatch)
 
-        def fake_iter_paged(
+        def fake_fetch_page(
             self: SharepointConnector,  # noqa: ARG001
+            page_url: str,  # noqa: ARG001
             drive_id: str,  # noqa: ARG001
-            folder_path: str | None = None,  # noqa: ARG001
             start: datetime | None = None,  # noqa: ARG001
             end: datetime | None = None,  # noqa: ARG001
             page_size: int = 200,  # noqa: ARG001
-        ) -> Generator[DriveItemData, None, None]:
+        ) -> tuple[list[DriveItemData], str | None]:
             raise RuntimeError("connection reset")
-            yield  # pragma: no cover  # make this a generator
 
         monkeypatch.setattr(
-            SharepointConnector, "_iter_drive_items_paged", fake_iter_paged
+            SharepointConnector, "_fetch_one_delta_page", fake_fetch_page
         )
 
-        checkpoint = _build_phase3_checkpoint(folder_path="Engineering/Docs")
+        checkpoint = _build_phase3_checkpoint()
         gen = connector._load_from_checkpoint(
             _EPOCH_START, _END_TS, checkpoint, include_permissions=False
         )
@@ -245,9 +236,7 @@ class TestBfsIterationFailure:
         failures = _failures_from(yielded)
         assert len(failures) == 1
         assert failures[0].failed_entity is not None
-        assert (
-            failures[0].failed_entity.entity_id == f"{SITE_URL}|{DRIVE_NAME}|bfs_iter"
-        )
+        assert failures[0].failed_entity.entity_id == f"{SITE_URL}|{DRIVE_NAME}"
         assert final_cp.current_drive_name is None
 
 

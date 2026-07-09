@@ -543,6 +543,8 @@ def get_external_access_from_sharepoint(
     site_page: dict[str, Any] | None,
     add_prefix: bool = False,
     treat_sharing_link_as_public: bool = False,
+    list_name: str | None = None,
+    list_item_id: str | None = None,
 ) -> ExternalAccess:
     """
     Get external access information from SharePoint.
@@ -656,8 +658,23 @@ def get_external_access_from_sharepoint(
             ),
             "get_external_access_from_sharepoint",
         )
+    elif list_name and list_item_id:
+        list_item_lookup_id: int | str = (
+            int(list_item_id) if list_item_id.isdigit() else list_item_id
+        )
+        item = client_context.web.lists.get_by_title(list_name).items.get_by_id(
+            list_item_lookup_id
+        )
+
+        sleep_and_retry(
+            item.role_assignments.expand(["Member", "RoleDefinitionBindings"]).get_all(
+                page_size=ROLE_ASSIGNMENTS_PAGE_SIZE,
+                page_loaded=add_user_and_group_to_sets,
+            ),
+            "get_external_access_from_sharepoint",
+        )
     else:
-        raise RuntimeError("No drive item or site page provided")
+        raise RuntimeError("No drive item, site page, or list item provided")
 
     groups_and_members: GroupsResult = _get_groups_and_members_recursively(
         client_context, graph_client, groups

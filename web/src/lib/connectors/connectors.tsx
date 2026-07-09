@@ -850,6 +850,75 @@ export const connectorConfigs: Record<
       },
       {
         type: "checkbox",
+        query: "Index SharePoint Lists:",
+        label: "Index SharePoint Lists",
+        name: "include_lists",
+        optional: true,
+        default: false,
+        description:
+          "Index custom SharePoint lists and list items with their expanded field values. Document libraries are still handled by the document indexing option.",
+      },
+      {
+        type: "checkbox",
+        query: "Index hidden/system lists:",
+        label: "Index Hidden Lists",
+        name: "include_hidden_lists",
+        optional: true,
+        default: false,
+        description:
+          "Include hidden and system-managed lists when SharePoint list indexing is enabled.",
+      },
+      {
+        type: "checkbox",
+        query: "Index document libraries as lists:",
+        label: "Index Document Libraries As Lists",
+        name: "include_document_library_lists",
+        optional: true,
+        default: false,
+        description:
+          "Also index document libraries through the SharePoint list item API. This can duplicate documents already indexed through library/drive crawling.",
+      },
+      {
+        type: "checkbox",
+        query: "Include SharePoint field metadata:",
+        label: "Include Field Metadata",
+        name: "include_list_field_metadata",
+        optional: true,
+        default: true,
+        description:
+          "Attach SharePoint list item field values as document metadata for filtering and retrieval context.",
+      },
+      {
+        type: "checkbox",
+        query: "Include version metadata:",
+        label: "Include Version Metadata",
+        name: "include_version_metadata",
+        optional: true,
+        default: false,
+        description:
+          "Fetch recent Graph version metadata for SharePoint documents and list items. This adds API calls.",
+      },
+      {
+        type: "checkbox",
+        query: "Include activity metadata:",
+        label: "Include Activity Metadata",
+        name: "include_activity_metadata",
+        optional: true,
+        default: false,
+        description:
+          "Fetch recent Graph activity metadata for SharePoint documents and list items. This adds API calls.",
+      },
+      {
+        type: "list",
+        query: "Enter Microsoft Search queries:",
+        label: "Microsoft Search Queries",
+        name: "microsoft_search_queries",
+        optional: true,
+        description:
+          "Optional Microsoft Search API queries to index as supplemental search result stubs after explicit site crawling completes.",
+      },
+      {
+        type: "checkbox",
         label: "Treat sharing links as public?",
         description:
           "When enabled, documents with a sharing link (anonymous or organization-wide) " +
@@ -2041,6 +2110,13 @@ export interface SharepointConfig {
   include_site_pages?: boolean;
   treat_sharing_link_as_public?: boolean;
   include_site_documents?: boolean;
+  include_lists?: boolean;
+  include_hidden_lists?: boolean;
+  include_document_library_lists?: boolean;
+  include_list_field_metadata?: boolean;
+  include_version_metadata?: boolean;
+  include_activity_metadata?: boolean;
+  microsoft_search_queries?: string[];
   authority_host?: string;
   graph_api_host?: string;
   sharepoint_domain_suffix?: string;

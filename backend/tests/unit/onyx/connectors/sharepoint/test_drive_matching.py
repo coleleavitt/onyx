@@ -324,10 +324,10 @@ def test_get_drive_items_uses_delta_when_no_folder_path(
     assert called_method == ["delta"]
 
 
-def test_get_drive_items_uses_paged_when_folder_path_set(
+def test_get_drive_items_uses_delta_when_folder_path_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When folder_path is set, _get_drive_items_for_drive_id should use BFS."""
+    """When folder_path is set, delta results should be filtered to that path."""
     connector = _build_connector([_FakeDrive("Documents")])
     site = SiteDescriptor(
         url="https://example.sharepoint.com/sites/sample",
@@ -336,6 +336,20 @@ def test_get_drive_items_uses_paged_when_folder_path_set(
     )
 
     called_method: list[str] = []
+    inside = DriveItemData(
+        id="inside",
+        name="guide.pdf",
+        web_url="https://example.sharepoint.com/sites/sample/Engineering/Docs/guide.pdf",
+        parent_reference_path="/drives/d/root:/Engineering/Docs",
+        drive_id="fake-drive-id",
+    )
+    outside = DriveItemData(
+        id="outside",
+        name="other.pdf",
+        web_url="https://example.sharepoint.com/sites/sample/Engineering/Other/other.pdf",
+        parent_reference_path="/drives/d/root:/Engineering/Other",
+        drive_id="fake-drive-id",
+    )
 
     def fake_delta(
         self: SharepointConnector,  # noqa: ARG001
@@ -345,7 +359,8 @@ def test_get_drive_items_uses_paged_when_folder_path_set(
         page_size: int = 200,  # noqa: ARG001
     ) -> Generator[DriveItemData, None, None]:
         called_method.append("delta")
-        yield _SAMPLE_ITEM
+        yield inside
+        yield outside
 
     def fake_paged(
         self: SharepointConnector,  # noqa: ARG001
@@ -361,10 +376,10 @@ def test_get_drive_items_uses_paged_when_folder_path_set(
     monkeypatch.setattr(SharepointConnector, "_iter_drive_items_delta", fake_delta)
     monkeypatch.setattr(SharepointConnector, "_iter_drive_items_paged", fake_paged)
 
-    items = connector._get_drive_items_for_drive_id(site, "fake-drive-id")
-    list(items)
+    items = list(connector._get_drive_items_for_drive_id(site, "fake-drive-id"))
 
-    assert called_method == ["paged"]
+    assert called_method == ["delta"]
+    assert [item.id for item in items] == ["inside"]
 
 
 def test_iter_drive_items_delta_uses_timestamp_token(
