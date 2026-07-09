@@ -13,7 +13,7 @@ import useSWR from "swr";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import { SWR_KEYS } from "@/lib/swr-keys";
 import { useSettings } from "@/lib/settings/hooks";
-import { EE_ENABLED } from "@/lib/constants";
+import { enterpriseFeaturesAvailable } from "@/lib/settings/featureAvailability";
 
 // ─── Feature Flag Registry ─────────────────────────────────────────────────
 
@@ -84,8 +84,11 @@ export function usePHFeatureFlag(flag: PHFeatureFlag): boolean {
  */
 export function useCustomAnalyticsScript(): string | null {
   const { isLoading, error, ee_features_enabled } = useSettings();
-  const shouldFetch =
-    EE_ENABLED || (!isLoading && !error && ee_features_enabled !== false);
+  const shouldFetch = enterpriseFeaturesAvailable({
+    isLoading,
+    error,
+    enabled: ee_features_enabled,
+  });
 
   const { data } = useSWR<string>(
     shouldFetch ? SWR_KEYS.customAnalyticsScript : null,

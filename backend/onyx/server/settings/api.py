@@ -117,7 +117,7 @@ def admin_put_settings(
         )
 
 
-def apply_license_status_to_settings(settings: Settings) -> Settings:
+def apply_feature_availability_to_settings(settings: Settings) -> Settings:
     """MIT version: no-op, returns settings unchanged."""
     return settings
 
@@ -142,8 +142,8 @@ def fetch_settings(
 
     apply_fn = fetch_versioned_implementation_with_fallback(
         "onyx.server.settings.api",
-        "apply_license_status_to_settings",
-        apply_license_status_to_settings,
+        "apply_feature_availability_to_settings",
+        apply_feature_availability_to_settings,
     )
     general_settings = apply_fn(general_settings)
 

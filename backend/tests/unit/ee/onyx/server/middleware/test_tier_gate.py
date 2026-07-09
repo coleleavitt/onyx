@@ -108,7 +108,7 @@ async def test_unmapped_path_passes_through(
 async def test_allowed_prefix_passes_without_tier_check(
     middleware_harness: MiddlewareHarness,
 ) -> None:
-    # /auth is in LICENSE_ENFORCEMENT_ALLOWED_PREFIXES — must pass even
+    # /auth is in TIER_GATE_ALLOWED_PREFIXES — must pass even
     # though /admin/enterprise-settings (which would otherwise gate it)
     # has no overlap. Just confirms the allowlist short-circuits.
     middleware, call_next = middleware_harness

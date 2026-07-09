@@ -1,11 +1,7 @@
-"""Unified tier-gating middleware.
-
-Replaces the old binary `EE_ONLY_PATH_PREFIXES` (license_enforcement)
-and ENTERPRISE-only `tier_enforcement` lists with a single declarative
-`PATH_PREFIX_MIN_TIER` map.
+"""Unified tier-gating middleware backed by `PATH_PREFIX_MIN_TIER`.
 
 For every request:
-  1. If the path is in `LICENSE_ENFORCEMENT_ALLOWED_PREFIXES`, pass.
+  1. If the path is in `TIER_GATE_ALLOWED_PREFIXES`, pass.
   2. Find the longest prefix in `PATH_PREFIX_MIN_TIER` matching the
      request path. No match → pass.
   3. Resolve `current_tier = get_tier()` and compare via `tier_at_least`.
@@ -13,9 +9,7 @@ For every request:
      the required tier in the payload so the FE can render the right
      upgrade copy.
 
-Wired in `ee/onyx/main.py` for both self-hosted AND multi-tenant. The
-orthogonal `license_enforcement` middleware (self-hosted only) still
-handles GATED_ACCESS, seat limits, and the billing/auth allowlist.
+Wired in `ee/onyx/main.py` for both self-hosted and multi-tenant deployments.
 """
 
 import asyncio
@@ -28,10 +22,8 @@ from fastapi import Request
 from fastapi import Response
 from fastapi.responses import JSONResponse
 
-from ee.onyx.configs.license_enforcement_config import (
-    LICENSE_ENFORCEMENT_ALLOWED_PREFIXES,
-)
-from ee.onyx.configs.license_enforcement_config import PATH_PREFIX_MIN_TIER
+from ee.onyx.configs.tier_gate_config import PATH_PREFIX_MIN_TIER
+from ee.onyx.configs.tier_gate_config import TIER_GATE_ALLOWED_PREFIXES
 from ee.onyx.utils.tier import get_tier
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.server.settings.models import Tier
@@ -48,9 +40,7 @@ _SORTED_GATES: list[tuple[str, Tier]] = sorted(
 
 
 def _is_allowed_path(path: str) -> bool:
-    return any(
-        path.startswith(prefix) for prefix in LICENSE_ENFORCEMENT_ALLOWED_PREFIXES
-    )
+    return any(path.startswith(prefix) for prefix in TIER_GATE_ALLOWED_PREFIXES)
 
 
 def _required_tier(path: str) -> Tier | None:

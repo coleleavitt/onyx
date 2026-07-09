@@ -1,6 +1,8 @@
 import json
 import os
 
+from shared_configs.configs import MULTI_TENANT
+
 #####
 # Auto Permission Sync
 #####
@@ -146,8 +148,9 @@ HUBSPOT_TRACKING_URL = os.environ.get("HUBSPOT_TRACKING_URL")
 
 GATED_TENANTS_KEY = "gated_tenants"
 
-# License enforcement - when True, blocks API access for gated/expired licenses
-LICENSE_ENFORCEMENT_ENABLED = (
+# License enforcement only applies to the cloud data plane. Self-hosted builds
+# expose the complete feature set without consulting license state.
+LICENSE_ENFORCEMENT_ENABLED = MULTI_TENANT and (
     os.environ.get("LICENSE_ENFORCEMENT_ENABLED", "true").lower() == "true"
 )
 

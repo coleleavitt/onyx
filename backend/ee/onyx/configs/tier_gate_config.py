@@ -1,9 +1,8 @@
-"""Constants for license enforcement and per-feature tier gating.
+"""Constants for per-feature tier gating.
 
-Two related concerns live here, both consumed by the `tier_gate` middleware:
+Two related concerns are consumed by the `tier_gate` middleware:
 
-1. `LICENSE_ENFORCEMENT_ALLOWED_PREFIXES` — paths that bypass license
-   enforcement entirely (auth, billing, health checks, etc.).
+1. `TIER_GATE_ALLOWED_PREFIXES` — paths that bypass tier checks.
 2. `PATH_PREFIX_MIN_TIER` — minimum tier required to access a given path
    prefix. `Tier.BUSINESS` = Business+. `Tier.ENTERPRISE` = Enterprise only.
    Longest-prefix-wins, so a nested path can resolve to a stricter tier
@@ -13,13 +12,13 @@ Two related concerns live here, both consumed by the `tier_gate` middleware:
 Import these constants in both production code and tests to ensure
 consistency.
 
-Multi-tenant cloud gating lives in `multi_tenant_gating_config.py` and is
-deliberately separate — cloud uses subscriptions, not licenses.
+Multi-tenant cloud access gating lives in `multi_tenant_gating_config.py` and
+is deliberately separate.
 """
 
 from onyx.server.settings.models import Tier
 
-# Paths that are ALWAYS accessible, even when license is expired/gated.
+# Paths that are always accessible without a tier check.
 # These enable users to:
 #   /auth - Log in/out (users can't fix billing if locked out of auth)
 #   /license - Fetch, upload, or check license status
@@ -31,7 +30,7 @@ from onyx.server.settings.models import Tier
 #   /tenants/billing-* - Legacy billing endpoints (backwards compatibility)
 #   /manage/users, /users - User management (needed for seat limit resolution)
 #   /notifications - Needed for UI to load properly
-LICENSE_ENFORCEMENT_ALLOWED_PREFIXES: frozenset[str] = frozenset(
+TIER_GATE_ALLOWED_PREFIXES: frozenset[str] = frozenset(
     {
         "/auth",
         "/license",

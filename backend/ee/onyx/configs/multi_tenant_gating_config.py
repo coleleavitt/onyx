@@ -1,6 +1,6 @@
 """Constants for multi-tenant cloud subscription gating.
 
-Cloud-only. Self-hosted licensing lives in `license_enforcement_config.py`
+Cloud-only. Self-hosted complete builds resolve to Enterprise locally.
 and is unrelated — do NOT merge the two surfaces.
 
 Consumed by `tenant_tracking` middleware. When a tenant is in the

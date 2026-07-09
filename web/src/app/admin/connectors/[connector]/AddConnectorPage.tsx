@@ -44,10 +44,10 @@ import { useRouter } from "next/navigation";
 import CardSection from "@/components/admin/CardSection";
 import { prepareOAuthAuthorizationRequest } from "@/lib/oauth_utils";
 import {
-  EE_ENABLED,
   NEXT_PUBLIC_CLOUD_ENABLED,
   NEXT_PUBLIC_TEST_ENV,
 } from "@/lib/constants";
+import { enterpriseFeaturesAvailable } from "@/lib/settings/featureAvailability";
 import {
   getConnectorOauthRedirectUrl,
   useOAuthDetails,
@@ -135,21 +135,33 @@ export default function AddConnector({
   const [oauthUrl, setOauthUrl] = useState<string | null>(null);
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [isAuthorizeVisible, setIsAuthorizeVisible] = useState(false);
+  const settings = useSettings();
   useEffect(() => {
     if (typeof window !== "undefined") {
       setCurrentPageUrl(window.location.href);
     }
 
-    if (EE_ENABLED && (NEXT_PUBLIC_CLOUD_ENABLED || NEXT_PUBLIC_TEST_ENV)) {
+    if (
+      enterpriseFeaturesAvailable({
+        isLoading: settings.isLoading,
+        error: settings.error,
+        enabled: settings.ee_features_enabled,
+      }) &&
+      (NEXT_PUBLIC_CLOUD_ENABLED || NEXT_PUBLIC_TEST_ENV)
+    ) {
       const sourceMetadata = getSourceMetadata(connector);
       if (sourceMetadata?.oauthSupported == true) {
         setIsAuthorizeVisible(true);
       }
     }
-  }, []);
+  }, [
+    connector,
+    settings.error,
+    settings.isLoading,
+    settings.ee_features_enabled,
+  ]);
 
   const router = useRouter();
-  const settings = useSettings();
   const defaultPruneFreqHours = settings.default_pruning_freq
     ? settings.default_pruning_freq / 3600
     : 600; // 25 days fallback until settings load

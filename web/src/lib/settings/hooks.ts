@@ -12,7 +12,7 @@ import {
   QueryHistoryType,
   Settings,
 } from "@/lib/settings/types";
-import { EE_ENABLED } from "@/lib/constants";
+import { enterpriseFeaturesAvailable } from "@/lib/settings/featureAvailability";
 
 const SETTINGS_ERROR_RETRY_INTERVAL = 5_000;
 
@@ -52,9 +52,11 @@ export function useSettings(): AppSettings {
   });
 
   const core = rawSettings ?? DEFAULT_SETTINGS;
-  const shouldFetchEnterprise =
-    EE_ENABLED ||
-    (!settingsLoading && !settingsError && core.ee_features_enabled !== false);
+  const shouldFetchEnterprise = enterpriseFeaturesAvailable({
+    isLoading: settingsLoading,
+    error: settingsError,
+    enabled: core.ee_features_enabled,
+  });
 
   const {
     data: enterprise,

@@ -125,9 +125,7 @@ def test_singleton_subsequent_write_overwrites() -> None:
 
 def test_legacy_payload_keeps_customer_tier_none_through_cache() -> None:
     """Back-compat: a legacy payload with customer_tier=None survives the
-    cache round trip with the field still None. tier_from_license_metadata
-    then translates that None to Tier.ENTERPRISE at the resolver layer
-    (covered in the unit test for the resolver)."""
+    cache round trip with the field still None."""
     update_license_cache(
         _payload(customer_tier=None),
         source=LicenseSource.MANUAL_UPLOAD,

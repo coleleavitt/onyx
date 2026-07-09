@@ -12,6 +12,8 @@ AUTH_TYPE=basic
 # Generate a secure value with: openssl rand -hex 32
 USER_AUTH_SECRET=""
 DEV_MODE=true
+# Self-hosted license enforcement is disabled.
+LICENSE_ENFORCEMENT_ENABLED=false
 
 
 # Always keep these on for Dev.
@@ -46,10 +48,8 @@ PYTHONPATH=../backend
 PYTHONUNBUFFERED=1
 
 
-# Enable the full set of Onyx Enterprise Edition features.
-# NOTE: DO NOT ENABLE THIS UNLESS YOU HAVE A PAID ENTERPRISE LICENSE (or if you
-# are using this for local testing/development).
-ENABLE_PAID_ENTERPRISE_EDITION_FEATURES=False
+# Load the complete self-hosted feature set.
+ENABLE_PAID_ENTERPRISE_EDITION_FEATURES=True
 
 
 # S3 File Store Configuration (MinIO for local development)

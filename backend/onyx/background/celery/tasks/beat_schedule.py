@@ -17,7 +17,6 @@ from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
 from onyx.server.features.build.configs import SANDBOX_IDLE_CLEANUP_INTERVAL_SECONDS
-from onyx.utils.variable_functionality import _LICENSE_ENFORCEMENT_ENABLED
 from shared_configs.configs import MULTI_TENANT
 
 # choosing 15 minutes because it roughly gives us enough time to process many tasks
@@ -208,9 +207,8 @@ beat_task_templates: list[dict] = [
     },
 ]
 
-# Mirror set_is_ee_based_on_env_variable(): EE features are active when either
-# ENABLE_PAID_ENTERPRISE_EDITION_FEATURES or LICENSE_ENFORCEMENT_ENABLED is set.
-if ENTERPRISE_EDITION_ENABLED or _LICENSE_ENFORCEMENT_ENABLED:
+# Schedule complete-feature tasks for default-on self-hosted and cloud builds.
+if ENTERPRISE_EDITION_ENABLED:
     beat_task_templates.extend(
         [
             {

@@ -1,8 +1,7 @@
 """Per-tenant tier resolution.
 
 Cloud: Redis HGET → CP lazy-refresh on miss → BUSINESS fallback.
-Self-hosted: license_payload.customer_tier (legacy licenses lacking the
-field default to ENTERPRISE).
+Self-hosted: ENTERPRISE whenever the complete implementation is loaded.
 
 Promotion rule (cloud-only): a tenant whose contractual `customer_tier`
 is BUSINESS but whose subscription is still inside its trial window
@@ -20,23 +19,16 @@ from datetime import timezone
 
 import requests
 from redis.exceptions import RedisError
-from sqlalchemy.exc import ProgrammingError
-from sqlalchemy.exc import SQLAlchemyError
 
-from ee.onyx.configs.app_configs import LICENSE_ENFORCEMENT_ENABLED
-from ee.onyx.db.license import get_cached_license_metadata
-from ee.onyx.db.license import refresh_license_cache
 from ee.onyx.server.license.models import CustomerTier
 from ee.onyx.server.tenants.billing import fetch_billing_information
 from ee.onyx.server.tenants.models import BillingInformation
 from ee.onyx.server.tenants.models import SubscriptionStatusResponse
 from ee.onyx.server.tenants.tier_management import get_cached_tier
 from ee.onyx.server.tenants.tier_management import update_tenant_tier
-from onyx.db.engine.sql_engine import get_session_with_current_tenant
 from onyx.db.enums import AccessType
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
-from onyx.server.settings.models import ApplicationStatus
 from onyx.server.settings.models import Tier
 from onyx.server.settings.tier_order import tier_at_least
 from onyx.utils.logger import setup_logger
@@ -71,54 +63,8 @@ def _effective_tier(customer_tier: CustomerTier, trial_end: datetime | None) -> 
     return _CUSTOMER_TIER_TO_TIER.get(customer_tier, Tier.BUSINESS)
 
 
-def tier_from_license_metadata(metadata: object | None) -> Tier:
-    """Map a cached LicenseMetadata to a Tier.
-
-    Shared by `_self_hosted_tier()` and `apply_license_status_to_settings`
-    so they don't both have to read Redis when one already has the metadata
-    in hand.
-    """
-    if metadata is None:
-        return Tier.COMMUNITY
-    status = getattr(metadata, "status", None)
-    if status == ApplicationStatus.GATED_ACCESS:
-        return Tier.COMMUNITY
-    customer_tier = getattr(metadata, "customer_tier", None)
-    if not isinstance(customer_tier, CustomerTier):
-        # None (legacy license) or unrecognized -> ENTERPRISE for back-compat.
-        return Tier.ENTERPRISE
-    return _CUSTOMER_TIER_TO_TIER[customer_tier]
-
-
 def _self_hosted_tier() -> Tier:
-    if not LICENSE_ENFORCEMENT_ENABLED:
-        # Mirrors apply_license_status_to_settings (settings/api.py:87-92):
-        # legacy / dev-mode self-host where EE code is loaded via
-        # ENABLE_PAID_ENTERPRISE_EDITION_FEATURES but no license is required.
-        # Treat as ENTERPRISE so tier_gate doesn't 402 EE endpoints.
-        return Tier.ENTERPRISE if global_version.is_ee_version() else Tier.COMMUNITY
-
-    try:
-        metadata = get_cached_license_metadata()
-    except RedisError as e:
-        # Treat cache failure as a miss so the existing DB-fallback path
-        # below still has a chance to resolve the correct tier.
-        logger.warning("Self-hosted tier: license cache read failed: %s", e)
-        metadata = None
-
-    if metadata is None:
-        try:
-            with get_session_with_current_tenant() as db_session:
-                metadata = refresh_license_cache(db_session)
-        except ProgrammingError as e:
-            # Missing table in incomplete schema (e.g. missing license table)
-            logger.warning("Self-hosted tier: license table missing: %s", e)
-            return Tier.COMMUNITY
-        except SQLAlchemyError as e:
-            logger.warning("Self-hosted tier: license DB read failed: %s", e)
-            return Tier.COMMUNITY
-
-    return tier_from_license_metadata(metadata)
+    return Tier.ENTERPRISE if global_version.is_ee_version() else Tier.COMMUNITY
 
 
 def _extract_billing_state(
@@ -200,13 +146,8 @@ def require_business_tier_for_sync_access(access_type: AccessType) -> None:
     SYNC access only exist on tenants that can actually run the sync —
     instead of letting the row land and silently never sync.
 
-    Mirrors `apply_license_status_to_settings`: with
-    LICENSE_ENFORCEMENT_ENABLED=False, treat the tenant as ENTERPRISE so
-    legacy EE deployments without a license aren't broken.
     """
     if access_type != AccessType.SYNC:
-        return
-    if not LICENSE_ENFORCEMENT_ENABLED:
         return
     if not tier_at_least(get_tier(), Tier.BUSINESS):
         raise OnyxError(

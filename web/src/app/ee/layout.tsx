@@ -12,21 +12,11 @@ export default async function AdminLayout({
     return <EEFeatureRedirect />;
   }
 
-  // Then check runtime license status (for license enforcement mode)
-  // This allows gating EE features when user doesn't have a valid license
+  // Runtime settings are the client/server source of truth for stripped builds.
   try {
     const settings = await fetchStandardSettingsSS();
-    if (settings) {
-      if (settings.ee_features_enabled === false) {
-        // When the app is in GATED_ACCESS (expired or missing license), defer
-        // to the root layout's GatedContentWrapper which handles path-based
-        // exemptions (e.g. allowing /admin/billing for license management).
-        if (settings.application_status === "gated_access") {
-          return children;
-        }
-
-        return <EEFeatureRedirect />;
-      }
+    if (settings?.ee_features_enabled === false) {
+      return <EEFeatureRedirect />;
     }
   } catch (error) {
     // If settings fetch fails, allow access (fail open for better UX)

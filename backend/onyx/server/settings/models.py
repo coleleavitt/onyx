@@ -49,11 +49,9 @@ class Settings(BaseModel):
     multi_model_chat_enabled: bool | None = True
     search_ui_enabled: bool | None = True
 
-    # Whether EE features are unlocked for use.
-    # Depends on license status: True when the user has a valid license
-    # (ACTIVE, GRACE_PERIOD, PAYMENT_REMINDER), False when there's no license
-    # or the license is expired (GATED_ACCESS).
-    # This controls UI visibility of EE features (user groups, analytics, RBAC, etc.).
+    # Whether the complete feature set is available to the current tenant.
+    # This fork enables it for self-hosted deployments; cloud may still resolve
+    # availability per tenant.
     ee_features_enabled: bool = False
 
     # Resolved per-tenant tier for ENTERPRISE-only feature gating in the FE.
@@ -90,7 +88,7 @@ class Settings(BaseModel):
     # overrides win. The deployment-level Craft gate still applies on top.
     craft_default_enabled: bool = True
 
-    # Seat usage - populated by license enforcement when seat limit is exceeded
+    # Optional seat details for restricted-access status messaging.
     seat_count: int | None = None
     used_seats: int | None = None
 

@@ -45,15 +45,27 @@ interface SidebarItemEntry {
   requiredTier?: Tier;
 }
 
-function buildItems(
-  isCurator: boolean,
-  enableCloud: boolean,
-  tier: Tier | undefined,
-  settings: Settings | null,
-  customAnalyticsEnabled: boolean,
-  hasSubscription: boolean,
-  hooksEnabled: boolean
-): SidebarItemEntry[] {
+interface BuildItemsOptions {
+  isCurator: boolean;
+  enableCloud: boolean;
+  tier: Tier | undefined;
+  settings: Settings | null;
+  customAnalyticsEnabled: boolean;
+  hasPaidPlan: boolean;
+  showUpgradePlan: boolean;
+  hooksEnabled: boolean;
+}
+
+function buildItems({
+  isCurator,
+  enableCloud,
+  tier,
+  settings,
+  customAnalyticsEnabled,
+  hasPaidPlan,
+  showUpgradePlan,
+  hooksEnabled,
+}: BuildItemsOptions): SidebarItemEntry[] {
   const items: SidebarItemEntry[] = [];
 
   const add = (
@@ -154,13 +166,13 @@ function buildItems(
   if (!isCurator) {
     addGated(SECTIONS.ORGANIZATION, ADMIN_ROUTES.THEME, Tier.BUSINESS);
     add(SECTIONS.ORGANIZATION, ADMIN_ROUTES.SECURITY_HARDENING);
-    if (hasSubscription) {
+    if (hasPaidPlan) {
       add(SECTIONS.ORGANIZATION, ADMIN_ROUTES.BILLING);
     }
   }
 
   // 8. Upgrade Plan (admin only, no subscription)
-  if (!isCurator && !hasSubscription) {
+  if (!isCurator && showUpgradePlan) {
     items.push({
       section: SECTIONS.UNLABELED,
       name: "Upgrade Plan",
@@ -208,27 +220,31 @@ export default function AdminSidebar() {
   const { data: licenseData, isLoading: licenseLoading } = useLicense();
   const isCurator =
     user?.role === UserRole.CURATOR || user?.role === UserRole.GLOBAL_CURATOR;
-  // Default to true while loading to avoid flashing "Upgrade Plan"
-  const hasSubscriptionOrLicense =
-    billingLoading || licenseLoading
-      ? true
-      : Boolean(
-          (billingData && hasActiveSubscription(billingData)) ||
-          licenseData?.has_license
-        );
+  const planStateLoading = billingLoading || licenseLoading;
+  const hasPaidPlan = Boolean(
+    (billingData && hasActiveSubscription(billingData)) ||
+    licenseData?.has_license
+  );
+  const hasBundledSelfHostedFeatures =
+    !NEXT_PUBLIC_CLOUD_ENABLED &&
+    settings.ee_features_enabled !== false &&
+    tierAtLeast(tier, Tier.ENTERPRISE);
+  const showUpgradePlan =
+    !planStateLoading && !hasPaidPlan && !hasBundledSelfHostedFeatures;
   // Hooks are ENTERPRISE-only and only available for self-hosted single-tenant.
   const hooksEnabled =
     tierAtLeast(tier, Tier.ENTERPRISE) && (settings?.hooks_enabled ?? false);
 
-  const allItems = buildItems(
+  const allItems = buildItems({
     isCurator,
-    NEXT_PUBLIC_CLOUD_ENABLED,
+    enableCloud: NEXT_PUBLIC_CLOUD_ENABLED,
     tier,
     settings,
     customAnalyticsEnabled,
-    hasSubscriptionOrLicense,
-    hooksEnabled
-  );
+    hasPaidPlan,
+    showUpgradePlan,
+    hooksEnabled,
+  });
 
   const itemExtractor = useCallback((item: SidebarItemEntry) => item.name, []);
 
