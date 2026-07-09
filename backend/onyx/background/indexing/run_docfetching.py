@@ -33,7 +33,9 @@ from onyx.connectors.connector_runner import ConnectorRunner
 from onyx.connectors.exceptions import ConnectorValidationError
 from onyx.connectors.exceptions import UnexpectedValidationError
 from onyx.connectors.factory import instantiate_connector
+from onyx.connectors.interfaces import BaseConnector
 from onyx.connectors.interfaces import CheckpointedConnector
+from onyx.connectors.interfaces import SourceDocumentCountEstimator
 from onyx.connectors.models import ConnectorFailure
 from onyx.connectors.models import ConnectorStopSignal
 from onyx.connectors.models import Document
@@ -56,7 +58,9 @@ from onyx.db.index_attempt import get_index_attempt
 from onyx.db.index_attempt import get_recent_completed_attempts_for_cc_pair
 from onyx.db.index_attempt import mark_attempt_canceled
 from onyx.db.index_attempt import mark_attempt_failed
+from onyx.db.index_attempt import set_source_document_estimate
 from onyx.db.index_attempt import transition_attempt_to_in_progress
+from onyx.db.index_attempt import update_source_discovery_progress
 from onyx.db.index_attempt_metrics import IndexAttemptStage
 from onyx.db.index_attempt_metrics import StageEventBuffer
 from onyx.db.index_attempt_metrics import time_stage
@@ -101,6 +105,38 @@ def _enqueue_docprocessing_task(
         priority=priority,
         expires=CELERY_DOCPROCESSING_TASK_EXPIRES,
     )
+
+
+def _record_source_document_estimate(
+    connector: BaseConnector,
+    index_attempt_id: int,
+) -> None:
+    if not isinstance(connector, SourceDocumentCountEstimator):
+        return
+
+    try:
+        estimate = connector.estimate_document_count()
+        if estimate is None:
+            return
+        with get_session_with_current_tenant() as db_session:
+            set_source_document_estimate(
+                db_session=db_session,
+                index_attempt_id=index_attempt_id,
+                document_count=estimate.document_count,
+                method=estimate.method,
+            )
+        logger.info(
+            "Recorded source document estimate: attempt=%s count=%s method=%s",
+            index_attempt_id,
+            estimate.document_count,
+            estimate.method,
+        )
+    except Exception:
+        logger.warning(
+            "Source document estimate unavailable for attempt %s",
+            index_attempt_id,
+            exc_info=True,
+        )
 
 
 def _get_connector_runner(
@@ -430,6 +466,7 @@ def connector_document_extraction(
 
     index_attempt = None
     last_batch_num = 0  # used to continue from checkpointing
+    initial_document_count = 0
     # comes from _run_indexing
     with get_session_with_current_tenant() as db_session:
         index_attempt = get_index_attempt(
@@ -440,6 +477,7 @@ def connector_document_extraction(
         )
         if not index_attempt:
             raise RuntimeError(f"Index attempt {index_attempt_id} not found")
+        initial_document_count = index_attempt.source_docs_discovered
 
         if index_attempt.search_settings is None:
             raise ValueError("Search settings must be set for indexing")
@@ -561,6 +599,7 @@ def connector_document_extraction(
         # checkpointing / failure handling
         # OR
         # if the last attempt was successful
+        resuming_from_checkpoint = False
         with time_stage(IndexAttemptStage.CHECKPOINT_LOAD, index_attempt_id):
             if index_attempt.from_beginning or (
                 most_recent_attempt and most_recent_attempt.status.is_successful()
@@ -615,17 +654,50 @@ def connector_document_extraction(
                     # because we'll be getting those documents again anyways.
                     batch_storage.cleanup_all_batches()
 
+        # The checkpoint is the source of truth when a task or attempt resumes.
+        initial_document_count = checkpoint.source_docs_discovered
+        index_attempt.source_docs_discovered = initial_document_count
+        if (
+            index_attempt.source_docs_estimated is None
+            and most_recent_attempt is not None
+            and (resuming_from_checkpoint or not checkpoint.has_more)
+        ):
+            index_attempt.source_docs_estimated = (
+                most_recent_attempt.source_docs_estimated
+            )
+            index_attempt.source_doc_estimate_method = (
+                most_recent_attempt.source_doc_estimate_method
+            )
+            index_attempt.source_doc_estimate_time = (
+                most_recent_attempt.source_doc_estimate_time
+            )
+
         # Save initial checkpoint
+        update_source_discovery_progress(
+            db_session=db_session,
+            index_attempt_id=index_attempt_id,
+            document_count=initial_document_count,
+            progress_label=checkpoint.source_progress_label,
+        )
         save_checkpoint(
             db_session=db_session,
             index_attempt_id=index_attempt_id,
             checkpoint=checkpoint,
         )
 
+    if (
+        (from_beginning or not has_successful_attempt)
+        and last_batch_num == 0
+        and index_attempt.source_docs_estimated is None
+    ):
+        _record_source_document_estimate(
+            connector_runner.connector,
+            index_attempt_id,
+        )
     batch_num = last_batch_num  # starts at 0 if no last batch
     total_doc_batches_queued = 0
     total_failures = 0
-    document_count = 0
+    document_count = initial_document_count
 
     try:
         # Ensure the SOURCE-type root hierarchy node exists before processing.
@@ -827,7 +899,14 @@ def connector_document_extraction(
             # NOTE: checkpointing is used to track which batches have
             # been sent to the filestore, NOT which batches have been fully indexed
             # as it used to be.
+            checkpoint.source_docs_discovered = document_count
             with get_session_with_current_tenant() as db_session:
+                update_source_discovery_progress(
+                    db_session=db_session,
+                    index_attempt_id=index_attempt_id,
+                    document_count=document_count,
+                    progress_label=checkpoint.source_progress_label,
+                )
                 save_checkpoint(
                     db_session=db_session,
                     index_attempt_id=index_attempt_id,

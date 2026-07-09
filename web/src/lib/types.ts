@@ -211,6 +211,14 @@ export interface IndexAttemptSnapshot {
   full_exception_trace: string | null;
   time_started: string | null;
   time_updated: string;
+  source_docs_discovered?: number;
+  source_docs_estimated?: number | null;
+  source_doc_estimate_method?: string | null;
+  source_doc_estimate_time?: string | null;
+  source_progress_label?: string | null;
+  total_batches?: number | null;
+  completed_batches?: number;
+  last_heartbeat_time?: string | null;
 }
 
 // Mirror of `onyx.db.index_attempt_metrics_models.IndexAttemptStage`. The

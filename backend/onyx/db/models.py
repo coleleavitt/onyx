@@ -2383,6 +2383,19 @@ class IndexAttempt(Base):
     new_docs_indexed: Mapped[int | None] = mapped_column(Integer, default=0)
     total_docs_indexed: Mapped[int | None] = mapped_column(Integer, default=0)
     docs_removed_from_index: Mapped[int | None] = mapped_column(Integer, default=0)
+    source_docs_discovered: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
+    source_docs_estimated: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_doc_estimate_method: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    source_doc_estimate_time: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    source_progress_label: Mapped[str | None] = mapped_column(
+        String(512), nullable=True
+    )
     # only filled if status = "failed"
     error_msg: Mapped[str | None] = mapped_column(Text, default=None)
     # only filled if status = "failed" AND an unhandled exception caused the failure

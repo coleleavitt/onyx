@@ -4,6 +4,8 @@ from collections.abc import Iterator
 from types import TracebackType
 from typing import Any
 from typing import Generic
+from typing import Protocol
+from typing import runtime_checkable
 from typing import TypeAlias
 from typing import TypeVar
 
@@ -15,6 +17,7 @@ from onyx.connectors.models import ConnectorFailure
 from onyx.connectors.models import Document
 from onyx.connectors.models import HierarchyNode
 from onyx.connectors.models import SlimDocument
+from onyx.connectors.models import SourceDocumentEstimate
 from onyx.file_store.staging import RawFileCallback
 from onyx.indexing.indexing_heartbeat import IndexingHeartbeatInterface
 from onyx.utils.variable_functionality import fetch_ee_implementation_or_noop
@@ -26,6 +29,11 @@ GenerateDocumentsOutput = Iterator[list[Document | HierarchyNode]]
 GenerateSlimDocumentOutput = Iterator[list[SlimDocument | HierarchyNode]]
 
 CT = TypeVar("CT", bound=ConnectorCheckpoint)
+
+
+@runtime_checkable
+class SourceDocumentCountEstimator(Protocol):
+    def estimate_document_count(self) -> SourceDocumentEstimate | None: ...
 
 
 class NormalizationResult(BaseModel):

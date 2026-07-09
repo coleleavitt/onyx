@@ -192,6 +192,14 @@ class IndexAttemptSnapshot(BaseModel):
     time_updated: str
     poll_range_start: datetime | None = None
     poll_range_end: datetime | None = None
+    source_docs_discovered: int = 0
+    source_docs_estimated: int | None = None
+    source_doc_estimate_method: str | None = None
+    source_doc_estimate_time: datetime | None = None
+    source_progress_label: str | None = None
+    total_batches: int | None = None
+    completed_batches: int = 0
+    last_heartbeat_time: datetime | None = None
 
     @classmethod
     def from_index_attempt_db_model(
@@ -215,6 +223,14 @@ class IndexAttemptSnapshot(BaseModel):
             time_updated=index_attempt.time_updated.isoformat(),
             poll_range_start=index_attempt.poll_range_start,
             poll_range_end=index_attempt.poll_range_end,
+            source_docs_discovered=index_attempt.source_docs_discovered,
+            source_docs_estimated=index_attempt.source_docs_estimated,
+            source_doc_estimate_method=index_attempt.source_doc_estimate_method,
+            source_doc_estimate_time=index_attempt.source_doc_estimate_time,
+            source_progress_label=index_attempt.source_progress_label,
+            total_batches=index_attempt.total_batches,
+            completed_batches=index_attempt.completed_batches,
+            last_heartbeat_time=index_attempt.last_heartbeat_time,
         )
 
 

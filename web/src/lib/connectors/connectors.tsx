@@ -917,6 +917,15 @@ export const connectorConfigs: Record<
           "Fetch recent Graph activity metadata for SharePoint documents and list items. This adds API calls.",
       },
       {
+        type: "text",
+        query: "Enter Microsoft Search region:",
+        label: "Microsoft Search Region",
+        name: "microsoft_search_region",
+        optional: true,
+        description:
+          "Region code used by Microsoft Search with application credentials, such as NAM, EUR, or APC. Enables the initial searchable-file estimate and improves supplemental Search compatibility.",
+      },
+      {
         type: "list",
         query: "Enter Microsoft Search queries:",
         label: "Microsoft Search Queries",
@@ -2125,6 +2134,7 @@ export interface SharepointConfig {
   include_version_metadata?: boolean;
   include_activity_metadata?: boolean;
   microsoft_search_queries?: string[];
+  microsoft_search_region?: string;
   authority_host?: string;
   graph_api_host?: string;
   sharepoint_domain_suffix?: string;

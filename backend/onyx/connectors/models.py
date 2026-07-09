@@ -514,6 +514,8 @@ class IndexAttemptMetadata(BaseModel):
 class ConnectorCheckpoint(BaseModel):
     # TODO: maybe move this to something disk-based to handle extremely large checkpoints?
     has_more: bool
+    source_docs_discovered: int = Field(default=0, ge=0)
+    source_progress_label: str | None = None
 
     def __str__(self) -> str:
         """String representation of the checkpoint, with truncation for large checkpoint content."""
@@ -523,6 +525,11 @@ class ConnectorCheckpoint(BaseModel):
         if len(content_str) > MAX_CHECKPOINT_CONTENT_CHARS:
             content_str = content_str[: MAX_CHECKPOINT_CONTENT_CHARS - 3] + "..."
         return content_str
+
+
+class SourceDocumentEstimate(BaseModel):
+    document_count: int = Field(ge=0)
+    method: str
 
 
 class DocumentFailure(BaseModel):

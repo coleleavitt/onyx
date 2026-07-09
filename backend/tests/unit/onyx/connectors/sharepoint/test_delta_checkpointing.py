@@ -161,6 +161,35 @@ def _mock_convert(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_drive_discovery_checkpoints_next_library_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connector = _setup_connector(monkeypatch)
+    monkeypatch.setattr(
+        SharepointConnector,
+        "_get_drive_names_for_site",
+        lambda self, site_url: ["Documents"],  # noqa: ARG005
+    )
+    checkpoint = SharepointConnectorCheckpoint(
+        has_more=True,
+        cached_site_descriptors=deque(),
+        current_site_descriptor=SiteDescriptor(
+            url=SITE_URL,
+            drive_name=None,
+            folder_path=None,
+        ),
+    )
+
+    yielded, checkpoint = _consume_generator(
+        connector._load_from_checkpoint(
+            _START_TS, _END_TS, checkpoint, include_permissions=False
+        )
+    )
+
+    assert yielded == []
+    assert checkpoint.source_progress_label == "Shared Documents"
+
+
 class TestDeltaPerPageCheckpointing:
     """Delta (non-folder-scoped) drives should process one API page per
     _load_from_checkpoint call, persisting the next-link in between."""
@@ -211,6 +240,7 @@ class TestDeltaPerPageCheckpointing:
         )
         assert checkpoint.current_drive_id == DRIVE_ID
         assert checkpoint.has_more is True
+        assert checkpoint.source_progress_label == "Shared Documents"
 
         # Call 2: Phase 3b processes page 2
         gen = connector._load_from_checkpoint(
@@ -678,6 +708,7 @@ class TestDeltaDuplicateDocumentDedup:
 
         # seen_document_ids should have been cleared when drive A finished
         assert len(checkpoint.seen_document_ids) == 0
+        assert checkpoint.source_progress_label == "DriveB"
 
         # Drive B: same ID must be yielded again (different drive)
         gen = connector._load_from_checkpoint(

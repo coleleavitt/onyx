@@ -508,6 +508,40 @@ def update_docs_indexed(
         raise
 
 
+def set_source_document_estimate(
+    db_session: Session,
+    index_attempt_id: int,
+    document_count: int,
+    method: str,
+) -> None:
+    db_session.execute(
+        update(IndexAttempt)
+        .where(IndexAttempt.id == index_attempt_id)
+        .values(
+            source_docs_estimated=document_count,
+            source_doc_estimate_method=method,
+            source_doc_estimate_time=datetime.now(timezone.utc),
+        )
+    )
+    db_session.commit()
+
+
+def update_source_discovery_progress(
+    db_session: Session,
+    index_attempt_id: int,
+    document_count: int,
+    progress_label: str | None,
+) -> None:
+    db_session.execute(
+        update(IndexAttempt)
+        .where(IndexAttempt.id == index_attempt_id)
+        .values(
+            source_docs_discovered=document_count,
+            source_progress_label=progress_label,
+        )
+    )
+
+
 def get_last_attempt(
     connector_id: int,
     credential_id: int,

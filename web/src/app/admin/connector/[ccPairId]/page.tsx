@@ -9,6 +9,7 @@ import { toast } from "@/hooks/useToast";
 import CredentialSection from "@/components/credentials/CredentialSection";
 import Text from "@/refresh-components/texts/Text";
 import {
+  updateConnector,
   updateConnectorCredentialPairName,
   updateConnectorCredentialPairProperty,
 } from "@/lib/connector";
@@ -71,6 +72,7 @@ import { useUser } from "@/providers/UserProvider";
 import { resolveAllErrorsForCCPair } from "@/lib/targeted_reindex";
 import { SWR_KEYS } from "@/lib/swr-keys";
 import EditSharepointSitesModal from "./EditSharepointSitesModal";
+import IndexingProgressPanel from "@/app/admin/connector/[ccPairId]/IndexingProgressPanel";
 // synchronize these validations with the SQLAlchemy connector class until we have a
 // centralized schema for both frontend and backend
 const RefreshFrequencySchema = Yup.object().shape({
@@ -91,8 +93,20 @@ const PruneFrequencySchema = Yup.object().shape({
     .required("Property value is required"),
 });
 
+const MicrosoftSearchRegionSchema = Yup.object().shape({
+  propertyValue: Yup.string()
+    .trim()
+    .matches(/^[A-Za-z]{3}$/, "Use a three-letter region code, such as NAM")
+    .required("Microsoft Search region is required"),
+});
+
 const ITEMS_PER_PAGE = 8;
 const PAGES_PER_BATCH = 8;
+
+interface IndexAttemptPage {
+  items: IndexAttemptSnapshot[];
+  total_items: number;
+}
 
 function Main({ ccPairId }: { ccPairId: number }) {
   const router = useRouter();
@@ -119,6 +133,12 @@ function Main({ ccPairId }: { ccPairId: number }) {
     pagesPerBatch: PAGES_PER_BATCH,
     endpoint: `${buildCCPairInfoUrl(ccPairId)}/index-attempts`,
   });
+
+  const { data: latestIndexAttemptPage } = useSWR<IndexAttemptPage>(
+    `${buildCCPairInfoUrl(ccPairId)}/index-attempts?page_num=0&page_size=1`,
+    errorHandlingFetcher,
+    { refreshInterval: 5000 }
+  );
 
   const {
     currentPageData: indexAttemptErrorsPage,
@@ -153,6 +173,7 @@ function Main({ ccPairId }: { ccPairId: number }) {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [editingRefreshFrequency, setEditingRefreshFrequency] = useState(false);
   const [editingPruningFrequency, setEditingPruningFrequency] = useState(false);
+  const [editingSearchRegion, setEditingSearchRegion] = useState(false);
   const [showIndexAttemptErrors, setShowIndexAttemptErrors] = useState(false);
   const [showEditSharepointSites, setShowEditSharepointSites] = useState(false);
 
@@ -184,7 +205,20 @@ function Main({ ccPairId }: { ccPairId: number }) {
     finishConnectorDeletion();
   }, [ccPair, finishConnectorDeletion]);
 
-  const latestIndexAttempt = indexAttempts?.[0];
+  const latestIndexAttempt =
+    latestIndexAttemptPage?.items[0] ?? indexAttempts?.[0];
+  const connectorConfig = ccPair?.connector.connector_specific_config;
+  const supplementalSearchQueries = connectorConfig?.microsoft_search_queries;
+  const excludedSites = connectorConfig?.excluded_sites;
+  const excludedPaths = connectorConfig?.excluded_paths;
+  const estimateComparable =
+    ccPair?.connector.source === "sharepoint" &&
+    connectorConfig?.include_site_pages === false &&
+    connectorConfig?.include_lists !== true &&
+    (!Array.isArray(supplementalSearchQueries) ||
+      supplementalSearchQueries.length === 0) &&
+    (!Array.isArray(excludedSites) || excludedSites.length === 0) &&
+    (!Array.isArray(excludedPaths) || excludedPaths.length === 0);
   const canManageInlineFileConnectorFiles =
     ccPair?.connector.source === "file" &&
     (ccPair.is_editable_for_current_user ||
@@ -349,6 +383,38 @@ function Main({ ccPairId }: { ccPairId: number }) {
     }
   };
 
+  const handleSearchRegionSubmit = async (
+    _propertyName: string,
+    propertyValue: string
+  ) => {
+    if (!ccPair) return;
+
+    try {
+      await updateConnector(ccPair.connector.id, {
+        name: ccPair.connector.name,
+        source: ccPair.connector.source,
+        input_type: ccPair.connector.input_type,
+        connector_specific_config: {
+          ...ccPair.connector.connector_specific_config,
+          microsoft_search_region: propertyValue.trim().toUpperCase(),
+        },
+        refresh_freq: ccPair.connector.refresh_freq,
+        prune_freq: ccPair.connector.prune_freq,
+        indexing_start: ccPair.connector.indexing_start,
+        access_type: ccPair.access_type,
+        groups: ccPair.groups,
+      });
+      mutate(buildCCPairInfoUrl(ccPairId));
+      toast.success("Microsoft Search region updated successfully");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to update Microsoft Search region"
+      );
+    }
+  };
+
   if (isLoadingCCPair || isLoadingIndexAttempts) {
     return <PageLoader />;
   }
@@ -416,6 +482,21 @@ function Main({ ccPairId }: { ccPairId: number }) {
           validationSchema={PruneFrequencySchema}
           onSubmit={handlePruningSubmit}
           onClose={() => setEditingPruningFrequency(false)}
+        />
+      )}
+
+      {editingSearchRegion && (
+        <EditPropertyModal
+          propertyTitle="Microsoft Search Region"
+          propertyDetails="Three-letter Microsoft 365 data region code"
+          propertyName="microsoft_search_region"
+          propertyValue={String(
+            ccPair.connector.connector_specific_config
+              ?.microsoft_search_region ?? ""
+          )}
+          validationSchema={MicrosoftSearchRegionSchema}
+          onSubmit={handleSearchRegionSubmit}
+          onClose={() => setEditingSearchRegion(false)}
         />
       )}
 
@@ -640,9 +721,9 @@ function Main({ ccPairId }: { ccPairId: number }) {
         Indexing
       </Title>
 
-      <Card className="px-8 py-12">
-        <div className="flex">
-          <div className="w-[200px]">
+      <Card className="px-4 py-6 sm:px-8 sm:py-12">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+          <div className="min-w-0">
             <div className="text-sm font-medium mb-1">Status</div>
             <CCPairStatus
               ccPairStatus={ccPair.status}
@@ -651,7 +732,7 @@ function Main({ ccPairId }: { ccPairId: number }) {
             />
           </div>
 
-          <div className="w-[200px]">
+          <div className="min-w-0">
             <div className="text-sm font-medium mb-1">Documents Indexed</div>
             <div className="text-sm text-text-default flex items-center gap-x-1">
               {ccPair.num_docs_indexed.toLocaleString()}
@@ -666,7 +747,7 @@ function Main({ ccPairId }: { ccPairId: number }) {
             </div>
           </div>
 
-          <div className="w-[200px]">
+          <div className="min-w-0">
             <div className="text-sm font-medium mb-1">Last Indexed</div>
             <div className="text-sm text-text-default">
               {timeAgo(ccPair?.last_indexed) ?? "-"}
@@ -675,7 +756,7 @@ function Main({ ccPairId }: { ccPairId: number }) {
 
           {ccPair.access_type === "sync" && (
             <>
-              <div className="w-[200px]">
+              <div className="min-w-0">
                 {/* TODO: Remove className and switch to text03 once Text is fully integrated across this page */}
                 <Text as="p" className="text-sm font-medium mb-1">
                   Permission Syncing
@@ -691,7 +772,7 @@ function Main({ ccPairId }: { ccPairId: number }) {
                 )}
               </div>
 
-              <div className="w-[200px]">
+              <div className="min-w-0">
                 {/* TODO: Remove className and switch to text03 once Text is fully integrated across this page */}
                 <Text as="p" className="text-sm font-medium mb-1">
                   Last Synced
@@ -705,6 +786,10 @@ function Main({ ccPairId }: { ccPairId: number }) {
             </>
           )}
         </div>
+        <IndexingProgressPanel
+          attempt={latestIndexAttempt ?? null}
+          estimateComparable={estimateComparable}
+        />
       </Card>
 
       {credentialTemplates[ccPair.connector.source] &&
@@ -740,11 +825,14 @@ function Main({ ccPairId }: { ccPairId: number }) {
                 editableKeys={
                   ccPair.connector.source === "sharepoint" &&
                   ccPair.is_editable_for_current_user
-                    ? ["sites"]
+                    ? ["sites", "microsoft_search_region"]
                     : []
                 }
                 onEdit={(key) => {
                   if (key === "sites") setShowEditSharepointSites(true);
+                  if (key === "microsoft_search_region") {
+                    setEditingSearchRegion(true);
+                  }
                 }}
               />
 
@@ -827,7 +915,7 @@ export default function Page(props: { params: Promise<{ ccPairId: string }> }) {
   const ccPairId = parseInt(params.ccPairId);
 
   return (
-    <div className="mx-auto w-[800px]">
+    <div className="mx-auto w-full max-w-[800px] px-4 sm:px-0">
       <Main ccPairId={ccPairId} />
     </div>
   );

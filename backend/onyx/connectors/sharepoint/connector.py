@@ -69,6 +69,7 @@ from onyx.connectors.models import ExternalAccess
 from onyx.connectors.models import HierarchyNode
 from onyx.connectors.models import ImageSection
 from onyx.connectors.models import SlimDocument
+from onyx.connectors.models import SourceDocumentEstimate
 from onyx.connectors.models import TabularSection
 from onyx.connectors.models import TextSection
 from onyx.connectors.sharepoint.connector_utils import get_sharepoint_external_access
@@ -1483,6 +1484,7 @@ class SharepointConnector(
         include_version_metadata: bool = False,
         include_activity_metadata: bool = False,
         microsoft_search_queries: list[str] = [],
+        microsoft_search_region: str | None = None,
         treat_sharing_link_as_public: bool = False,
         authority_host: str = DEFAULT_AUTHORITY_HOST,
         graph_api_host: str = DEFAULT_GRAPH_API_HOST,
@@ -1509,6 +1511,11 @@ class SharepointConnector(
         self.microsoft_search_queries = [
             query.strip() for query in microsoft_search_queries if query.strip()
         ]
+        self.microsoft_search_region = (
+            microsoft_search_region.strip().upper()
+            if microsoft_search_region and microsoft_search_region.strip()
+            else None
+        )
         self.sp_tenant_domain: str | None = None
         self._credential_json: dict[str, Any] | None = None
         self._cached_rest_ctx: ClientContext | None = None
@@ -2501,6 +2508,8 @@ class SharepointConnector(
         self,
         url: str,
         json_body: dict[str, Any],
+        max_retries: int = GRAPH_API_MAX_RETRIES,
+        timeout: float = REQUEST_TIMEOUT_SECONDS,
     ) -> dict[str, Any]:
         """Make an authenticated POST request to the Graph API with retry."""
         access_token = self._get_graph_access_token()
@@ -2509,15 +2518,15 @@ class SharepointConnector(
             "Content-Type": "application/json",
         }
 
-        for attempt in range(GRAPH_API_MAX_RETRIES + 1):
+        for attempt in range(max_retries + 1):
             response = requests.post(
                 url,
                 headers=headers,
                 json=json_body,
-                timeout=REQUEST_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
             if response.status_code in GRAPH_API_RETRYABLE_STATUSES:
-                if attempt < GRAPH_API_MAX_RETRIES:
+                if attempt < max_retries:
                     parsed_retry_after = parse_retry_after_seconds(
                         response.headers.get("Retry-After")
                     )
@@ -2542,7 +2551,44 @@ class SharepointConnector(
             return response.json()
 
         raise RuntimeError(
-            f"Graph API POST failed after {GRAPH_API_MAX_RETRIES + 1} attempts: {url}"
+            f"Graph API POST failed after {max_retries + 1} attempts: {url}"
+        )
+
+    def estimate_document_count(self) -> SourceDocumentEstimate | None:
+        """Estimate searchable files for explicitly configured SharePoint paths."""
+        if not self.include_site_documents or (
+            not self.sites and self.sp_tenant_domain is None
+        ):
+            return None
+
+        configured_paths = list(dict.fromkeys(site.strip() for site in self.sites))
+        if not configured_paths and self.sp_tenant_domain is not None:
+            configured_paths = [
+                f"https://{self.sp_tenant_domain}.{self.sharepoint_domain_suffix}"
+            ]
+        path_query = " OR ".join(f'path:"{path}"' for path in configured_paths)
+        request: dict[str, Any] = {
+            "entityTypes": ["driveItem"],
+            "query": {"queryString": f"({path_query}) AND isDocument=true"},
+            "from": 0,
+            "size": 1,
+        }
+        if self.microsoft_search_region is not None:
+            request["region"] = self.microsoft_search_region
+        body = {"requests": [request]}
+        data = self._graph_api_post_json(
+            f"{self.graph_api_base}/search/query",
+            body,
+            max_retries=0,
+            timeout=15,
+        )
+        containers = data.get("value", [{}])[0].get("hitsContainers", [])
+        if not containers or not isinstance(containers[0].get("total"), int):
+            raise RuntimeError("Microsoft Search did not return a document total")
+
+        return SourceDocumentEstimate(
+            document_count=cast(int, containers[0]["total"]),
+            method="microsoft_search",
         )
 
     def _fetch_microsoft_search_documents(
@@ -2559,16 +2605,15 @@ class SharepointConnector(
             offset = 0
             page_size = 100
             while True:
-                body = {
-                    "requests": [
-                        {
-                            "entityTypes": ["driveItem", "listItem", "list", "site"],
-                            "query": {"queryString": query},
-                            "from": offset,
-                            "size": page_size,
-                        }
-                    ]
+                request: dict[str, Any] = {
+                    "entityTypes": ["driveItem", "listItem", "list", "site"],
+                    "query": {"queryString": query},
+                    "from": offset,
+                    "size": page_size,
                 }
+                if self.microsoft_search_region is not None:
+                    request["region"] = self.microsoft_search_region
+                body = {"requests": [request]}
                 try:
                     data = self._graph_api_post_json(
                         f"{self.graph_api_base}/search/query", body
@@ -3481,6 +3526,9 @@ class SharepointConnector(
             and not self.include_lists
         ):
             if self.microsoft_search_queries and not checkpoint.search_done:
+                if checkpoint.source_progress_label != "Microsoft Search":
+                    checkpoint.source_progress_label = "Microsoft Search"
+                    return checkpoint
                 yield from self._fetch_microsoft_search_documents(include_permissions)
                 checkpoint.search_done = True
                 return checkpoint
@@ -3493,6 +3541,7 @@ class SharepointConnector(
             and checkpoint.cached_site_descriptors is None
             and not checkpoint.process_site_pages
         ):
+            checkpoint.source_progress_label = "SharePoint sites"
             logger.info("Initializing SharePoint sites for processing")
             site_descs = self._filter_excluded_sites(
                 self.site_descriptors or self.fetch_sites()
@@ -3514,6 +3563,7 @@ class SharepointConnector(
                 checkpoint.current_site_descriptor = (
                     checkpoint.cached_site_descriptors.popleft()
                 )
+                checkpoint.source_progress_label = "SharePoint site"
                 logger.info(
                     "Starting with site: %s", checkpoint.current_site_descriptor.url
                 )
@@ -3535,6 +3585,7 @@ class SharepointConnector(
                 "Initializing drives for site: %s",
                 checkpoint.current_site_descriptor.url,
             )
+            checkpoint.source_progress_label = "Document libraries"
 
             try:
                 # If the user explicitly specified drive(s) for this site, honour that
@@ -3562,6 +3613,10 @@ class SharepointConnector(
                         "Found %s drives: %s",
                         len(checkpoint.cached_drive_names),
                         list(checkpoint.cached_drive_names),
+                    )
+                    next_drive_name = checkpoint.cached_drive_names[0]
+                    checkpoint.source_progress_label = SHARED_DOCUMENTS_MAP.get(
+                        next_drive_name, next_drive_name
                     )
 
             except Exception as e:
@@ -3654,6 +3709,7 @@ class SharepointConnector(
             display_drive_name = SHARED_DOCUMENTS_MAP.get(
                 current_drive_name, current_drive_name
             )
+            checkpoint.source_progress_label = display_drive_name
 
             if drive_web_url:
                 yield from self._yield_drive_hierarchy_node(
@@ -3775,6 +3831,10 @@ class SharepointConnector(
                 "Continuing with %s remaining drives in current site",
                 len(checkpoint.cached_drive_names),
             )
+            next_drive_name = checkpoint.cached_drive_names[0]
+            checkpoint.source_progress_label = SHARED_DOCUMENTS_MAP.get(
+                next_drive_name, next_drive_name
+            )
             return checkpoint
 
         if (
@@ -3788,6 +3848,7 @@ class SharepointConnector(
                 checkpoint.current_site_descriptor.url,
             )
             checkpoint.process_site_pages = True
+            checkpoint.source_progress_label = "Site Pages"
             return checkpoint
 
         # Phase 5: Process site pages
@@ -3906,6 +3967,7 @@ class SharepointConnector(
                 checkpoint.current_site_descriptor.url,
             )
             checkpoint.process_lists = True
+            checkpoint.source_progress_label = "SharePoint lists"
             return checkpoint
 
         # Phase 6: Process custom lists
@@ -3978,6 +4040,9 @@ class SharepointConnector(
             return checkpoint
 
         if self.microsoft_search_queries and not checkpoint.search_done:
+            if checkpoint.source_progress_label != "Microsoft Search":
+                checkpoint.source_progress_label = "Microsoft Search"
+                return checkpoint
             yield from self._fetch_microsoft_search_documents(include_permissions)
             checkpoint.search_done = True
             return checkpoint
@@ -3992,6 +4057,7 @@ class SharepointConnector(
             "SharePoint processing complete. Finished last site: %s", current_site
         )
         checkpoint.has_more = False
+        checkpoint.source_progress_label = None
         return checkpoint
 
     def load_from_checkpoint(
@@ -4212,7 +4278,10 @@ class SharepointConnector(
                 )
 
     def build_dummy_checkpoint(self) -> SharepointConnectorCheckpoint:
-        return SharepointConnectorCheckpoint(has_more=True)
+        return SharepointConnectorCheckpoint(
+            has_more=True,
+            source_progress_label="SharePoint sites",
+        )
 
     def validate_checkpoint_json(
         self, checkpoint_json: str
