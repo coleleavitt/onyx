@@ -274,6 +274,13 @@ def get_default_llm_with_vision(
     )
 
     for model in sorted_models:
+        if "deep-research" in model.name.lower():
+            logger.info(
+                "Skipping tool-required model for vision fallback: %s (provider=%s)",
+                model.name,
+                model.llm_provider.provider,
+            )
+            continue
         if model_supports_image_input(model.name, model.llm_provider.provider):
             logger.info(
                 "Using fallback vision model: %s (provider=%s)",

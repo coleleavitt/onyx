@@ -236,6 +236,15 @@ class SiteDescriptor(BaseModel):
     folder_path: str | None
 
 
+class SharepointSite(BaseModel):
+    """A SharePoint site collection that can be selected for indexing."""
+
+    id: str
+    display_name: str
+    web_url: str
+    description: str | None = None
+
+
 class SiteDrive(BaseModel):
     """A drive (document library) of a site, as listed from Graph."""
 
@@ -2004,22 +2013,70 @@ class SharepointConnector(
         return result
 
     def fetch_sites(self) -> list[SiteDescriptor]:
+        site_descriptors = [
+            SiteDescriptor(
+                url=site.web_url,
+                drive_name=None,
+                folder_path=None,
+            )
+            for site in self.discover_sites()
+        ]
+        return self._filter_excluded_sites(site_descriptors)
+
+    def discover_sites(self) -> list[SharepointSite]:
         sites = self.graph_client.sites.get_all_sites().execute_query()
 
         if not sites:
             raise RuntimeError("No sites found in the tenant")
 
-        # OneDrive personal sites should not be indexed with SharepointConnector
-        site_descriptors = [
-            SiteDescriptor(
-                url=site.web_url or "",
-                drive_name=None,
-                folder_path=None,
+        discovered_sites: list[SharepointSite] = []
+        seen_urls: set[str] = set()
+        for site in self._handle_paginated_sites(sites):
+            web_url = site.web_url if isinstance(site.web_url, str) else ""
+            parsed_url = urlsplit(web_url)
+            normalized_path = parsed_url.path.lower()
+            if (
+                not parsed_url.hostname
+                or "-my.sharepoint" in parsed_url.hostname
+                or not (
+                    normalized_path.startswith("/sites/")
+                    or normalized_path.startswith("/teams/")
+                )
+            ):
+                continue
+
+            normalized_url = web_url.rstrip("/")
+            if normalized_url in seen_urls:
+                continue
+            seen_urls.add(normalized_url)
+
+            display_name_property = site.properties.get("displayName")
+            display_name = (
+                display_name_property
+                if isinstance(display_name_property, str)
+                and display_name_property.strip()
+                else site.name
+                if isinstance(site.name, str) and site.name.strip()
+                else normalized_path.rsplit("/", 1)[-1]
             )
-            for site in self._handle_paginated_sites(sites)
-            if "-my.sharepoint" not in site.web_url
-        ]
-        return self._filter_excluded_sites(site_descriptors)
+            discovered_sites.append(
+                SharepointSite(
+                    id=site.id if isinstance(site.id, str) else normalized_url,
+                    display_name=display_name,
+                    web_url=normalized_url,
+                    description=(
+                        site.description
+                        if isinstance(site.description, str)
+                        and site.description.strip()
+                        else None
+                    ),
+                )
+            )
+
+        return sorted(
+            discovered_sites,
+            key=lambda site: (site.display_name.casefold(), site.web_url.casefold()),
+        )
 
     def _fetch_site_pages(
         self,

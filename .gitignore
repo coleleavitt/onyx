@@ -61,6 +61,10 @@ node_modules
 # plans
 plans/
 
+# Local research and agent artifacts
+/.gjc/
+/research/
+
 # Added context for LLMs
 .claude/CLAUDE.md
 .claude/settings.local.json

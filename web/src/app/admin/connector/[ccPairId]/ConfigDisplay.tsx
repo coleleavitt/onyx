@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ValidSources } from "@/lib/types";
 import { Section } from "@/layouts/general-layouts";
 import Text from "@/refresh-components/texts/Text";
-import { Button, Divider } from "@opal/components";
+import { Button, Divider, Popover } from "@opal/components";
 import { SvgChevronUp, SvgChevronDown, SvgEdit } from "@opal/icons";
 import Truncated from "@/refresh-components/texts/Truncated";
 
@@ -46,9 +46,30 @@ interface ConfigItemProps {
   onEdit?: () => void;
 }
 
+function formatSiteName(siteUrl: string): string {
+  try {
+    const url = new URL(siteUrl);
+    const pathSegment = decodeURIComponent(
+      url.pathname.split("/").filter(Boolean).at(-1) ?? url.hostname
+    );
+    return pathSegment
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/([0-9])([A-Za-z])/g, "$1 $2");
+  } catch {
+    return siteUrl;
+  }
+}
+
 function ConfigItem({ label, value, onEdit }: ConfigItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isSitePopoverOpen, setIsSitePopoverOpen] = useState(false);
   const isExpandable = Array.isArray(value) && value.length > 5;
+  const isSiteConfig =
+    label === "sites" &&
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "string" && URL.canParse(item));
+  const hasSelectedSites = isSiteConfig && value.length > 0;
 
   const renderValue = () => {
     if (Array.isArray(value)) {
@@ -113,9 +134,42 @@ function ConfigItem({ label, value, onEdit }: ConfigItemProps) {
         alignItems="center"
         gap={0.5}
       >
-        {renderValue()}
+        {isSiteConfig ? (
+          <Text secondaryBody text03 nowrap>
+            {value.length === 0
+              ? "All accessible sites"
+              : `${value.length} ${value.length === 1 ? "site" : "sites"} selected`}
+          </Text>
+        ) : (
+          renderValue()
+        )}
 
-        {isExpandable && (
+        {hasSelectedSites ? (
+          <Popover open={isSitePopoverOpen} onOpenChange={setIsSitePopoverOpen}>
+            <Popover.Trigger asChild>
+              <Button prominence="tertiary" size="md" icon={SvgChevronDown}>
+                View sites
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content align="end" width="xl">
+              <div className="max-h-80 overflow-y-auto p-1">
+                {value.map((siteUrl: string) => (
+                  <div
+                    key={siteUrl}
+                    className="border-border-01 flex flex-col gap-0.5 border-b px-2 py-2 last:border-b-0"
+                  >
+                    <Text mainUiBody text04>
+                      {formatSiteName(siteUrl)}
+                    </Text>
+                    <Truncated secondaryBody text02 className="w-full">
+                      {siteUrl}
+                    </Truncated>
+                  </div>
+                ))}
+              </div>
+            </Popover.Content>
+          </Popover>
+        ) : isExpandable ? (
           <Button
             prominence="tertiary"
             size="md"
@@ -124,12 +178,15 @@ function ConfigItem({ label, value, onEdit }: ConfigItemProps) {
           >
             {isExpanded ? "Show less" : `Show all (${value.length} items)`}
           </Button>
-        )}
+        ) : null}
         {onEdit && (
           <Button
             prominence="tertiary"
             icon={SvgEdit}
-            onClick={onEdit}
+            onClick={() => {
+              setIsSitePopoverOpen(false);
+              onEdit();
+            }}
             tooltip="Edit"
           />
         )}
@@ -239,11 +296,14 @@ export function AdvancedConfigDisplay({
 export function ConfigDisplay({
   configEntries,
   onEdit,
+  editableKeys,
 }: {
   configEntries: { [key: string]: string };
   onEdit?: (key: string) => void;
+  editableKeys?: string[];
 }) {
   const entries = Object.entries(configEntries);
+  const editableKeySet = new Set(editableKeys ?? []);
 
   return (
     <Section gap={0} height="fit">
@@ -253,7 +313,11 @@ export function ConfigDisplay({
             <ConfigItem
               label={key}
               value={value}
-              onEdit={onEdit ? () => onEdit(key) : undefined}
+              onEdit={
+                onEdit && editableKeySet.has(key)
+                  ? () => onEdit(key)
+                  : undefined
+              }
             />
           </div>
           {index < entries.length - 1 && (

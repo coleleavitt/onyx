@@ -25,6 +25,7 @@ from onyx.configs.app_configs import LEAVE_CONNECTOR_ACTIVE_ON_INITIALIZATION_FA
 from onyx.configs.app_configs import MAX_FILE_SIZE_BYTES
 from onyx.configs.app_configs import PERSISTENT_INDEXING
 from onyx.configs.app_configs import POLL_CONNECTOR_OFFSET
+from onyx.configs.constants import CELERY_DOCPROCESSING_TASK_EXPIRES
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
@@ -86,6 +87,20 @@ from shared_configs.contextvars import INDEX_ATTEMPT_INFO_CONTEXTVAR
 logger = setup_logger(propagate=False)
 
 INDEXING_TRACER_NUM_PRINT_ENTRIES = 5
+
+
+def _enqueue_docprocessing_task(
+    app: Celery,
+    processing_batch_data: dict[str, int | str],
+    priority: OnyxCeleryPriority,
+) -> None:
+    app.send_task(
+        OnyxCeleryTask.DOCPROCESSING_TASK,
+        kwargs=processing_batch_data,
+        queue=OnyxCeleryQueues.DOCPROCESSING,
+        priority=priority,
+        expires=CELERY_DOCPROCESSING_TASK_EXPIRES,
+    )
 
 
 def _get_connector_runner(
@@ -786,11 +801,10 @@ def connector_document_extraction(
                             index_attempt_id,
                             exc_info=True,
                         )
-                    app.send_task(
-                        OnyxCeleryTask.DOCPROCESSING_TASK,
-                        kwargs=processing_batch_data,
-                        queue=OnyxCeleryQueues.DOCPROCESSING,
-                        priority=docprocessing_priority,
+                    _enqueue_docprocessing_task(
+                        app,
+                        processing_batch_data,
+                        docprocessing_priority,
                     )
 
                 batch_num += 1
@@ -1022,9 +1036,9 @@ def reissue_old_batches(
                 index_attempt_id,
                 exc_info=True,
             )
-        app.send_task(
-            OnyxCeleryTask.DOCPROCESSING_TASK,
-            kwargs={
+        _enqueue_docprocessing_task(
+            app,
+            {
                 "index_attempt_id": index_attempt_id,
                 "cc_pair_id": cc_pair_id,
                 "tenant_id": tenant_id,
@@ -1034,8 +1048,7 @@ def reissue_old_batches(
                 # the prior attempt.
                 "enqueue_time_ms": int(time.time() * 1000),
             },
-            queue=OnyxCeleryQueues.DOCPROCESSING,
-            priority=priority,
+            priority,
         )
     recent_batches = most_recent_attempt.completed_batches if most_recent_attempt else 0
     # resume from the batch num of the last attempt. This should be one more

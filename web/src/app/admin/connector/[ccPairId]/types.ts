@@ -50,6 +50,7 @@ export interface CCPairFullInfo {
   last_index_attempt_status: ValidStatuses | null;
   latest_deletion_attempt: DeletionAttemptSnapshot | null;
   access_type: AccessType;
+  groups: number[];
   is_editable_for_current_user: boolean;
   deletion_failure_message: string | null;
   indexing: boolean;

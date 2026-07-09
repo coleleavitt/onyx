@@ -70,6 +70,7 @@ import { UserRole } from "@/lib/types";
 import { useUser } from "@/providers/UserProvider";
 import { resolveAllErrorsForCCPair } from "@/lib/targeted_reindex";
 import { SWR_KEYS } from "@/lib/swr-keys";
+import EditSharepointSitesModal from "./EditSharepointSitesModal";
 // synchronize these validations with the SQLAlchemy connector class until we have a
 // centralized schema for both frontend and backend
 const RefreshFrequencySchema = Yup.object().shape({
@@ -153,6 +154,7 @@ function Main({ ccPairId }: { ccPairId: number }) {
   const [editingRefreshFrequency, setEditingRefreshFrequency] = useState(false);
   const [editingPruningFrequency, setEditingPruningFrequency] = useState(false);
   const [showIndexAttemptErrors, setShowIndexAttemptErrors] = useState(false);
+  const [showEditSharepointSites, setShowEditSharepointSites] = useState(false);
 
   const [showIsResolvingKickoffLoader, setShowIsResolvingKickoffLoader] =
     useState(false);
@@ -459,6 +461,21 @@ function Main({ ccPairId }: { ccPairId: number }) {
         />
       )}
 
+      {showEditSharepointSites && ccPair.connector.source === "sharepoint" && (
+        <EditSharepointSitesModal
+          connector={ccPair.connector}
+          credential={ccPair.credential}
+          accessType={ccPair.access_type}
+          groups={ccPair.groups}
+          onClose={() => setShowEditSharepointSites(false)}
+          onSaved={() => {
+            setShowEditSharepointSites(false);
+            refresh();
+            toast.success("SharePoint sites updated");
+          }}
+        />
+      )}
+
       <BackButton />
       <div
         className="flex
@@ -720,6 +737,15 @@ function Main({ ccPairId }: { ccPairId: number }) {
                   ccPair.connector.connector_specific_config,
                   ccPair.connector.source
                 )}
+                editableKeys={
+                  ccPair.connector.source === "sharepoint" &&
+                  ccPair.is_editable_for_current_user
+                    ? ["sites"]
+                    : []
+                }
+                onEdit={(key) => {
+                  if (key === "sites") setShowEditSharepointSites(true);
+                }}
               />
 
               {/* Inline file management for file connectors */}

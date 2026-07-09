@@ -48,6 +48,11 @@ from onyx.connectors.google_utils.shared_constants import DB_CREDENTIALS_DICT_TO
 from onyx.connectors.google_utils.shared_constants import (
     GoogleOAuthAuthenticationMethod,
 )
+from onyx.connectors.sharepoint.connector import DEFAULT_AUTHORITY_HOST
+from onyx.connectors.sharepoint.connector import DEFAULT_GRAPH_API_HOST
+from onyx.connectors.sharepoint.connector import DEFAULT_SHAREPOINT_DOMAIN_SUFFIX
+from onyx.connectors.sharepoint.connector import SharepointConnector
+from onyx.connectors.sharepoint.connector import SharepointSite
 from onyx.db.connector import create_connector
 from onyx.db.connector import delete_connector
 from onyx.db.connector import fetch_connector_by_id
@@ -88,6 +93,8 @@ from onyx.db.models import IndexAttempt
 from onyx.db.models import IndexingStatus
 from onyx.db.models import User
 from onyx.db.models import UserRole
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import FileStore
 from onyx.file_store.file_store import get_default_file_store
 from onyx.redis.redis_pool import get_redis_client
@@ -145,6 +152,49 @@ router = APIRouter(prefix="/manage", dependencies=[Depends(require_vector_db)])
 
 
 """Admin only API endpoints"""
+
+
+@router.get("/admin/connector/sharepoint/sites")
+def list_sharepoint_sites(
+    credential_id: int,
+    authority_host: str = Query(DEFAULT_AUTHORITY_HOST),
+    graph_api_host: str = Query(DEFAULT_GRAPH_API_HOST),
+    sharepoint_domain_suffix: str = Query(DEFAULT_SHAREPOINT_DOMAIN_SUFFIX),
+    user: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[SharepointSite]:
+    credential = fetch_credential_by_id_for_user(credential_id, user, db_session)
+    if credential is None:
+        raise OnyxError(
+            OnyxErrorCode.CREDENTIAL_NOT_FOUND,
+            f"Credential {credential_id} was not found",
+        )
+    if credential.source != DocumentSource.SHAREPOINT:
+        raise OnyxError(
+            OnyxErrorCode.CREDENTIAL_INVALID,
+            f"Credential {credential_id} is not a SharePoint credential",
+        )
+    if credential.credential_json is None:
+        raise OnyxError(
+            OnyxErrorCode.CREDENTIAL_INVALID,
+            f"Credential {credential_id} has no credential data",
+        )
+
+    connector = SharepointConnector(
+        authority_host=authority_host,
+        graph_api_host=graph_api_host,
+        sharepoint_domain_suffix=sharepoint_domain_suffix,
+    )
+    try:
+        connector.load_credentials(
+            credential.credential_json.get_value(apply_mask=False)
+        )
+        return connector.discover_sites()
+    except ConnectorValidationError as error:
+        raise OnyxError(
+            OnyxErrorCode.CONNECTOR_VALIDATION_FAILED,
+            str(error),
+        ) from error
 
 
 @router.put("/admin/connector/google-drive/service-account-credential")

@@ -15,6 +15,7 @@ import { Content, InputVertical } from "@opal/layouts";
 import CheckboxField from "@/refresh-components/form/LabeledCheckboxField";
 import InputTextAreaField from "@/refresh-components/form/InputTextAreaField";
 import Text from "@/refresh-components/texts/Text";
+import SharepointSitePicker from "@/app/admin/connectors/[connector]/pages/ConnectorInput/SharepointSitePicker";
 
 // Define a general type for form values
 type FormValues = Record<string, any>;
@@ -177,6 +178,13 @@ export const RenderField: FC<RenderFieldProps> = ({
         />
       ) : field.type === "list" ? (
         <ListInput name={field.name} label={label} description={description} />
+      ) : field.type === "sharepoint_sites" ? (
+        <SharepointSitePicker
+          name={field.name}
+          label={label}
+          description={description}
+          currentCredential={currentCredential}
+        />
       ) : field.type === "select" ? (
         <SelectInput
           name={field.name}

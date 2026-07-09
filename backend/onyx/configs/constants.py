@@ -151,6 +151,10 @@ CELERY_INDEXING_WATCHDOG_SIGTERM_GRACE_SECONDS = 10  # seconds
 # hard termination should always fire first if the connector is hung
 CELERY_INDEXING_LOCK_TIMEOUT = CELERY_INDEXING_WATCHDOG_CONNECTOR_TIMEOUT + 900
 
+# Docprocessing batches can legitimately wait behind a large connector run, but
+# must not survive indefinitely after their indexing attempt is gone.
+CELERY_DOCPROCESSING_TASK_EXPIRES = CELERY_INDEXING_LOCK_TIMEOUT
+
 # Heartbeat interval for indexing worker liveness detection
 INDEXING_WORKER_HEARTBEAT_INTERVAL = 30  # seconds
 

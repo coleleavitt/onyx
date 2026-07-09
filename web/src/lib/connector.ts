@@ -74,16 +74,21 @@ export async function updateConnectorCredentialPairProperty(
 }
 
 export async function updateConnector<T>(
-  connector: Connector<T>
+  connectorId: number,
+  connector: ConnectorBase<T>
 ): Promise<Connector<T>> {
-  const response = await fetch(`/api/manage/admin/connector/${connector.id}`, {
+  const response = await fetch(`/api/manage/admin/connector/${connectorId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(connector),
   });
-  return await response.json();
+  const responseJson = await response.json();
+  if (!response.ok) {
+    throw new Error(responseJson.detail ?? "Failed to update connector");
+  }
+  return responseJson;
 }
 
 export async function deleteConnector(

@@ -127,3 +127,28 @@ def test_warns_when_no_model_supports_vision(
         if "no vision-capable model" in str(call).lower()
     ]
     assert len(warning_calls) == 1
+
+
+@patch(f"{_FACTORY}.get_session_with_current_tenant")
+@patch(f"{_FACTORY}.fetch_default_vision_model", return_value=None)
+@patch(f"{_FACTORY}.fetch_existing_models")
+@patch(f"{_FACTORY}.model_supports_image_input", return_value=True)
+@patch(f"{_FACTORY}.llm_from_provider")
+@patch(f"{_FACTORY}.LLMProviderView")
+def test_fallback_skips_deep_research_models(
+    mock_provider_view: MagicMock,
+    mock_llm_from: MagicMock,
+    mock_supports: MagicMock,  # noqa: ARG001
+    mock_fetch_models: MagicMock,
+    mock_fetch_default: MagicMock,  # noqa: ARG001
+    mock_session: MagicMock,  # noqa: ARG001
+) -> None:
+    mock_fetch_models.return_value = [
+        _make_mock_model(name="o4-mini-deep-research", provider="openai"),
+        _make_mock_model(name="gpt-5-mini", provider="openai"),
+    ]
+    mock_provider_view.from_model.return_value = MagicMock()
+
+    get_default_llm_with_vision()
+
+    assert mock_llm_from.call_args.kwargs["model_name"] == "gpt-5-mini"

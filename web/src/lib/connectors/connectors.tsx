@@ -16,6 +16,7 @@ export function isLoadState(connector_name: string): boolean {
 
 export type InputType =
   | "list"
+  | "sharepoint_sites"
   | "text"
   | "select"
   | "multiselect"
@@ -62,6 +63,11 @@ export interface ListOption extends Option {
   type: "list";
   default?: string[];
   transform?: (values: string[]) => string[];
+}
+
+export interface SharepointSitesOption extends Option {
+  type: "sharepoint_sites";
+  default?: string[];
 }
 
 export interface TextOption extends Option {
@@ -118,6 +124,7 @@ export interface ConnectionConfiguration {
   values: (
     | BooleanOption
     | ListOption
+    | SharepointSitesOption
     | TextOption
     | NumberOption
     | SelectOption
@@ -128,6 +135,7 @@ export interface ConnectionConfiguration {
   advanced_values: (
     | BooleanOption
     | ListOption
+    | SharepointSitesOption
     | TextOption
     | NumberOption
     | SelectOption
@@ -815,8 +823,8 @@ export const connectorConfigs: Record<
     description: "Configure SharePoint connector",
     values: [
       {
-        type: "list",
-        query: "Enter SharePoint sites:",
+        type: "sharepoint_sites",
+        query: "Select SharePoint sites:",
         label: "Sites",
         name: "sites",
         optional: true,
