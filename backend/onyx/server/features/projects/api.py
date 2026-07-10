@@ -6,7 +6,6 @@ from fastapi import BackgroundTasks
 from fastapi import Depends
 from fastapi import File
 from fastapi import Form
-from fastapi import HTTPException
 from fastapi import Response
 from fastapi import UploadFile
 from pydantic import BaseModel
@@ -14,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
 from onyx.configs.app_configs import DISABLE_VECTOR_DB
+from onyx.configs.constants import CELERY_USER_FILE_DELETE_TASK_EXPIRES
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
@@ -28,10 +28,26 @@ from onyx.db.models import User
 from onyx.db.models import UserFile
 from onyx.db.models import UserProject
 from onyx.db.persona import get_personas_by_ids
+from onyx.db.projects import cancel_project_join_request
+from onyx.db.projects import create_or_reset_project_join_request
+from onyx.db.projects import fetch_project_by_id
+from onyx.db.projects import fetch_project_for_user
+from onyx.db.projects import get_project_access_level
 from onyx.db.projects import get_project_token_count
+from onyx.db.projects import list_projects_for_user
+from onyx.db.projects import ProjectAccessPolicy
+from onyx.db.projects import replace_project_shares
+from onyx.db.projects import resolve_project_join_request
 from onyx.db.projects import upload_files_to_user_files_with_indexing
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.projects.models import CategorizedFilesSnapshot
 from onyx.server.features.projects.models import ChatSessionRequest
+from onyx.server.features.projects.models import ProjectAccessRequest
+from onyx.server.features.projects.models import ProjectJoinRequestSnapshot
+from onyx.server.features.projects.models import ProjectShareRequest
+from onyx.server.features.projects.models import ProjectSharingSnapshot
+from onyx.server.features.projects.models import ResolveProjectAccessRequest
 from onyx.server.features.projects.models import TokenCountResponse
 from onyx.server.features.projects.models import UserFileSnapshot
 from onyx.server.features.projects.models import UserProjectSnapshot
@@ -42,6 +58,41 @@ logger = setup_logger()
 
 
 router = APIRouter(prefix="/user/projects")
+
+
+def _get_project_or_error(
+    project_id: int,
+    *,
+    user: User,
+    db_session: Session,
+    policy: ProjectAccessPolicy,
+) -> UserProject:
+    project = fetch_project_for_user(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=policy,
+    )
+    if project is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project not found.")
+    return project
+
+
+def _project_snapshot(
+    project: UserProject,
+    *,
+    user: User,
+    db_session: Session,
+) -> UserProjectSnapshot:
+    return UserProjectSnapshot.from_model(
+        project,
+        requesting_user_id=user.id,
+        user_permission=get_project_access_level(
+            project,
+            user=user,
+            db_session=db_session,
+        ),
+    )
 
 
 class UserFileDeleteResult(BaseModel):
@@ -103,11 +154,11 @@ def get_projects(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> list[UserProjectSnapshot]:
-    user_id = user.id
-    projects = (
-        db_session.query(UserProject).filter(UserProject.user_id == user_id).all()
-    )
-    return [UserProjectSnapshot.from_model(project) for project in projects]
+    projects = list_projects_for_user(user=user, db_session=db_session)
+    return [
+        _project_snapshot(project, user=user, db_session=db_session)
+        for project in projects
+    ]
 
 
 @router.post("/create", tags=PUBLIC_API_TAGS)
@@ -116,13 +167,14 @@ def create_project(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
-    if name == "":
-        raise HTTPException(status_code=400, detail="Project name cannot be empty")
-    user_id = user.id
-    project = UserProject(name=name, user_id=user_id)
+    stripped_name = name.strip()
+    if not stripped_name:
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Project name cannot be empty.")
+    project = UserProject(name=stripped_name, user_id=user.id, instructions="")
     db_session.add(project)
     db_session.commit()
-    return UserProjectSnapshot.from_model(project)
+    db_session.refresh(project)
+    return _project_snapshot(project, user=user, db_session=db_session)
 
 
 @router.post("/file/upload", tags=PUBLIC_API_TAGS)
@@ -159,11 +211,13 @@ def upload_user_files(
 
         return CategorizedFilesSnapshot.from_result(categorized_files_result)
 
+    except OnyxError:
+        raise
     except Exception as e:
         logger.exception("Error uploading files - %s: %s", type(e).__name__, str(e))
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to upload files. Please try again or contact support if the issue persists.",
+        raise OnyxError(
+            OnyxErrorCode.INTERNAL_ERROR,
+            "Failed to upload files. Please try again or contact support if the issue persists.",
         )
 
 
@@ -173,15 +227,13 @@ def get_project(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
     )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return UserProjectSnapshot.from_model(project)
+    return _project_snapshot(project, user=user, db_session=db_session)
 
 
 @router.get("/files/{project_id}", tags=PUBLIC_API_TAGS)
@@ -190,13 +242,17 @@ def get_files_in_project(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> list[UserFileSnapshot]:
-    user_id = user.id
+    _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
+    )
     user_files = (
         db_session.query(UserFile)
         .join(Project__UserFile, UserFile.id == Project__UserFile.user_file_id)
         .filter(
             Project__UserFile.project_id == project_id,
-            UserFile.user_id == user_id,
             UserFile.status != UserFileStatus.FAILED,
         )
         .order_by(Project__UserFile.created_at.desc())
@@ -217,22 +273,24 @@ def unlink_user_file_from_project(
 
     Does not delete the underlying file; only removes the association.
     """
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.EDIT,
     )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
 
     user_file = (
         db_session.query(UserFile)
-        .filter(UserFile.id == file_id, UserFile.user_id == user_id)
+        .join(Project__UserFile, UserFile.id == Project__UserFile.user_file_id)
+        .filter(
+            UserFile.id == file_id,
+            Project__UserFile.project_id == project_id,
+        )
         .one_or_none()
     )
     if user_file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "File not found.")
 
     # Remove the association if it exists
     if user_file in project.user_files:
@@ -263,22 +321,20 @@ def link_user_file_to_project(
     Creates the association in the Project__UserFile join table if it does not exist.
     Returns the linked user file snapshot.
     """
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.EDIT,
     )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
 
     user_file = (
         db_session.query(UserFile)
-        .filter(UserFile.id == file_id, UserFile.user_id == user_id)
+        .filter(UserFile.id == file_id, UserFile.user_id == user.id)
         .one_or_none()
     )
     if user_file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "File not found.")
 
     if user_file not in project.user_files:
         user_file.needs_project_sync = True
@@ -305,15 +361,12 @@ def get_project_instructions(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> ProjectInstructionsResponse:
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
     )
-
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
 
     return ProjectInstructionsResponse(instructions=project.instructions)
 
@@ -334,15 +387,12 @@ def upsert_project_instructions(
     db_session: Session = Depends(get_session),
 ) -> ProjectInstructionsResponse:
     """Create or update this project's instructions stored on the project itself."""
-    # Ensure the project exists and belongs to the user
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.EDIT,
     )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
     project.instructions = body.instructions
 
     db_session.commit()
@@ -394,14 +444,12 @@ def update_project(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.EDIT,
     )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
 
     if body.name is not None:
         project.name = body.name
@@ -410,7 +458,7 @@ def update_project(
 
     db_session.commit()
     db_session.refresh(project)
-    return UserProjectSnapshot.from_model(project)
+    return _project_snapshot(project, user=user, db_session=db_session)
 
 
 @router.delete("/{project_id}", tags=PUBLIC_API_TAGS)
@@ -419,14 +467,12 @@ def delete_project(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> Response:
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.OWN,
     )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
 
     # Unlink chat sessions from this project
     for chat in project.chat_sessions:
@@ -459,7 +505,7 @@ def delete_user_file(
         .one_or_none()
     )
     if user_file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "File not found.")
 
     # Check associations with projects and assistants (personas)
     project_names = [project.name for project in user_file.projects]
@@ -490,6 +536,7 @@ def delete_user_file(
             kwargs={"user_file_id": str(user_file.id), "tenant_id": tenant_id},
             queue=OnyxCeleryQueues.USER_FILE_DELETE,
             priority=OnyxCeleryPriority.HIGH,
+            expires=CELERY_USER_FILE_DELETE_TASK_EXPIRES,
         )
         logger.info(
             "Triggered delete for user_file_id=%s with task_id=%s",
@@ -520,7 +567,7 @@ def get_user_file(
         .one_or_none()
     )
     if user_file is None:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "File not found.")
     return UserFileSnapshot.from_model(user_file)
 
 
@@ -562,14 +609,19 @@ def move_chat_session(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> Response:
-    user_id = user.id
+    _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.EDIT,
+    )
     chat_session = (
         db_session.query(ChatSession)
-        .filter(ChatSession.id == body.chat_session_id, ChatSession.user_id == user_id)
+        .filter(ChatSession.id == body.chat_session_id, ChatSession.user_id == user.id)
         .one_or_none()
     )
     if chat_session is None:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Chat session not found.")
     chat_session.project_id = project_id
     db_session.commit()
     return Response(status_code=204)
@@ -588,7 +640,7 @@ def remove_chat_session(
         .one_or_none()
     )
     if chat_session is None:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Chat session not found.")
     chat_session.project_id = None
     db_session.commit()
     return Response(status_code=204)
@@ -611,7 +663,15 @@ def get_chat_session_project_token_count(
         .one_or_none()
     )
     if chat_session is None:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Chat session not found.")
+
+    if chat_session.project_id is not None:
+        _get_project_or_error(
+            chat_session.project_id,
+            user=user,
+            db_session=db_session,
+            policy=ProjectAccessPolicy.VIEW,
+        )
 
     total_tokens = get_project_token_count(
         project_id=chat_session.project_id,
@@ -631,7 +691,7 @@ def get_chat_session_project_files(
     """Return user files for the project linked to the given chat session.
 
     If the chat session has no project, returns an empty list.
-    Only returns files owned by the current user and not FAILED.
+    Returns all non-failed files shared through the project.
     """
     user_id = user.id
 
@@ -641,16 +701,22 @@ def get_chat_session_project_files(
         .one_or_none()
     )
     if chat_session is None:
-        raise HTTPException(status_code=404, detail="Chat session not found")
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Chat session not found.")
 
     if chat_session.project_id is None:
         return []
+
+    _get_project_or_error(
+        chat_session.project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
+    )
 
     user_files = (
         db_session.query(UserFile)
         .filter(
             UserFile.projects.any(id=chat_session.project_id),
-            UserFile.user_id == user_id,
             UserFile.status != UserFileStatus.FAILED,
         )
         .order_by(UserFile.created_at.desc())
@@ -668,20 +734,136 @@ def get_project_total_token_count(
 ) -> TokenCountResponse:
     """Return sum of token_count for all user files in the given project for the current user."""
 
-    # Verify the project belongs to the current user
-    user_id = user.id
-    project = (
-        db_session.query(UserProject)
-        .filter(UserProject.id == project_id, UserProject.user_id == user_id)
-        .one_or_none()
+    _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
     )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
 
     total_tokens = get_project_token_count(
         project_id=project_id,
-        user_id=user_id,
+        user_id=user.id,
         db_session=db_session,
     )
 
     return TokenCountResponse(total_tokens=total_tokens)
+
+
+@router.get("/{project_id}/sharing", tags=PUBLIC_API_TAGS)
+def get_project_sharing(
+    project_id: int,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectSharingSnapshot:
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.OWN,
+    )
+    return ProjectSharingSnapshot.from_model(project)
+
+
+@router.patch("/{project_id}/sharing", tags=PUBLIC_API_TAGS)
+def update_project_sharing(
+    project_id: int,
+    body: ProjectShareRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectSharingSnapshot:
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.OWN,
+    )
+    replace_project_shares(
+        project=project,
+        organization_permission=body.organization_permission,
+        user_shares={share.user_id: share.permission for share in body.user_shares},
+        group_shares={share.group_id: share.permission for share in body.group_shares},
+        db_session=db_session,
+    )
+    db_session.commit()
+    db_session.expire(project)
+    return ProjectSharingSnapshot.from_model(project)
+
+
+@router.post("/{project_id}/request-access", tags=PUBLIC_API_TAGS)
+def request_project_access(
+    project_id: int,
+    body: ProjectAccessRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectJoinRequestSnapshot:
+    project = fetch_project_by_id(project_id, db_session=db_session)
+    if project is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project not found.")
+    if (
+        fetch_project_for_user(
+            project_id,
+            user=user,
+            db_session=db_session,
+            policy=ProjectAccessPolicy.VIEW,
+        )
+        is not None
+    ):
+        raise OnyxError(OnyxErrorCode.CONFLICT, "You already have project access.")
+
+    join_request = create_or_reset_project_join_request(
+        project=project,
+        requester=user,
+        requested_permission=body.requested_permission,
+        db_session=db_session,
+    )
+    db_session.commit()
+    db_session.refresh(join_request)
+    return ProjectJoinRequestSnapshot.from_model(join_request)
+
+
+@router.delete("/{project_id}/request-access", tags=PUBLIC_API_TAGS)
+def cancel_project_access_request(
+    project_id: int,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> Response:
+    project = fetch_project_by_id(project_id, db_session=db_session)
+    if project is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project not found.")
+    cancel_project_join_request(
+        project=project,
+        requester=user,
+        db_session=db_session,
+    )
+    db_session.commit()
+    return Response(status_code=204)
+
+
+@router.post(
+    "/{project_id}/join-requests/{request_id}/resolve",
+    tags=PUBLIC_API_TAGS,
+)
+def resolve_project_access_request(
+    project_id: int,
+    request_id: int,
+    body: ResolveProjectAccessRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectSharingSnapshot:
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.OWN,
+    )
+    resolve_project_join_request(
+        project=project,
+        request_id=request_id,
+        approve=body.approve,
+        resolution_comment=body.resolution_comment,
+        db_session=db_session,
+    )
+    db_session.commit()
+    db_session.expire(project)
+    return ProjectSharingSnapshot.from_model(project)

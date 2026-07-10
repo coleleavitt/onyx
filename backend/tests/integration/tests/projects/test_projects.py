@@ -240,3 +240,77 @@ def test_projects_flow(
         user_performing_action=basic_user,
     )
     assert result == long_instructions
+
+
+def test_collaborative_project_access(
+    basic_user: DATestUser,
+    admin_user: DATestUser,
+) -> None:
+    project = ProjectManager.create(
+        name="Collaborative Project",
+        user_performing_action=basic_user,
+    )
+    assert ProjectManager.get(project.id, admin_user) is None
+
+    ProjectManager.update_sharing(
+        project.id,
+        organization_permission=None,
+        user_shares=[{"user_id": admin_user.id, "permission": "VIEWER"}],
+        group_shares=[],
+        user_performing_action=basic_user,
+    )
+    viewer_project = ProjectManager.get(project.id, admin_user)
+    assert viewer_project is not None
+    assert viewer_project.user_permission.value == "VIEWER"
+    with pytest.raises(Exception):
+        ProjectManager.set_instructions(project.id, "Not allowed", admin_user)
+    assert not ProjectManager.delete(project.id, admin_user)
+
+    ProjectManager.update_sharing(
+        project.id,
+        organization_permission=None,
+        user_shares=[{"user_id": admin_user.id, "permission": "EDITOR"}],
+        group_shares=[],
+        user_performing_action=basic_user,
+    )
+    assert (
+        ProjectManager.set_instructions(project.id, "Shared context", admin_user)
+        == "Shared context"
+    )
+    editor_project = ProjectManager.get(project.id, admin_user)
+    assert editor_project is not None
+    assert editor_project.user_permission.value == "EDITOR"
+
+    ProjectManager.update_sharing(
+        project.id,
+        organization_permission="VIEWER",
+        user_shares=[],
+        group_shares=[],
+        user_performing_action=basic_user,
+    )
+    organization_project = ProjectManager.get(project.id, admin_user)
+    assert organization_project is not None
+    assert organization_project.user_permission.value == "VIEWER"
+
+    ProjectManager.update_sharing(
+        project.id,
+        organization_permission=None,
+        user_shares=[],
+        group_shares=[],
+        user_performing_action=basic_user,
+    )
+    access_request = ProjectManager.request_access(project.id, admin_user)
+    owner_sharing = ProjectManager.get_sharing(project.id, basic_user)
+    assert [request.id for request in owner_sharing.join_requests] == [
+        access_request.id
+    ]
+
+    ProjectManager.resolve_access_request(
+        project.id,
+        access_request.id,
+        approve=True,
+        user_performing_action=basic_user,
+    )
+    approved_project = ProjectManager.get(project.id, admin_user)
+    assert approved_project is not None
+    assert approved_project.user_permission.value == "VIEWER"

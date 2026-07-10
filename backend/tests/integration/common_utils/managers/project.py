@@ -1,6 +1,8 @@
 from typing import List
 
 from onyx.server.features.projects.models import CategorizedFilesSnapshot
+from onyx.server.features.projects.models import ProjectJoinRequestSnapshot
+from onyx.server.features.projects.models import ProjectSharingSnapshot
 from onyx.server.features.projects.models import UserFileSnapshot
 from onyx.server.features.projects.models import UserProjectSnapshot
 from tests.integration.common_utils.constants import API_SERVER_URL
@@ -34,6 +36,82 @@ class ProjectManager:
         )
         response.raise_for_status()
         return [UserProjectSnapshot.model_validate(obj) for obj in response.json()]
+
+    @staticmethod
+    def get(
+        project_id: int,
+        user_performing_action: DATestUser,
+    ) -> UserProjectSnapshot | None:
+        response = client.get(
+            f"{API_SERVER_URL}/user/projects/{project_id}",
+            headers=user_performing_action.headers,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return UserProjectSnapshot.model_validate(response.json())
+
+    @staticmethod
+    def get_sharing(
+        project_id: int,
+        user_performing_action: DATestUser,
+    ) -> ProjectSharingSnapshot:
+        response = client.get(
+            f"{API_SERVER_URL}/user/projects/{project_id}/sharing",
+            headers=user_performing_action.headers,
+        )
+        response.raise_for_status()
+        return ProjectSharingSnapshot.model_validate(response.json())
+
+    @staticmethod
+    def update_sharing(
+        project_id: int,
+        *,
+        organization_permission: str | None,
+        user_shares: list[dict[str, str]],
+        group_shares: list[dict[str, int | str]],
+        user_performing_action: DATestUser,
+    ) -> ProjectSharingSnapshot:
+        response = client.patch(
+            f"{API_SERVER_URL}/user/projects/{project_id}/sharing",
+            json={
+                "organization_permission": organization_permission,
+                "user_shares": user_shares,
+                "group_shares": group_shares,
+            },
+            headers=user_performing_action.headers,
+        )
+        response.raise_for_status()
+        return ProjectSharingSnapshot.model_validate(response.json())
+
+    @staticmethod
+    def request_access(
+        project_id: int,
+        user_performing_action: DATestUser,
+    ) -> ProjectJoinRequestSnapshot:
+        response = client.post(
+            f"{API_SERVER_URL}/user/projects/{project_id}/request-access",
+            json={"requested_permission": "VIEWER"},
+            headers=user_performing_action.headers,
+        )
+        response.raise_for_status()
+        return ProjectJoinRequestSnapshot.model_validate(response.json())
+
+    @staticmethod
+    def resolve_access_request(
+        project_id: int,
+        request_id: int,
+        *,
+        approve: bool,
+        user_performing_action: DATestUser,
+    ) -> ProjectSharingSnapshot:
+        response = client.post(
+            f"{API_SERVER_URL}/user/projects/{project_id}/join-requests/{request_id}/resolve",
+            json={"approve": approve},
+            headers=user_performing_action.headers,
+        )
+        response.raise_for_status()
+        return ProjectSharingSnapshot.model_validate(response.json())
 
     @staticmethod
     def delete(
