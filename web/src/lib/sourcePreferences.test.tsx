@@ -153,4 +153,9 @@ describe("buildFilters — source_type payload", () => {
     const filters = buildFilters(state.selected, [], null, []);
     expect(filters.source_type).toEqual(["user_file"]);
   });
+
+  test("exact connected documents are included as an explicit scope", () => {
+    const filters = buildFilters([], [], null, [], ["sharepoint-doc-1"]);
+    expect(filters.document_ids).toEqual(["sharepoint-doc-1"]);
+  });
 });

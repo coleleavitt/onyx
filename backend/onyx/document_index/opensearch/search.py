@@ -236,6 +236,7 @@ class DocumentQuery:
             max_chunk_index=max_chunk_index,
             max_chunk_size=max_chunk_size,
             document_id=document_id,
+            selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
         )
@@ -374,6 +375,7 @@ class DocumentQuery:
             time_cutoff_upper=index_filters.time_cutoff_upper,
             min_chunk_index=None,
             max_chunk_index=None,
+            selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
         )
@@ -470,6 +472,7 @@ class DocumentQuery:
             time_cutoff_upper=index_filters.time_cutoff_upper,
             min_chunk_index=None,
             max_chunk_index=None,
+            selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
         )
@@ -553,6 +556,7 @@ class DocumentQuery:
             time_cutoff_upper=index_filters.time_cutoff_upper,
             min_chunk_index=None,
             max_chunk_index=None,
+            selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
         )
@@ -615,6 +619,7 @@ class DocumentQuery:
             time_cutoff_upper=index_filters.time_cutoff_upper,
             min_chunk_index=None,
             max_chunk_index=None,
+            selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
         )
@@ -857,6 +862,7 @@ class DocumentQuery:
         max_chunk_index: int | None,
         max_chunk_size: int | None = None,
         document_id: str | None = None,
+        selected_document_ids: list[str] | None = None,
         # Assistant knowledge filters
         attached_document_ids: list[str] | None = None,
         hierarchy_node_ids: list[int] | None = None,
@@ -915,6 +921,8 @@ class DocumentQuery:
                 NOTE: See DocumentChunk.max_chunk_size.
             document_id: The document ID to retrieve. If None, no filter will be
                 applied for this. Defaults to None.
+            selected_document_ids: Exact document IDs selected for this search.
+                This is an AND scope and is independent of assistant knowledge.
             attached_document_ids: Document IDs explicitly attached to the
                 assistant. If provided along with hierarchy_node_ids, documents
                 matching EITHER criteria will be retrieved (OR logic).
@@ -1234,6 +1242,11 @@ class DocumentQuery:
             # list.
             filter_clauses.append(_get_source_type_filter(source_types))
 
+        if selected_document_ids:
+            filter_clauses.append(
+                _get_attached_document_id_filter(selected_document_ids)
+            )
+
         if tags:
             # If at least one tag is provided, the caller will only retrieve
             # documents where at least one tag provided here is present in the
@@ -1251,7 +1264,7 @@ class DocumentQuery:
         # scoped to that project, so project_id_filter restricts the search to
         # the project's files on its own (project chats do not search team
         # knowledge).
-        has_knowledge_scope = (
+        has_knowledge_scope = not selected_document_ids and (
             attached_document_ids
             or hierarchy_node_ids
             or document_sets

@@ -920,7 +920,8 @@ export default function useChatController({
             filterManager.selectedSources,
             filterManager.selectedDocumentSets,
             filterManager.timeRange,
-            filterManager.selectedTags
+            filterManager.selectedTags,
+            filterManager.selectedDocumentIds
           ),
           modelProvider: isMultiModel
             ? undefined
@@ -1320,6 +1321,7 @@ export default function useChatController({
       // Narrow to stable fields from managers to avoid re-creation
       filterManager.selectedSources,
       filterManager.selectedDocumentSets,
+      filterManager.selectedDocumentIds,
       filterManager.selectedTags,
       filterManager.timeRange,
       llmManager.currentLlm,

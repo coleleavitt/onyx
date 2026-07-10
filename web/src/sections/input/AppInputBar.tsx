@@ -31,6 +31,8 @@ import { useProjectsContext } from "@/providers/ProjectsContext";
 import { FileCard } from "@/sections/cards/FileCard";
 import { ProjectFile, UserFileStatus } from "@/lib/projects/types";
 import FilePickerPopover from "@/refresh-components/popovers/FilePickerPopover";
+import SharePointFilePickerModal from "@/sections/modals/SharePointFilePickerModal";
+import type { DocumentSummary } from "@/lib/hierarchy/interfaces";
 import ActionsPopover from "@/refresh-components/popovers/ActionsPopover";
 import {
   getIconForAction,
@@ -48,7 +50,8 @@ import {
   SvgX,
   SvgSimpleLoader,
 } from "@opal/icons";
-import { Button, SelectButton } from "@opal/components";
+import { SvgSharepoint } from "@opal/logos";
+import { Button, SelectButton, Text } from "@opal/components";
 import { Popover } from "@opal/components";
 import { useQueryController } from "@/providers/QueryControllerProvider";
 import { Section } from "@/layouts/general-layouts";
@@ -176,6 +179,9 @@ const AppInputBar = React.memo(
 
     const filesWrapperRef = useRef<HTMLDivElement>(null);
     const filesContentRef = useRef<HTMLDivElement>(null);
+    const [sharePointPickerOpen, setSharePointPickerOpen] = useState(false);
+    const [selectedSharePointDocuments, setSelectedSharePointDocuments] =
+      useState<DocumentSummary[]>([]);
     const containerRef = useRef<HTMLDivElement>(null);
     const { state } = useQueryController();
     const isClassifying = state.phase === "classifying";
@@ -287,6 +293,8 @@ const AppInputBar = React.memo(
           clearMessage();
           clearChatDraft();
         }
+        setSelectedSharePointDocuments([]);
+        filterManager.setSelectedDocumentIds([]);
       },
       focus: () => {
         inputRef.current?.focus();
@@ -401,7 +409,10 @@ const AppInputBar = React.memo(
 
     // Animate attached files wrapper to its content height so CSS transitions
     // can interpolate between concrete pixel values (0px ↔ Npx).
-    const showFiles = !isSearchMode && currentMessageFiles.length > 0;
+    const showFiles =
+      !isSearchMode &&
+      (currentMessageFiles.length > 0 ||
+        selectedSharePointDocuments.length > 0);
     useEffect(() => {
       const wrapper = filesWrapperRef.current;
       const content = filesContentRef.current;
@@ -414,7 +425,7 @@ const AppInputBar = React.memo(
       } else {
         wrapper.style.height = "0px";
       }
-    }, [showFiles, currentMessageFiles]);
+    }, [showFiles, currentMessageFiles, selectedSharePointDocuments]);
 
     function handlePaste(event: React.ClipboardEvent) {
       if (disabled) return;
@@ -638,6 +649,7 @@ const AppInputBar = React.memo(
               />
             )}
             selectedFileIds={currentMessageFiles.map((f) => f.id)}
+            onBrowseSharePoint={() => setSharePointPickerOpen(true)}
           />
 
           {/* Controls that load in when data is ready */}
@@ -881,6 +893,32 @@ const AppInputBar = React.memo(
                     compactImages={shouldCompactImages}
                   />
                 ))}
+                {selectedSharePointDocuments.map((document) => (
+                  <div
+                    className="flex h-9 max-w-64 items-center gap-2 rounded-08 bg-background-tint-01 px-2"
+                    key={document.id}
+                  >
+                    <SvgSharepoint className="h-5 w-5 shrink-0" />
+                    <Text color="text-04" font="main-ui-body" maxLines={1}>
+                      {document.title}
+                    </Text>
+                    <Button
+                      icon={SvgX}
+                      prominence="tertiary"
+                      size="2xs"
+                      tooltip={`Remove ${document.title}`}
+                      onClick={() => {
+                        const next = selectedSharePointDocuments.filter(
+                          (candidate) => candidate.id !== document.id
+                        );
+                        setSelectedSharePointDocuments(next);
+                        filterManager.setSelectedDocumentIds(
+                          next.map((candidate) => candidate.id)
+                        );
+                      }}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1069,6 +1107,19 @@ const AppInputBar = React.memo(
             )}
           </div>
         </Disabled>
+        {sharePointPickerOpen ? (
+          <SharePointFilePickerModal
+            initialSelection={selectedSharePointDocuments}
+            onAttach={(documents) => {
+              setSelectedSharePointDocuments(documents);
+              filterManager.setSelectedDocumentIds(
+                documents.map((document) => document.id)
+              );
+              setSharePointPickerOpen(false);
+            }}
+            onClose={() => setSharePointPickerOpen(false)}
+          />
+        ) : null}
       </>
     );
   }

@@ -264,6 +264,8 @@ export interface FilterManager {
   setSelectedSources: React.Dispatch<React.SetStateAction<SourceMetadata[]>>;
   selectedDocumentSets: string[];
   setSelectedDocumentSets: React.Dispatch<React.SetStateAction<string[]>>;
+  selectedDocumentIds: string[];
+  setSelectedDocumentIds: React.Dispatch<React.SetStateAction<string[]>>;
   selectedTags: Tag[];
   setSelectedTags: React.Dispatch<React.SetStateAction<Tag[]>>;
   getFilterString: () => string;
@@ -282,6 +284,7 @@ export function useFilters(): FilterManager {
   const [selectedDocumentSets, setSelectedDocumentSets] = useState<string[]>(
     []
   );
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
 
   function getFilterString() {
@@ -321,6 +324,7 @@ export function useFilters(): FilterManager {
     setTimeRange(null);
     setSelectedSources([]);
     setSelectedDocumentSets([]);
+    setSelectedDocumentIds([]);
     setSelectedTags([]);
   }
 
@@ -389,6 +393,8 @@ export function useFilters(): FilterManager {
     setSelectedSources,
     selectedDocumentSets,
     setSelectedDocumentSets,
+    selectedDocumentIds,
+    setSelectedDocumentIds,
     selectedTags,
     setSelectedTags,
     getFilterString,

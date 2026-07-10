@@ -67,6 +67,8 @@ class Tag(BaseModel):
 class BaseFilters(BaseModel):
     source_type: list[DocumentSource] | None = None
     document_set: list[str] | None = None
+    # Exact document scope selected by the user (for connected-file attachments).
+    document_ids: list[str] | None = Field(default=None, max_length=100)
     time_cutoff: datetime | None = None
     time_cutoff_upper: datetime | None = None
     tags: list[Tag] | None = None

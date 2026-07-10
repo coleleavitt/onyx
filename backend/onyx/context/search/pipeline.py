@@ -98,6 +98,7 @@ def _build_index_filters(
         persona_id_filter=persona_id_filter,
         source_type=source_filter,
         document_set=document_set_filter,
+        document_ids=base_filters.document_ids,
         time_cutoff=time_filter,
         time_cutoff_upper=base_filters.time_cutoff_upper,
         tags=base_filters.tags,

@@ -157,6 +157,7 @@ export interface SearchDefaultOverrides {
 export interface Filters {
   source_type: string[] | null;
   document_set: string[] | null;
+  document_ids: string[] | null;
   time_cutoff: Date | null;
 }
 

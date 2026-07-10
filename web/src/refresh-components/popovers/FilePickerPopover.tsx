@@ -22,6 +22,7 @@ import {
   SvgMoreHorizontal,
   SvgUploadSquare,
 } from "@opal/icons";
+import { SvgSharepoint } from "@opal/logos";
 const getFileExtension = (fileName: string): string => {
   const idx = fileName.lastIndexOf(".");
   if (idx === -1) return "";
@@ -102,6 +103,7 @@ interface FilePickerPopoverContentsProps {
   onFileClick: (file: ProjectFile) => void;
   triggerUploadPicker: () => void;
   openRecentFilesModal: () => void;
+  onBrowseSharePoint?: () => void;
 }
 
 function FilePickerPopoverContents({
@@ -110,6 +112,7 @@ function FilePickerPopoverContents({
   onFileClick,
   triggerUploadPicker,
   openRecentFilesModal,
+  onBrowseSharePoint,
 }: FilePickerPopoverContentsProps) {
   // These are the "quick" files that we show. Essentially "speed dial", but for files.
   // The rest of the files will be hidden behind the "All Recent Files" button, should there be more files left to show!
@@ -129,6 +132,17 @@ function FilePickerPopoverContents({
         >
           Upload Files
         </LineItem>,
+
+        onBrowseSharePoint ? (
+          <LineItem
+            key="sharepoint-files"
+            icon={SvgSharepoint}
+            description="Choose exact files from indexed sites"
+            onClick={onBrowseSharePoint}
+          >
+            SharePoint Files
+          </LineItem>
+        ) : null,
 
         // Separator
         null,
@@ -174,6 +188,7 @@ export interface FilePickerPopoverProps {
   handleUploadChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   trigger?: React.ReactNode | ((open: boolean) => React.ReactNode);
   selectedFileIds?: string[];
+  onBrowseSharePoint?: () => void;
 }
 
 export default function FilePickerPopover({
@@ -183,6 +198,7 @@ export default function FilePickerPopover({
   handleUploadChange,
   trigger,
   selectedFileIds,
+  onBrowseSharePoint,
 }: FilePickerPopoverProps) {
   const { allRecentFiles } = useProjectsContext();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -305,6 +321,14 @@ export default function FilePickerPopover({
               // Close the small popover when opening the dialog
               setOpen(false);
             }}
+            onBrowseSharePoint={
+              onBrowseSharePoint
+                ? () => {
+                    onBrowseSharePoint();
+                    setOpen(false);
+                  }
+                : undefined
+            }
           />
         </Popover.Content>
       </Popover>
