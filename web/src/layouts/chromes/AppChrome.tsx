@@ -47,6 +47,7 @@ import useScreenSize from "@/hooks/useScreenSize";
 import {
   SvgBubbleText,
   SvgChevronLeft,
+  SvgClock,
   SvgDownload,
   SvgFileText,
   SvgFitWidth,
@@ -59,6 +60,7 @@ import {
   SvgSidebar,
   SvgTrash,
 } from "@opal/icons";
+import { newTaskFromChatPath } from "@/app/craft/v1/tasks/constants";
 import { useIsSearchModeAvailable, useSettings } from "@/lib/settings/hooks";
 import type { AppMode } from "@/providers/QueryControllerProvider";
 import useAppFocus from "@/hooks/useAppFocus";
@@ -286,6 +288,19 @@ function Header() {
           title="Export As…"
           onClick={noProp(() => setShowExportOptions(true))}
         />,
+        <Popover.Close asChild key="schedule">
+          <LineItemButton
+            sizePreset="main-ui"
+            rounding="sm"
+            icon={SvgClock}
+            title="Create Scheduled Task"
+            description="Use this conversation as an editable recurring workflow"
+            onClick={noProp(() => {
+              if (!currentChatSession) return;
+              router.push(newTaskFromChatPath(currentChatSession.id));
+            })}
+          />
+        </Popover.Close>,
         null,
         <LineItemButton
           key="delete"
@@ -308,6 +323,7 @@ function Header() {
     setDeleteConfirmationModalOpen,
     handleMoveClick,
     handleExport,
+    router,
   ]);
 
   return (

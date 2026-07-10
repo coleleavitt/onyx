@@ -20,6 +20,7 @@ import {
   SvgClock,
   SvgPlus,
   SvgRefreshCw,
+  SvgSparkle,
   SvgTrash,
   SvgSimpleLoader,
 } from "@opal/icons";
@@ -30,6 +31,7 @@ import {
 } from "@/app/craft/v1/tasks/components/StatusBadge";
 import {
   NEW_TASK_PATH,
+  TASK_TEMPLATES_PATH,
   TASKS_PAGE_SIZE,
   taskDetailPath,
 } from "@/app/craft/v1/tasks/constants";
@@ -183,15 +185,25 @@ export default function ScheduledTasksListPage() {
 
   const headerActions = useMemo(
     () => (
-      <Button
-        variant="default"
-        prominence="primary"
-        icon={SvgPlus}
-        href={NEW_TASK_PATH}
-        data-testid="new-task-button"
-      >
-        New Scheduled Task
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="default"
+          prominence="secondary"
+          icon={SvgSparkle}
+          href={TASK_TEMPLATES_PATH}
+        >
+          Templates
+        </Button>
+        <Button
+          variant="default"
+          prominence="primary"
+          icon={SvgPlus}
+          href={NEW_TASK_PATH}
+          data-testid="new-task-button"
+        >
+          New Scheduled Task
+        </Button>
+      </div>
     ),
     []
   );
