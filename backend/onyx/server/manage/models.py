@@ -122,6 +122,8 @@ class UserPersonalization(BaseModel):
     enable_memory_tool: bool = True
     memories: list[MemoryItem] = Field(default_factory=list)
     user_preferences: str = ""
+    organization_memories_enabled: bool = True
+    organization_memory_creation_enabled: bool = True
 
 
 class TenantSnapshot(BaseModel):

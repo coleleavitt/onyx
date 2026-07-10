@@ -17,6 +17,7 @@ from onyx.db.enums import MCPAuthenticationType
 from onyx.db.mcp import get_all_mcp_tools_for_server
 from onyx.db.mcp import get_mcp_server_by_id
 from onyx.db.mcp import get_user_connection_config
+from onyx.db.memory import is_memory_creation_allowed
 from onyx.db.models import Persona
 from onyx.db.models import User
 from onyx.db.oauth_config import get_oauth_config
@@ -500,7 +501,7 @@ def _construct_tools_impl(
 
     # Always inject MemoryTool when the user has the memory tool enabled,
     # bypassing persona tool associations and allowed_tool_ids filtering
-    if user.enable_memory_tool:
+    if user.enable_memory_tool and is_memory_creation_allowed(db_session):
         try:
             memory_tool_db_model = get_builtin_tool(db_session, MemoryTool)
             memory_tool = MemoryTool(

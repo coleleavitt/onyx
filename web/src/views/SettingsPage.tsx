@@ -997,6 +997,10 @@ function ChatPreferencesSettings() {
     onSuccess: () => toast.success("Preferences saved"),
     onError: () => toast.error("Failed to save preferences"),
   });
+  const organizationMemoriesEnabled =
+    user?.personalization?.organization_memories_enabled ?? true;
+  const organizationMemoryCreationEnabled =
+    user?.personalization?.organization_memory_creation_enabled ?? true;
   const [draftVoicePlaybackSpeed, setDraftVoicePlaybackSpeed] = useState(
     user?.preferences.voice_playback_speed ?? 1
   );
@@ -1195,10 +1199,15 @@ function ChatPreferencesSettings() {
           <InputHorizontal
             title="Reference Stored Memories"
             description="Let Onyx reference stored memories in chats."
+            disabled={!organizationMemoriesEnabled}
             withLabel
           >
             <Switch
-              checked={personalizationValues.use_memories}
+              checked={
+                organizationMemoriesEnabled &&
+                personalizationValues.use_memories
+              }
+              disabled={!organizationMemoriesEnabled}
               onCheckedChange={(checked) => {
                 toggleUseMemories(checked);
                 void handleSavePersonalization({ use_memories: checked });
@@ -1208,10 +1217,15 @@ function ChatPreferencesSettings() {
           <InputHorizontal
             title="Update Memories"
             description="Let Onyx generate and update stored memories."
+            disabled={!organizationMemoryCreationEnabled}
             withLabel
           >
             <Switch
-              checked={personalizationValues.enable_memory_tool}
+              checked={
+                organizationMemoryCreationEnabled &&
+                personalizationValues.enable_memory_tool
+              }
+              disabled={!organizationMemoryCreationEnabled}
               onCheckedChange={(checked) => {
                 toggleEnableMemoryTool(checked);
                 void handleSavePersonalization({
@@ -1227,6 +1241,7 @@ function ChatPreferencesSettings() {
             <Memories
               memories={personalizationValues.memories}
               onSaveMemories={handleSaveMemories}
+              allowCreateAndEdit={organizationMemoryCreationEnabled}
             />
           )}
         </Card>

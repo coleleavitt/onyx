@@ -13,15 +13,20 @@ import { MemoryItem } from "@/lib/types";
 interface MemoriesProps {
   memories: MemoryItem[];
   onSaveMemories: (memories: MemoryItem[]) => Promise<boolean>;
+  allowCreateAndEdit?: boolean;
 }
 
-export default function Memories({ memories, onSaveMemories }: MemoriesProps) {
+export default function Memories({
+  memories,
+  onSaveMemories,
+  allowCreateAndEdit = true,
+}: MemoriesProps) {
   const memoriesModal = useCreateModal();
   const [targetMemoryId, setTargetMemoryId] = useState<number | null>(null);
 
   return (
     <>
-      {memories.length === 0 ? (
+      {memories.length === 0 && allowCreateAndEdit ? (
         <LineItem
           skeleton
           description="Add personal note or memory that Onyx should remember."
@@ -40,7 +45,7 @@ export default function Memories({ memories, onSaveMemories }: MemoriesProps) {
             />
           }
         />
-      ) : (
+      ) : memories.length > 0 ? (
         <div className="self-stretch flex flex-row items-center justify-between gap-2">
           <div className="flex flex-row items-center gap-2">
             {memories.slice(0, 2).map((memory, index) => (
@@ -55,7 +60,7 @@ export default function Memories({ memories, onSaveMemories }: MemoriesProps) {
             ))}
           </div>
           <ButtonTile
-            title="View/Add"
+            title={allowCreateAndEdit ? "View/Add" : "View"}
             description="All Memories"
             icon={SvgAddLines}
             onClick={() => {
@@ -64,7 +69,7 @@ export default function Memories({ memories, onSaveMemories }: MemoriesProps) {
             }}
           />
         </div>
-      )}
+      ) : null}
 
       <memoriesModal.Provider>
         <MemoriesModal
@@ -72,6 +77,7 @@ export default function Memories({ memories, onSaveMemories }: MemoriesProps) {
           onSaveMemories={onSaveMemories}
           initialTargetMemoryId={targetMemoryId}
           focusNewLine={targetMemoryId === null}
+          allowCreateAndEdit={allowCreateAndEdit}
         />
       </memoriesModal.Provider>
     </>

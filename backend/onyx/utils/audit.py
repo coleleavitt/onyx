@@ -72,6 +72,9 @@ class AuditAction(str, Enum):
 
     # API activity (admin config + resource CRUD)
     CRAFT_DEFAULT_CHANGE = "settings.craft_default_change"
+    MEMORY_POLICY_CHANGE = "memory.policy_change"
+    MEMORY_BULK_DELETE = "memory.bulk_delete"
+    MEMORY_RETENTION_CLEANUP = "memory.retention_cleanup"
     LLM_PROVIDER_CREATE = "llm_provider.create"
     LLM_PROVIDER_UPDATE = "llm_provider.update"
     LLM_PROVIDER_DELETE = "llm_provider.delete"
@@ -107,6 +110,9 @@ _OCSF_CLASS_BY_ACTION: dict[AuditAction, OCSFEventClass] = {
     AuditAction.USER_GROUP_CHANGE: OCSFEventClass.ACCOUNT_CHANGE,
     AuditAction.USER_CRAFT_ACCESS_CHANGE: OCSFEventClass.ACCOUNT_CHANGE,
     AuditAction.CRAFT_DEFAULT_CHANGE: OCSFEventClass.API_ACTIVITY,
+    AuditAction.MEMORY_POLICY_CHANGE: OCSFEventClass.API_ACTIVITY,
+    AuditAction.MEMORY_BULK_DELETE: OCSFEventClass.API_ACTIVITY,
+    AuditAction.MEMORY_RETENTION_CLEANUP: OCSFEventClass.API_ACTIVITY,
     AuditAction.LLM_PROVIDER_CREATE: OCSFEventClass.API_ACTIVITY,
     AuditAction.LLM_PROVIDER_UPDATE: OCSFEventClass.API_ACTIVITY,
     AuditAction.LLM_PROVIDER_DELETE: OCSFEventClass.API_ACTIVITY,

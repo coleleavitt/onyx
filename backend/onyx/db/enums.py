@@ -646,6 +646,12 @@ class ProjectJoinRequestStatus(str, PyEnum):
     DENIED = "DENIED"
 
 
+class MemoryGovernanceAuditAction(str, PyEnum):
+    POLICY_UPDATED = "POLICY_UPDATED"
+    RETENTION_CLEANUP = "RETENTION_CLEANUP"
+    BULK_DELETE = "BULK_DELETE"
+
+
 class PersonaAccessLevel(str, PyEnum):
     """Computed access the requesting user holds on a persona.
 

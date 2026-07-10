@@ -54,6 +54,7 @@ from onyx.db.engine.sql_engine import get_session_with_shared_schema
 from onyx.db.enums import AccountType
 from onyx.db.enums import Permission
 from onyx.db.enums import UserFileStatus
+from onyx.db.memory import get_memory_governance_policy
 from onyx.db.models import User
 from onyx.db.models import UserFile
 from onyx.db.tenant_invite_counter import release_trial_invites
@@ -1080,6 +1081,13 @@ def verify_user_logged_in(
         ),
         memories=memories,
     )
+    memory_policy = get_memory_governance_policy(db_session)
+    user_info.personalization.organization_memories_enabled = (
+        memory_policy.memories_enabled
+    )
+    user_info.personalization.organization_memory_creation_enabled = (
+        memory_policy.memories_enabled and memory_policy.memory_creation_enabled
+    )
 
     return user_info
 
@@ -1180,6 +1188,41 @@ def update_user_personalization_api(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> None:
+    policy = get_memory_governance_policy(db_session)
+    existing_memory_rows = get_memories_for_user(user.id, db_session)
+    existing_memories = [
+        MemoryItem(id=memory.id, content=memory.memory_text)
+        for memory in existing_memory_rows
+    ]
+    existing_memory_by_id = {
+        memory.id: memory.content
+        for memory in existing_memories
+        if memory.id is not None
+    }
+    requested_memories_are_deletions_only = request.memories is None or all(
+        memory.id is not None and existing_memory_by_id.get(memory.id) == memory.content
+        for memory in request.memories
+    )
+    if request.use_memories is True and not policy.memories_enabled:
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "Personal memory is disabled by your organization.",
+        )
+    if request.enable_memory_tool is True and (
+        not policy.memories_enabled or not policy.memory_creation_enabled
+    ):
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "Creating memories is disabled by your organization.",
+        )
+    if not requested_memories_are_deletions_only and (
+        not policy.memories_enabled or not policy.memory_creation_enabled
+    ):
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "Creating or editing memories is disabled by your organization.",
+        )
+
     new_name = request.name if request.name is not None else user.personal_name
     new_role = request.role if request.role is not None else user.personal_role
     current_use_memories = user.use_memories
@@ -1193,10 +1236,6 @@ def update_user_personalization_api(
         if request.enable_memory_tool is not None
         else user.enable_memory_tool
     )
-    existing_memories = [
-        MemoryItem(id=memory.id, content=memory.memory_text)
-        for memory in get_memories_for_user(user.id, db_session)
-    ]
     new_memories = (
         request.memories if request.memories is not None else existing_memories
     )

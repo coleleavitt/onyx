@@ -189,6 +189,16 @@ beat_task_templates: list[dict] = [
             "queue": OnyxCeleryQueues.PRIMARY,
         },
     },
+    {
+        "name": "cleanup-expired-memories",
+        "task": OnyxCeleryTask.MEMORY_RETENTION_CLEANUP,
+        "schedule": crontab(hour=2, minute=15),
+        "options": {
+            "priority": OnyxCeleryPriority.LOW,
+            "expires": 60 * 60,
+            "queue": OnyxCeleryQueues.PRIMARY,
+        },
+    },
     # Sandbox sweep: background-snapshot changed sessions, sleep idle sandboxes.
     {
         "name": "cleanup-idle-sandboxes",

@@ -85,6 +85,7 @@ from onyx.db.enums import MCPAuthenticationType
 from onyx.db.enums import MCPOAuthProviderMode
 from onyx.db.enums import MCPServerStatus
 from onyx.db.enums import MCPTransport
+from onyx.db.enums import MemoryGovernanceAuditAction
 from onyx.db.enums import OpenSearchDocumentMigrationStatus
 from onyx.db.enums import OpenSearchTenantMigrationStatus
 from onyx.db.enums import PatType
@@ -489,6 +490,7 @@ class AccessToken(SQLAlchemyBaseAccessTokenTableUUID, Base):
 
 class Memory(Base):
     __tablename__ = "memory"
+    __table_args__ = (Index("ix_memory_created_at", "created_at"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[UUID] = mapped_column(
@@ -510,6 +512,74 @@ class Memory(Base):
     )
 
     user: Mapped["User"] = relationship("User", back_populates="memories")
+
+
+class MemoryGovernancePolicy(Base):
+    __tablename__ = "memory_governance_policy"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="memory_governance_policy_singleton"),
+        CheckConstraint(
+            "retention_days IS NULL OR retention_days BETWEEN 1 AND 3650",
+            name="memory_governance_retention_days_range",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, default=1, autoincrement=False
+    )
+    memories_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
+    memory_creation_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
+    retention_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class MemoryGovernanceAudit(Base):
+    __tablename__ = "memory_governance_audit"
+    __table_args__ = (
+        Index(
+            "ix_memory_governance_audit_created_at",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    action: Mapped[MemoryGovernanceAuditAction] = mapped_column(
+        Enum(MemoryGovernanceAuditAction, native_enum=False), nullable=False
+    )
+    actor_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    affected_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    details: Mapped[dict[str, Any]] = mapped_column(
+        postgresql.JSONB(),
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class ApiKey(Base):

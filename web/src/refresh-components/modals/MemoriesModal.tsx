@@ -33,6 +33,7 @@ interface MemoryItemProps {
   onFocused?: () => void;
   shouldHighlight?: boolean;
   onHighlighted?: () => void;
+  readOnly?: boolean;
 }
 
 function MemoryItem({
@@ -45,6 +46,7 @@ function MemoryItem({
   onFocused,
   shouldHighlight,
   onHighlighted,
+  readOnly = false,
 }: MemoryItemProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [isHighlighting, setIsHighlighting] = useState(false);
@@ -114,6 +116,7 @@ function MemoryItem({
             maxRows={3}
             maxLength={MAX_MEMORY_LENGTH}
             resizable={false}
+            variant={readOnly ? "readOnly" : undefined}
             className="bg-background-tint-01 hover:bg-background-tint-00 focus-within:bg-background-tint-00"
           />
           <Button
@@ -159,6 +162,7 @@ interface MemoriesModalProps {
   initialTargetIndex?: number | null;
   highlightOnOpen?: boolean;
   focusNewLine?: boolean;
+  allowCreateAndEdit?: boolean;
 }
 
 export default function MemoriesModal({
@@ -169,6 +173,7 @@ export default function MemoriesModal({
   initialTargetIndex,
   highlightOnOpen = false,
   focusNewLine = false,
+  allowCreateAndEdit = true,
 }: MemoriesModalProps) {
   const close = useModalClose(onClose);
   const [focusMemoryId, setFocusMemoryId] = useState<number | null>(null);
@@ -245,7 +250,7 @@ export default function MemoriesModal({
   // Always start with an empty card; optionally focus it (View/Add button)
   const hasAddedEmptyRef = useRef(false);
   useEffect(() => {
-    if (hasAddedEmptyRef.current) return;
+    if (hasAddedEmptyRef.current || !allowCreateAndEdit) return;
     hasAddedEmptyRef.current = true;
 
     const id = handleAddMemory();
@@ -253,7 +258,7 @@ export default function MemoriesModal({
       setFocusMemoryId(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [allowCreateAndEdit]);
 
   const onAddLine = () => {
     const id = handleAddMemory();
@@ -279,14 +284,16 @@ export default function MemoriesModal({
               searchIcon
             />
             <Button
-              disabled={!canAddMemory}
+              disabled={!canAddMemory || !allowCreateAndEdit}
               prominence="tertiary"
               onClick={onAddLine}
               rightIcon={SvgPlusCircle}
               title={
-                !canAddMemory
-                  ? `Maximum of ${MAX_MEMORY_COUNT} memories reached`
-                  : undefined
+                !allowCreateAndEdit
+                  ? "Creating memories is disabled by your organization"
+                  : !canAddMemory
+                    ? `Maximum of ${MAX_MEMORY_COUNT} memories reached`
+                    : undefined
               }
             >
               Add Line
@@ -319,6 +326,7 @@ export default function MemoriesModal({
                     onHighlighted={() => {
                       setHighlightMemoryId(null);
                     }}
+                    readOnly={!allowCreateAndEdit}
                   />
                   {memory.isNew && (
                     <Divider paddingParallel="fit" paddingPerpendicular="fit" />

@@ -52,6 +52,8 @@ export interface UserPersonalization {
   use_memories: boolean;
   enable_memory_tool: boolean;
   user_preferences: string;
+  organization_memories_enabled: boolean;
+  organization_memory_creation_enabled: boolean;
 }
 
 export enum AccountType {

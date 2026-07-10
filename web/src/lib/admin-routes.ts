@@ -17,6 +17,7 @@ import {
   SvgGlobe,
   SvgHistory,
   SvgImage,
+  SvgLightbulbSimple,
   SvgMcp,
   SvgOnyxOctagon,
   SvgPaintBrush,
@@ -257,6 +258,12 @@ export const ADMIN_ROUTES = {
     icon: SvgShield,
     title: "Security & Hardening",
     sidebarLabel: "Security & Hardening",
+  },
+  MEMORY_GOVERNANCE: {
+    path: "/admin/memory-governance",
+    icon: SvgLightbulbSimple,
+    title: "Memory Governance",
+    sidebarLabel: "Memory Governance",
   },
   // Prefix-only entries used for layout matching — not rendered as sidebar
   // items or page headers.
