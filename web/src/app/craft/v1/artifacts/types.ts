@@ -45,4 +45,5 @@ export type ArtifactLibraryBulkAction =
   | "unpin"
   | "publish"
   | "unpublish"
+  | "remove_shared"
   | "delete";

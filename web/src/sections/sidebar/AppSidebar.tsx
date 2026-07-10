@@ -2,7 +2,8 @@
 
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import useNotifications from "@/hooks/useNotifications";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import useSWR from "swr";
 import { useSettings } from "@/lib/settings/hooks";
 import { MinimalAgent } from "@/lib/agents/types";
 import Text from "@/refresh-components/texts/Text";
@@ -61,13 +62,20 @@ import useAppFocus from "@/hooks/useAppFocus";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
 import { useModalContext } from "@/components/context/ModalContext";
 import {
+  SvgBlocks,
+  SvgBookOpen,
   SvgDevKit,
   SvgEditBig,
+  SvgFileSmall,
+  SvgFiles,
+  SvgFolder,
   SvgFolderPlus,
   SvgMoreHorizontal,
   SvgOnyxOctagon,
   SvgSearchMenu,
   SvgSettings,
+  SvgSliders,
+  SvgWorkflow,
 } from "@opal/icons";
 import SidebarTabSkeleton from "@/refresh-components/skeletons/SidebarTabSkeleton";
 import BuildModeIntroBackground from "@/app/craft/components/IntroBackground";
@@ -80,6 +88,9 @@ import { dismissNotification } from "@/lib/notifications/api";
 import AccountPopover from "@/sections/sidebar/AccountPopover";
 import ChatSearchCommandMenu from "@/sections/sidebar/ChatSearchCommandMenu";
 import { useQueryController } from "@/providers/QueryControllerProvider";
+import { errorHandlingFetcher } from "@/lib/fetcher";
+import { PINNED_ARTIFACTS_URL } from "@/app/craft/v1/artifacts/api";
+import type { ArtifactLibraryItem } from "@/app/craft/v1/artifacts/types";
 
 // Visible-agents = pinned-agents + current-agent (if current-agent not in pinned-agents)
 // OR Visible-agents = pinned-agents (if current-agent in pinned-agents)
@@ -199,6 +210,7 @@ function RecentsSection({
 export default function AppSidebar() {
   const { folded } = useSidebarState();
   const router = useRouter();
+  const pathname = usePathname();
   const combinedSettingsData = useSettings();
   const { newTenantInfo, invitationInfo } = useModalContext();
   const { setAppMode, reset } = useQueryController();
@@ -218,6 +230,11 @@ export default function AppSidebar() {
     isLoading: isLoadingProjects,
   } = useProjects();
   const { isLoading: isLoadingAgents } = useAgents();
+  const { data: pinnedArtifacts = [] } = useSWR<ArtifactLibraryItem[]>(
+    PINNED_ARTIFACTS_URL,
+    errorHandlingFetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+  );
   const currentAgent = useCurrentAgent();
   const {
     pinnedAgents,
@@ -562,7 +579,7 @@ export default function AppSidebar() {
         folded={folded}
         variant={folded ? "sidebar-heavy" : "sidebar-light"}
       >
-        New Project
+        New Space
       </SidebarTab>
     ),
     [folded, createProjectModal.toggle, createProjectModal.isOpen]
@@ -601,7 +618,7 @@ export default function AppSidebar() {
   return (
     <>
       <createProjectModal.Provider>
-        <CreateProjectModal />
+        <CreateProjectModal terminology="space" />
       </createProjectModal.Provider>
 
       {showMoveCustomAgentModal && (
@@ -704,23 +721,94 @@ export default function AppSidebar() {
                 ]}
                 onDragEnd={handleChatProjectDragEnd}
               >
-                {/* Projects */}
+                {/* Spaces and durable artifacts */}
                 <SidebarLayouts.Section
-                  title="Projects"
+                  title="Workspace"
                   action={
                     <OpalButton
                       icon={SvgFolderPlus}
                       prominence="tertiary"
                       size="sm"
-                      tooltip="New Project"
+                      tooltip="New Space"
                       onClick={() => createProjectModal.toggle(true)}
                     />
                   }
                 >
+                  <SidebarTab
+                    icon={SvgFolder}
+                    folded={folded}
+                    href="/app/spaces"
+                    selected={pathname === "/app/spaces"}
+                  >
+                    Spaces
+                  </SidebarTab>
                   {projects.map((project) => (
                     <ProjectFolderButton key={project.id} project={project} />
                   ))}
                   {projects.length === 0 && newProjectButton}
+                  <SidebarTab
+                    icon={SvgFiles}
+                    folded={folded}
+                    href="/app/artifacts"
+                    selected={pathname === "/app/artifacts"}
+                  >
+                    Artifacts
+                  </SidebarTab>
+                  {!folded && pinnedArtifacts.length === 0 ? (
+                    <Text as="p" text01 className="px-3 py-1">
+                      No pinned artifacts
+                    </Text>
+                  ) : null}
+                  {pinnedArtifacts.map((artifact) => (
+                    <SidebarTab
+                      key={artifact.id}
+                      icon={SvgFileSmall}
+                      folded={folded}
+                      href={`/app/artifacts?artifactId=${artifact.id}`}
+                      variant="sidebar-light"
+                    >
+                      {artifact.name}
+                    </SidebarTab>
+                  ))}
+                </SidebarLayouts.Section>
+
+                <SidebarLayouts.Section>
+                  <SidebarTab
+                    icon={SvgSliders}
+                    folded={folded}
+                    href="/app/customize/skills"
+                    selected={pathname.startsWith("/app/customize")}
+                  >
+                    Customize
+                  </SidebarTab>
+                  {!folded ? (
+                    <>
+                      <SidebarTab
+                        icon={SvgBlocks}
+                        href="/app/customize/skills"
+                        selected={pathname === "/app/customize/skills"}
+                        variant="sidebar-light"
+                      >
+                        Skills
+                      </SidebarTab>
+                      <SidebarTab
+                        icon={SvgWorkflow}
+                        href="/app/customize/workflows"
+                        selected={pathname === "/app/customize/workflows"}
+                        variant="sidebar-light"
+                      >
+                        Workflows
+                      </SidebarTab>
+                      <SidebarTab
+                        icon={SvgBookOpen}
+                        href="/app/customize/memory"
+                        selected={pathname === "/app/customize/memory"}
+                        variant="sidebar-light"
+                      >
+                        Memory
+                      </SidebarTab>
+                    </>
+                  ) : null}
                 </SidebarLayouts.Section>
 
                 {/* Recents */}

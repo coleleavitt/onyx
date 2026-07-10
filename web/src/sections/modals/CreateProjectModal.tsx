@@ -12,28 +12,30 @@ import Modal from "@/refresh-components/Modal";
 import InputTypeInField from "@/refresh-components/form/InputTypeInField";
 import { toast } from "@/hooks/useToast";
 
-const validationSchema = Yup.object({
-  projectName: Yup.string().trim().required("Project name is required"),
-});
-
 interface CreateProjectModalProps {
   initialProjectName?: string;
+  terminology?: "project" | "space";
 }
 
 export default function CreateProjectModal({
   initialProjectName,
+  terminology = "project",
 }: CreateProjectModalProps) {
   const { createProject } = useProjectsContext();
   const modal = useModal();
   const route = useAppRouter();
+  const label = terminology === "space" ? "Space" : "Project";
+  const validationSchema = Yup.object({
+    projectName: Yup.string().trim().required(`${label} name is required`),
+  });
 
   return (
     <Modal open={modal.isOpen} onOpenChange={modal.toggle}>
       <Modal.Content width="sm">
         <Modal.Header
           icon={SvgFolderPlus}
-          title="Create New Project"
-          description="Use projects to organize your files and chats in one place, and add custom instructions for ongoing work."
+          title={`Create New ${label}`}
+          description={`${label}s keep related files, chats, collaborators, and instructions together.`}
           onClose={() => modal.toggle(false)}
         />
         <Formik
@@ -48,7 +50,7 @@ export default function CreateProjectModal({
               route({ projectId: newProject.id });
               modal.toggle(false);
             } catch {
-              toast.error(`Failed to create the project ${name}`);
+              toast.error(`Failed to create the ${terminology} ${name}`);
             } finally {
               setSubmitting(false);
             }
@@ -57,7 +59,7 @@ export default function CreateProjectModal({
           {({ isSubmitting, isValid }) => (
             <Form>
               <Modal.Body>
-                <InputVertical title="Project Name" withLabel="projectName">
+                <InputVertical title={`${label} Name`} withLabel="projectName">
                   <InputTypeInField
                     name="projectName"
                     placeholder="What are you working on?"
@@ -74,7 +76,7 @@ export default function CreateProjectModal({
                   Cancel
                 </Button>
                 <Button type="submit" disabled={isSubmitting || !isValid}>
-                  Create Project
+                  {`Create ${label}`}
                 </Button>
               </Modal.Footer>
             </Form>

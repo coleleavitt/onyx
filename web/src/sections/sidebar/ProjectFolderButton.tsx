@@ -92,7 +92,7 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
         sizePreset="main-ui"
         rounding="sm"
         icon={SvgEdit}
-        title="Rename Project"
+        title="Rename Space"
         onClick={noProp(() => setIsEditing(true))}
       />
     ) : null,
@@ -104,7 +104,7 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
         rounding="sm"
         color="danger"
         icon={SvgTrash}
-        title="Delete Project"
+        title="Delete Space"
         onClick={noProp(() => setDeleteConfirmationModalOpen(true))}
       />
     ) : null,
@@ -121,7 +121,7 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
       {/* Confirmation Modal (only for deletion) */}
       {isOwner && deleteConfirmationModalOpen && (
         <ConfirmationModalLayout
-          title="Delete Project"
+          title="Delete Space"
           icon={SvgTrash}
           onClose={() => setDeleteConfirmationModalOpen(false)}
           submit={
@@ -136,7 +136,7 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
             </Button>
           }
         >
-          Are you sure you want to delete this project? This action cannot be
+          Are you sure you want to delete this space? This action cannot be
           undone.
         </ConfirmationModalLayout>
       )}

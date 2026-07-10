@@ -45,6 +45,7 @@ interface SidebarRootProps {
 function SidebarRoot({ foldable = false, children }: SidebarRootProps) {
   const { isMobile, isMediumScreen } = useScreenSize();
   const { folded, setFolded } = useSidebarState();
+  const wasCompactRef = useRef(false);
 
   const closeSidebar = useCallback(() => setFolded(true), [setFolded]);
 
@@ -53,6 +54,14 @@ function SidebarRoot({ foldable = false, children }: SidebarRootProps) {
       setFolded(false);
     }
   }, [isMobile, isMediumScreen, foldable, setFolded]);
+
+  useEffect(() => {
+    const compact = isMobile || isMediumScreen;
+    if (compact && !wasCompactRef.current) {
+      setFolded(true);
+    }
+    wasCompactRef.current = compact;
+  }, [isMediumScreen, isMobile, setFolded]);
 
   const foldedAttr = String(folded);
   const inner = <div className="opal-sidebar-root__inner">{children}</div>;

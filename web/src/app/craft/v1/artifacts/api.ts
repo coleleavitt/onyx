@@ -5,6 +5,7 @@ import type {
 } from "@/app/craft/v1/artifacts/types";
 
 const BASE_URL = "/api/build/artifact-library";
+export const PINNED_ARTIFACTS_URL = `${BASE_URL}?scope=all&pinned=true&limit=5`;
 
 async function checkedJson<T>(
   response: Response,
@@ -54,7 +55,7 @@ export async function saveArtifactVersion(
 
 export async function updateArtifactLibraryItem(
   itemId: string,
-  update: { name?: string; is_pinned?: boolean; published?: boolean }
+  update: { name?: string; published?: boolean }
 ): Promise<ArtifactLibraryItem> {
   return checkedJson<ArtifactLibraryItem>(
     await fetch(`${BASE_URL}/${itemId}`, {
@@ -64,6 +65,31 @@ export async function updateArtifactLibraryItem(
     }),
     "Failed to update artifact"
   );
+}
+
+export async function setArtifactLibraryPin(
+  itemId: string,
+  pinned: boolean
+): Promise<ArtifactLibraryItem> {
+  return checkedJson<ArtifactLibraryItem>(
+    await fetch(`${BASE_URL}/${itemId}/pin`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pinned }),
+    }),
+    "Failed to update artifact pin"
+  );
+}
+
+export async function removeSharedArtifact(itemId: string): Promise<void> {
+  const response = await fetch(`${BASE_URL}/${itemId}/shared`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(
+      await parseErrorDetail(response, "Failed to remove shared artifact")
+    );
+  }
 }
 
 export async function updateArtifactLibraryShares(
