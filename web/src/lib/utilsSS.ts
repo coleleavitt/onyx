@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { HOST_URL, INTERNAL_URL } from "./constants";
 import { processCookies } from "@/lib/users/svcSS";
 
@@ -59,15 +59,20 @@ export class UrlBuilder {
 
 export async function fetchSS(url: string, options?: RequestInit) {
   const cookieString = processCookies(await cookies());
+  const incomingHeaders = await headers();
+  const requestHostname =
+    incomingHeaders.get("x-forwarded-host") ?? incomingHeaders.get("host");
+  const outgoingHeaders = new Headers(options?.headers);
+  outgoingHeaders.set("cookie", cookieString);
+  if (requestHostname && !outgoingHeaders.has("x-forwarded-host")) {
+    outgoingHeaders.set("x-forwarded-host", requestHostname);
+  }
 
   const init: RequestInit = {
     credentials: "include",
     cache: "no-store",
     ...options,
-    headers: {
-      ...options?.headers,
-      cookie: cookieString,
-    },
+    headers: outgoingHeaders,
   };
 
   return fetch(buildUrl(url), init);

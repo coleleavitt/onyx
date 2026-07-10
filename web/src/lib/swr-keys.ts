@@ -17,6 +17,7 @@ export const SWR_KEYS = {
   // ── Settings ──────────────────────────────────────────────────────────────
   settings: "/api/settings",
   enterpriseSettings: "/api/enterprise-settings",
+  adminEnterpriseSettings: "/api/admin/enterprise-settings",
   customAnalyticsScript: "/api/enterprise-settings/custom-analytics-script",
   authType: "/api/auth/type",
   adminSecuritySettings: "/api/admin/security",

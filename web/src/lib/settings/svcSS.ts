@@ -1,6 +1,6 @@
 import {
   CombinedSettings,
-  EnterpriseSettings,
+  ResolvedEnterpriseSettings,
   ApplicationStatus,
   Settings,
   QueryHistoryType,
@@ -23,7 +23,7 @@ export async function fetchStandardSettingsSS(): Promise<Settings | null> {
   }
 }
 
-export async function fetchEnterpriseSettingsSS(): Promise<EnterpriseSettings | null> {
+export async function fetchEnterpriseSettingsSS(): Promise<ResolvedEnterpriseSettings | null> {
   try {
     const response = await fetchSS("/enterprise-settings");
     if (!response?.ok) return null;
@@ -90,7 +90,7 @@ export async function fetchSettingsSS(): Promise<CombinedSettings | null> {
       settings = await settingsResponse.json();
     }
 
-    let enterpriseSettings: EnterpriseSettings | null = null;
+    let enterpriseSettings: ResolvedEnterpriseSettings | null = null;
     if (enterpriseResponse) {
       if (enterpriseResponse.ok) {
         enterpriseSettings = await enterpriseResponse.json();

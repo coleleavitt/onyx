@@ -118,11 +118,19 @@ export interface NavigationItem {
   title: string;
 }
 
-export interface EnterpriseSettings {
+export interface BrandAppearanceSettings {
   application_name: string | null;
   use_custom_logo: boolean;
+  use_custom_dark_logo: boolean;
+  use_custom_favicon: boolean;
+  use_custom_wordmark: boolean;
+  use_custom_dark_wordmark: boolean;
   use_custom_logotype: boolean;
   logo_display_style: "logo_and_name" | "logo_only" | "name_only" | null;
+  accent_color: string | null;
+  login_background_color: string | null;
+  login_background_url: string | null;
+  login_subtitle: string | null;
 
   // custom navigation
   custom_nav_items: NavigationItem[];
@@ -146,6 +154,30 @@ export interface EnterpriseSettings {
   hide_onyx_branding: boolean | null;
 }
 
+export interface BrandProfile extends BrandAppearanceSettings {
+  id: string;
+  name: string;
+  hostnames: string[];
+}
+
+export type BrandAssetKind =
+  | "logo"
+  | "dark_logo"
+  | "favicon"
+  | "wordmark"
+  | "dark_wordmark";
+
+export interface EnterpriseSettings extends BrandAppearanceSettings {
+  brand_profiles: BrandProfile[];
+  default_brand_id: string | null;
+}
+
+export interface ResolvedEnterpriseSettings extends BrandAppearanceSettings {
+  brand_id: string | null;
+  brand_name: string | null;
+  resolved_hostname: string | null;
+}
+
 /**
  * Combined settings shape returned by the server-side `fetchSettingsSS`
  * helper in `lib/settings/svcSS.ts`. Used only for SSR — client
@@ -153,7 +185,7 @@ export interface EnterpriseSettings {
  */
 export interface CombinedSettings {
   settings: Settings;
-  enterpriseSettings: EnterpriseSettings | null;
+  enterpriseSettings: ResolvedEnterpriseSettings | null;
   customAnalyticsScript: string | null;
   webVersion: string | null;
   webDomain: string | null;
@@ -167,6 +199,11 @@ export interface CombinedSettings {
 export function toSettings({
   enterprise: _enterprise,
   appName: _appName,
+  logoUrl: _logoUrl,
+  darkLogoUrl: _darkLogoUrl,
+  faviconUrl: _faviconUrl,
+  wordmarkUrl: _wordmarkUrl,
+  darkWordmarkUrl: _darkWordmarkUrl,
   vectorDbEnabled: _vectorDbEnabled,
   isLoading: _isLoading,
   error: _error,
@@ -184,7 +221,7 @@ export function toSettings({
  */
 export interface AppSettings extends Settings {
   /** Raw enterprise settings — null when EE is disabled or not yet loaded. */
-  enterprise: EnterpriseSettings | null;
+  enterprise: ResolvedEnterpriseSettings | null;
   /** Resolved display name: enterprise.application_name || "Onyx". */
   appName: string;
   /**
@@ -194,6 +231,10 @@ export interface AppSettings extends Settings {
    * new logo.
    */
   logoUrl: string | null;
+  darkLogoUrl: string | null;
+  faviconUrl: string | null;
+  wordmarkUrl: string | null;
+  darkWordmarkUrl: string | null;
   /** False when DISABLE_VECTOR_DB is set server-side. */
   vectorDbEnabled: boolean;
   isLoading: boolean;

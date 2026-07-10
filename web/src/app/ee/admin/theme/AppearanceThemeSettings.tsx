@@ -30,6 +30,7 @@ import { Tier } from "@/lib/settings/types";
 import { planTagProps } from "@/lib/tier-badge";
 
 interface AppearanceThemeSettingsProps {
+  brandId: string | null;
   selectedLogo: File | null;
   setSelectedLogo: (file: File | null) => void;
   logoVersion: number;
@@ -52,7 +53,7 @@ export const AppearanceThemeSettings = forwardRef<
   AppearanceThemeSettingsRef,
   AppearanceThemeSettingsProps
 >(function AppearanceThemeSettings(
-  { selectedLogo, setSelectedLogo, logoVersion, charLimits },
+  { brandId, selectedLogo, setSelectedLogo, logoVersion, charLimits },
   ref
 ) {
   const { values, errors, setFieldValue } = useFormikContext<any>();
@@ -189,10 +190,12 @@ export const AppearanceThemeSettings = forwardRef<
       return logoObjectUrl;
     }
     if (values.use_custom_logo) {
-      return `/api/enterprise-settings/logo?v=${logoVersion}`;
+      const params = new URLSearchParams({ v: String(logoVersion) });
+      if (brandId) params.set("brand_id", brandId);
+      return `/api/admin/enterprise-settings/brand-assets/logo?${params}`;
     }
     return undefined;
-  }, [logoObjectUrl, values.use_custom_logo, logoVersion]);
+  }, [brandId, logoObjectUrl, values.use_custom_logo, logoVersion]);
 
   // Determine which tabs should be enabled
   const hasLogo = Boolean(selectedLogo || values.use_custom_logo);
@@ -220,7 +223,7 @@ export const AppearanceThemeSettings = forwardRef<
         style={{ display: "none" }}
       />
 
-      <div className="flex gap-10 items-center">
+      <div className="flex flex-col items-stretch gap-6 md:flex-row md:items-center md:gap-10">
         <div className="flex flex-col gap-4 w-full">
           <FormField state={errors.application_name ? "error" : "idle"}>
             <FormField.Label

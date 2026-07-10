@@ -8,8 +8,8 @@ import { SWR_KEYS } from "@/lib/swr-keys";
 import {
   ApplicationStatus,
   AppSettings,
-  EnterpriseSettings,
   QueryHistoryType,
+  ResolvedEnterpriseSettings,
   Settings,
 } from "@/lib/settings/types";
 import { enterpriseFeaturesAvailable } from "@/lib/settings/featureAvailability";
@@ -52,17 +52,23 @@ export function useSettings(): AppSettings {
   });
 
   const core = rawSettings ?? DEFAULT_SETTINGS;
-  const shouldFetchEnterprise = enterpriseFeaturesAvailable({
-    isLoading: settingsLoading,
-    error: settingsError,
-    enabled: core.ee_features_enabled,
-  });
+  // Enterprise appearance settings are public so login and password-reset
+  // surfaces can resolve branding before the authenticated core settings call
+  // succeeds. Once core settings load, preserve the normal CE/EE gate.
+  const shouldFetchEnterprise =
+    settingsLoading || settingsError
+      ? true
+      : enterpriseFeaturesAvailable({
+          isLoading: false,
+          error: undefined,
+          enabled: core.ee_features_enabled,
+        });
 
   const {
     data: enterprise,
     error: enterpriseError,
     isLoading: enterpriseLoading,
-  } = useSWR<EnterpriseSettings>(
+  } = useSWR<ResolvedEnterpriseSettings>(
     shouldFetchEnterprise ? SWR_KEYS.enterpriseSettings : null,
     errorHandlingFetcher,
     {
@@ -91,6 +97,18 @@ export function useSettings(): AppSettings {
     appName: enterprise?.application_name?.trim() || "Onyx",
     logoUrl: enterprise?.use_custom_logo
       ? `/api/enterprise-settings/logo?v=${logoBuster}`
+      : null,
+    darkLogoUrl: enterprise?.use_custom_dark_logo
+      ? `/api/enterprise-settings/brand-assets/dark_logo?v=${logoBuster}`
+      : null,
+    faviconUrl: enterprise?.use_custom_favicon
+      ? `/api/enterprise-settings/favicon?v=${logoBuster}`
+      : null,
+    wordmarkUrl: enterprise?.use_custom_wordmark
+      ? `/api/enterprise-settings/brand-assets/wordmark?v=${logoBuster}`
+      : null,
+    darkWordmarkUrl: enterprise?.use_custom_dark_wordmark
+      ? `/api/enterprise-settings/brand-assets/dark_wordmark?v=${logoBuster}`
       : null,
     vectorDbEnabled:
       !settingsLoading && !settingsError && core.vector_db_enabled !== false,

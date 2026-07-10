@@ -4,15 +4,18 @@ from typing import Any
 from typing import cast
 from typing import IO
 
-from fastapi import HTTPException
 from fastapi import UploadFile
 
 from ee.onyx.server.enterprise_settings.models import AnalyticsScriptUpload
+from ee.onyx.server.enterprise_settings.models import BrandAssetKind
 from ee.onyx.server.enterprise_settings.models import EnterpriseSettings
+from ee.onyx.server.enterprise_settings.models import normalize_brand_id
 from onyx.configs.constants import FileOrigin
 from onyx.configs.constants import KV_CUSTOM_ANALYTICS_SCRIPT_KEY
 from onyx.configs.constants import KV_ENTERPRISE_SETTINGS_KEY
 from onyx.configs.constants import ONYX_DEFAULT_APPLICATION_NAME
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import get_default_file_store
 from onyx.key_value_store.factory import get_kv_store
 from onyx.key_value_store.interface import KvKeyNotFoundError
@@ -22,6 +25,9 @@ logger = setup_logger()
 
 _LOGO_FILENAME = "__logo__"
 _LOGOTYPE_FILENAME = "__logotype__"
+_FAVICON_FILENAME = "__favicon__"
+_DARK_LOGO_FILENAME = "__dark_logo__"
+_DARK_WORDMARK_FILENAME = "__dark_wordmark__"
 
 
 def load_settings() -> EnterpriseSettings:
@@ -85,8 +91,8 @@ def store_analytics_script(analytics_script_upload: AnalyticsScriptUpload) -> No
 
 
 def is_valid_file_type(filename: str) -> bool:
-    valid_extensions = (".png", ".jpg", ".jpeg")
-    return filename.endswith(valid_extensions)
+    valid_extensions = (".png", ".jpg", ".jpeg", ".webp", ".ico")
+    return filename.lower().endswith(valid_extensions)
 
 
 def guess_file_type(filename: str) -> str:
@@ -94,18 +100,42 @@ def guess_file_type(filename: str) -> str:
         return "image/png"
     elif filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"):
         return "image/jpeg"
+    elif filename.lower().endswith(".webp"):
+        return "image/webp"
+    elif filename.lower().endswith(".ico"):
+        return "image/x-icon"
     return "application/octet-stream"
 
 
-def upload_logo(file: UploadFile | str, is_logotype: bool = False) -> bool:
+def get_brand_asset_filename(
+    asset_kind: BrandAssetKind, brand_id: str | None = None
+) -> str:
+    if brand_id:
+        normalized_brand_id = normalize_brand_id(brand_id)
+        return f"__brand_{normalized_brand_id}_{asset_kind.value}__"
+
+    default_filenames = {
+        BrandAssetKind.LOGO: _LOGO_FILENAME,
+        BrandAssetKind.DARK_LOGO: _DARK_LOGO_FILENAME,
+        BrandAssetKind.FAVICON: _FAVICON_FILENAME,
+        # Keep the original file id so existing single-brand logotypes remain valid.
+        BrandAssetKind.WORDMARK: _LOGOTYPE_FILENAME,
+        BrandAssetKind.DARK_WORDMARK: _DARK_WORDMARK_FILENAME,
+    }
+    return default_filenames[asset_kind]
+
+
+def upload_brand_asset(
+    file: UploadFile | str,
+    asset_kind: BrandAssetKind,
+    brand_id: str | None = None,
+) -> bool:
     content: IO[Any]
 
     if isinstance(file, str):
         logger.notice("Uploading logo from local path %s", file)
         if not os.path.isfile(file) or not is_valid_file_type(file):
-            logger.error(
-                "Invalid file type- only .png, .jpg, and .jpeg files are allowed"
-            )
+            logger.error("Invalid brand asset file type")
             return False
 
         with open(file, "rb") as file_handle:
@@ -117,9 +147,9 @@ def upload_logo(file: UploadFile | str, is_logotype: bool = False) -> bool:
     else:
         logger.notice("Uploading logo from uploaded file")
         if not file.filename or not is_valid_file_type(file.filename):
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid file type- only .png, .jpg, and .jpeg files are allowed",
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT,
+                "Brand assets must be PNG, JPEG, WebP, or ICO files.",
             )
         content = file.file
         display_name = file.filename
@@ -131,14 +161,19 @@ def upload_logo(file: UploadFile | str, is_logotype: bool = False) -> bool:
         display_name=display_name,
         file_origin=FileOrigin.OTHER,
         file_type=file_type,
-        file_id=_LOGOTYPE_FILENAME if is_logotype else _LOGO_FILENAME,
+        file_id=get_brand_asset_filename(asset_kind, brand_id),
     )
     return True
 
 
+def upload_logo(file: UploadFile | str, is_logotype: bool = False) -> bool:
+    asset_kind = BrandAssetKind.WORDMARK if is_logotype else BrandAssetKind.LOGO
+    return upload_brand_asset(file=file, asset_kind=asset_kind)
+
+
 def get_logo_filename() -> str:
-    return _LOGO_FILENAME
+    return get_brand_asset_filename(BrandAssetKind.LOGO)
 
 
 def get_logotype_filename() -> str:
-    return _LOGOTYPE_FILENAME
+    return get_brand_asset_filename(BrandAssetKind.WORDMARK)

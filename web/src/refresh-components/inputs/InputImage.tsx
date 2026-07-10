@@ -118,6 +118,9 @@ export interface InputImageProps {
 
   // Size control
   size?: number;
+  width?: number;
+  height?: number;
+  shape?: "circle" | "rounded";
 
   className?: string;
 }
@@ -132,6 +135,9 @@ export default function InputImage({
   onDropRejected,
   showEditOverlay = true,
   size = 120,
+  width,
+  height,
+  shape = "circle",
   className,
 }: InputImageProps) {
   const isInteractive = !disabled && (onEdit || onDrop);
@@ -177,7 +183,7 @@ export default function InputImage({
     <Hoverable.Root group="inputImage" width="fit">
       <div
         className={cn("relative", className)}
-        style={{ width: size, height: size }}
+        style={{ width: width ?? size, height: height ?? size }}
         {...dropzoneProps}
       >
         {/* Hidden input for file selection */}
@@ -189,7 +195,8 @@ export default function InputImage({
           onClick={handleClick}
           disabled={disabled}
           className={cn(
-            "group relative w-full h-full rounded-full overflow-hidden",
+            "group relative w-full h-full overflow-hidden",
+            shape === "circle" ? "rounded-full" : "rounded-08",
             "border flex items-center justify-center",
             "transition-all duration-150",
             containerClass
@@ -207,7 +214,10 @@ export default function InputImage({
             <img
               src={src}
               alt={alt}
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+              className={cn(
+                "absolute inset-0 w-full h-full pointer-events-none",
+                shape === "circle" ? "object-cover" : "object-contain p-2"
+              )}
             />
           ) : (
             <SvgPlus
@@ -217,7 +227,12 @@ export default function InputImage({
 
           {/* Drag overlay indicator */}
           {isDragActive && (
-            <div className="absolute inset-0 bg-action-link-05/10 flex items-center justify-center rounded-full pointer-events-none">
+            <div
+              className={cn(
+                "absolute inset-0 bg-action-link-05/10 flex items-center justify-center pointer-events-none",
+                shape === "circle" ? "rounded-full" : "rounded-08"
+              )}
+            >
               <SvgPlus className="w-8 h-8 stroke-action-link-05" />
             </div>
           )}

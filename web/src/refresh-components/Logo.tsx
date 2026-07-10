@@ -9,6 +9,7 @@ import { cn } from "@opal/utils";
 import Text from "@/refresh-components/texts/Text";
 import Truncated from "@/refresh-components/texts/Truncated";
 import { SvgOnyxLogo, SvgOnyxLogoTyped } from "@opal/logos";
+import { useTheme } from "next-themes";
 
 export interface LogoProps {
   folded?: boolean;
@@ -26,9 +27,15 @@ export default function Logo({
   onyxBranded,
 }: LogoProps) {
   const resolvedSize = size ?? DEFAULT_LOGO_SIZE_PX;
-  const { enterprise, logoUrl } = useSettings();
+  const { enterprise, logoUrl, darkLogoUrl, wordmarkUrl, darkWordmarkUrl } =
+    useSettings();
+  const { resolvedTheme } = useTheme();
   const logoDisplayStyle = enterprise?.logo_display_style;
   const applicationName = enterprise?.application_name;
+  const resolvedLogoUrl =
+    resolvedTheme === "dark" && darkLogoUrl ? darkLogoUrl : logoUrl;
+  const resolvedWordmarkUrl =
+    resolvedTheme === "dark" && darkWordmarkUrl ? darkWordmarkUrl : wordmarkUrl;
 
   if (onyxBranded) {
     return folded ? (
@@ -38,7 +45,7 @@ export default function Logo({
     );
   }
 
-  const logo = logoUrl ? (
+  const logo = resolvedLogoUrl ? (
     <div
       className={cn(
         "aspect-square rounded-full overflow-hidden relative shrink-0",
@@ -49,13 +56,27 @@ export default function Logo({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         alt="Logo"
-        src={logoUrl}
+        src={resolvedLogoUrl}
         className="object-cover object-center w-full h-full"
       />
     </div>
   ) : (
     <SvgOnyxLogo size={resolvedSize} className={cn("shrink-0", className)} />
   );
+
+  const wordmark = resolvedWordmarkUrl ? (
+    <div
+      className={cn("relative min-w-0 shrink", className)}
+      style={{ height: resolvedSize, width: Math.min(resolvedSize * 6, 180) }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        alt={applicationName || "Application logo"}
+        src={resolvedWordmarkUrl}
+        className="h-full w-full object-contain object-left"
+      />
+    </div>
+  ) : null;
 
   const renderNameAndPoweredBy = (opts: {
     includeLogo: boolean;
@@ -89,6 +110,19 @@ export default function Logo({
 
   // Handle "logo_only" display style
   if (logoDisplayStyle === "logo_only") {
+    if (!folded && wordmark) {
+      return (
+        <div className="flex min-w-0 flex-col gap-1">
+          {wordmark}
+          {!NEXT_PUBLIC_DO_NOT_USE_TOGGLE_OFF_DANSWER_POWERED &&
+            !enterprise?.hide_onyx_branding && (
+              <Text secondaryBody text03 className="truncate" nowrap>
+                Powered by Onyx
+              </Text>
+            )}
+        </div>
+      );
+    }
     return renderNameAndPoweredBy({ includeLogo: true, includeName: false });
   }
 

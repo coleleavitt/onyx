@@ -17,7 +17,9 @@ export async function generateFaviconMetadata(): Promise<Metadata["icons"]> {
 
   if (SERVER_SIDE_ONLY__PAID_ENTERPRISE_FEATURES_ENABLED) {
     const enterprise = await fetchEnterpriseSettingsSS();
-    if (enterprise?.use_custom_logo) {
+    if (enterprise?.use_custom_favicon) {
+      iconSrc = "/api/enterprise-settings/favicon";
+    } else if (enterprise?.use_custom_logo) {
       iconSrc = "/api/enterprise-settings/logo";
     }
   }
@@ -27,4 +29,10 @@ export async function generateFaviconMetadata(): Promise<Metadata["icons"]> {
 
 export async function generateAdminTitleMetadata(): Promise<Metadata["title"]> {
   return `Admin — ${await fetchAppName()}`;
+}
+
+export async function generateApplicationTitleMetadata(): Promise<
+  Metadata["title"]
+> {
+  return fetchAppName();
 }

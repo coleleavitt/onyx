@@ -6,6 +6,7 @@ import httpx
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Request
 from fastapi import Response
 from fastapi import status
 from fastapi import UploadFile
@@ -15,14 +16,16 @@ from sqlalchemy.orm import Session
 
 from ee.onyx.db.scim import ScimDAL
 from ee.onyx.server.enterprise_settings.models import AnalyticsScriptUpload
+from ee.onyx.server.enterprise_settings.models import BrandAssetKind
 from ee.onyx.server.enterprise_settings.models import EnterpriseSettings
-from ee.onyx.server.enterprise_settings.store import get_logo_filename
-from ee.onyx.server.enterprise_settings.store import get_logotype_filename
+from ee.onyx.server.enterprise_settings.models import ResolvedEnterpriseSettings
+from ee.onyx.server.enterprise_settings.resolver import resolve_settings_for_hostname
+from ee.onyx.server.enterprise_settings.store import get_brand_asset_filename
 from ee.onyx.server.enterprise_settings.store import load_analytics_script
 from ee.onyx.server.enterprise_settings.store import load_settings
 from ee.onyx.server.enterprise_settings.store import store_analytics_script
 from ee.onyx.server.enterprise_settings.store import store_settings
-from ee.onyx.server.enterprise_settings.store import upload_logo
+from ee.onyx.server.enterprise_settings.store import upload_brand_asset
 from ee.onyx.server.scim.auth import generate_scim_token
 from ee.onyx.server.scim.models import ScimTokenCreate
 from ee.onyx.server.scim.models import ScimTokenCreatedResponse
@@ -156,37 +159,75 @@ def admin_ee_put_settings(
     store_settings(settings)
 
 
+@admin_router.get("")
+def admin_ee_fetch_settings(
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+) -> EnterpriseSettings:
+    return load_settings()
+
+
+def _get_request_hostname(request: Request) -> str | None:
+    return request.headers.get("x-forwarded-host") or request.headers.get("host")
+
+
 @basic_router.get("")
-def ee_fetch_settings() -> EnterpriseSettings:
+def ee_fetch_settings(request: Request) -> ResolvedEnterpriseSettings:
     if MULTI_TENANT:
         tenant_id = get_current_tenant_id()
         if not tenant_id or tenant_id == POSTGRES_DEFAULT_SCHEMA:
             raise BasicAuthenticationError(detail="User must authenticate")
 
-    return load_settings()
+    return resolve_settings_for_hostname(
+        load_settings(), _get_request_hostname(request)
+    )
 
 
 @admin_router.put("/logo")
 def put_logo(
     file: UploadFile,
     is_logotype: bool = False,
+    brand_id: str | None = None,
     _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
 ) -> None:
-    upload_logo(file=file, is_logotype=is_logotype)
+    asset_kind = BrandAssetKind.WORDMARK if is_logotype else BrandAssetKind.LOGO
+    _validate_brand_id_exists(brand_id)
+    upload_brand_asset(file=file, asset_kind=asset_kind, brand_id=brand_id)
 
 
-def fetch_logo_helper(db_session: Session) -> Response:  # noqa: ARG001
+def _validate_brand_id_exists(brand_id: str | None) -> None:
+    if brand_id is None:
+        return
+    if not any(profile.id == brand_id for profile in load_settings().brand_profiles):
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Brand profile not found")
+
+
+@admin_router.put("/brand-assets/{asset_kind}")
+def put_brand_asset(
+    asset_kind: BrandAssetKind,
+    file: UploadFile,
+    brand_id: str | None = None,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+) -> None:
+    _validate_brand_id_exists(brand_id)
+    upload_brand_asset(file=file, asset_kind=asset_kind, brand_id=brand_id)
+
+
+def _fetch_brand_asset_by_id(
+    asset_kind: BrandAssetKind,
+    brand_id: str | None,
+    db_session: Session,  # noqa: ARG001
+) -> Response:
+    filename = get_brand_asset_filename(asset_kind, brand_id)
     try:
         file_store = get_default_file_store()
-        onyx_file = file_store.get_file_with_mime_type(get_logo_filename())
+        onyx_file = file_store.get_file_with_mime_type(filename)
         if not onyx_file:
-            raise ValueError("get_onyx_file returned None!")
+            raise OnyxError(OnyxErrorCode.NOT_FOUND, "Brand asset not found")
+    except OnyxError:
+        raise
     except Exception:
-        logger.exception("Faield to fetch logo file")
-        raise HTTPException(
-            status_code=404,
-            detail="No logo file found",
-        )
+        logger.exception("Failed to fetch brand asset %s", filename)
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Brand asset not found")
     else:
         return Response(
             content=onyx_file.data,
@@ -195,34 +236,59 @@ def fetch_logo_helper(db_session: Session) -> Response:  # noqa: ARG001
         )
 
 
-def fetch_logotype_helper(db_session: Session) -> Response:  # noqa: ARG001
-    try:
-        file_store = get_default_file_store()
-        onyx_file = file_store.get_file_with_mime_type(get_logotype_filename())
-        if not onyx_file:
-            raise ValueError("get_onyx_file returned None!")
-    except Exception:
-        raise HTTPException(
-            status_code=404,
-            detail="No logotype file found",
-        )
-    else:
-        return Response(content=onyx_file.data, media_type=onyx_file.mime_type)
+@admin_router.get("/brand-assets/{asset_kind}")
+def admin_fetch_brand_asset(
+    asset_kind: BrandAssetKind,
+    brand_id: str | None = None,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> Response:
+    _validate_brand_id_exists(brand_id)
+    return _fetch_brand_asset_by_id(asset_kind, brand_id, db_session)
+
+
+def fetch_brand_asset_helper(
+    request: Request,
+    asset_kind: BrandAssetKind,
+    db_session: Session,
+) -> Response:
+    resolved = resolve_settings_for_hostname(
+        load_settings(), _get_request_hostname(request)
+    )
+    return _fetch_brand_asset_by_id(asset_kind, resolved.brand_id, db_session)
+
+
+@basic_router.get("/brand-assets/{asset_kind}")
+def fetch_brand_asset(
+    asset_kind: BrandAssetKind,
+    request: Request,
+    db_session: Session = Depends(get_session),
+) -> Response:
+    return fetch_brand_asset_helper(request, asset_kind, db_session)
 
 
 @basic_router.get("/logotype")
-def fetch_logotype(db_session: Session = Depends(get_session)) -> Response:
-    return fetch_logotype_helper(db_session)
+def fetch_logotype(
+    request: Request, db_session: Session = Depends(get_session)
+) -> Response:
+    return fetch_brand_asset_helper(request, BrandAssetKind.WORDMARK, db_session)
 
 
 @basic_router.get("/logo")
 def fetch_logo(
-    is_logotype: bool = False, db_session: Session = Depends(get_session)
+    request: Request,
+    is_logotype: bool = False,
+    db_session: Session = Depends(get_session),
 ) -> Response:
-    if is_logotype:
-        return fetch_logotype_helper(db_session)
+    asset_kind = BrandAssetKind.WORDMARK if is_logotype else BrandAssetKind.LOGO
+    return fetch_brand_asset_helper(request, asset_kind, db_session)
 
-    return fetch_logo_helper(db_session)
+
+@basic_router.get("/favicon")
+def fetch_favicon(
+    request: Request, db_session: Session = Depends(get_session)
+) -> Response:
+    return fetch_brand_asset_helper(request, BrandAssetKind.FAVICON, db_session)
 
 
 @admin_router.put("/custom-analytics-script")

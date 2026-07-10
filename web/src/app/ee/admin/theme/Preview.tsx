@@ -266,7 +266,7 @@ export default function Preview({
   highlightTarget,
 }: PreviewProps) {
   return (
-    <div className={cn("grid grid-cols-2 gap-2", className)}>
+    <div className={cn("grid grid-cols-1 gap-2 md:grid-cols-2", className)}>
       <PreviewStart
         logoDisplayStyle={logoDisplayStyle}
         applicationDisplayName={applicationDisplayName}

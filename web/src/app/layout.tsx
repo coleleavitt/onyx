@@ -2,7 +2,10 @@ import "./globals.css";
 
 import type { Metadata } from "next";
 import { GTM_ENABLED, MODAL_ROOT_ID } from "@/lib/constants";
-import { generateFaviconMetadata } from "@/lib/app/svcSS";
+import {
+  generateApplicationTitleMetadata,
+  generateFaviconMetadata,
+} from "@/lib/app/svcSS";
 import AppProvider from "@/providers/AppProvider";
 import { PHProvider } from "./providers";
 import {
@@ -22,6 +25,7 @@ import LicenseExpiryBanner from "@/sections/banners/LicenseExpiryBanner";
 import { AuthenticationShell } from "@/lib/auth/components";
 import ProductGatingWrapper from "@/providers/ProductGatingWrapper";
 import SWRConfigProvider from "@/providers/SWRConfigProvider";
+import BrandThemeProvider from "@/providers/BrandThemeProvider";
 
 const hankenGrotesk = Hanken_Grotesk({
   subsets: ["latin"],
@@ -57,7 +61,11 @@ const dmMono = DM_Mono({
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return { icons: await generateFaviconMetadata() };
+  const [icons, title] = await Promise.all([
+    generateFaviconMetadata(),
+    generateApplicationTitleMetadata(),
+  ]);
+  return { icons, title };
 }
 
 interface LayoutProps {
@@ -123,22 +131,26 @@ export default function Layout({ children }: LayoutProps) {
             <TooltipProvider>
               <PHProvider>
                 <SWRConfigProvider>
-                  <AppHealthBanner />
-                  <LicenseExpiryBanner />
-                  <AuthenticationShell>
-                    <AppProvider>
-                      <PostHogRuntimeInitializer />
-                      <CustomAnalyticsScript />
-                      <PostHogPageTracker />
-                      <div id={MODAL_ROOT_ID} className="h-screen w-screen">
-                        <ProductGatingWrapper>{children}</ProductGatingWrapper>
-                      </div>
-                      <WebVitals />
-                      {process.env.NEXT_PUBLIC_ENABLE_STATS === "true" && (
-                        <StatsOverlayLoader />
-                      )}
-                    </AppProvider>
-                  </AuthenticationShell>
+                  <BrandThemeProvider>
+                    <AppHealthBanner />
+                    <LicenseExpiryBanner />
+                    <AuthenticationShell>
+                      <AppProvider>
+                        <PostHogRuntimeInitializer />
+                        <CustomAnalyticsScript />
+                        <PostHogPageTracker />
+                        <div id={MODAL_ROOT_ID} className="h-screen w-screen">
+                          <ProductGatingWrapper>
+                            {children}
+                          </ProductGatingWrapper>
+                        </div>
+                        <WebVitals />
+                        {process.env.NEXT_PUBLIC_ENABLE_STATS === "true" && (
+                          <StatsOverlayLoader />
+                        )}
+                      </AppProvider>
+                    </AuthenticationShell>
+                  </BrandThemeProvider>
                 </SWRConfigProvider>
               </PHProvider>
             </TooltipProvider>
