@@ -1993,13 +1993,15 @@ export function createConnectorValidationSchema(
             ? Yup.string()
             : field.type === "list"
               ? Yup.array().of(Yup.string())
-              : field.type === "multiselect"
+              : field.type === "sharepoint_sites"
                 ? Yup.array().of(Yup.string())
-                : field.type === "checkbox"
-                  ? Yup.boolean()
-                  : field.type === "file"
-                    ? Yup.mixed()
-                    : Yup.string();
+                : field.type === "multiselect"
+                  ? Yup.array().of(Yup.string())
+                  : field.type === "checkbox"
+                    ? Yup.boolean()
+                    : field.type === "file"
+                      ? Yup.mixed()
+                      : Yup.string();
 
         if (!field.optional) {
           schema = schema.required(`${field.label} is required`);
