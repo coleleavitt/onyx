@@ -13,8 +13,6 @@ import { RootLayout, RootLayoutRightPanelSlotContext } from "@opal/layouts";
 import { cn, markdown } from "@opal/utils";
 import { INTERACTIVE_SELECTOR, noProp } from "@/lib/utils";
 import { useAppBackground } from "@/providers/AppBackgroundProvider";
-import { useTheme } from "next-themes";
-import useBrowserInfo from "@/hooks/useBrowserInfo";
 import ShareChatSessionModal from "@/sections/modals/ShareChatSessionModal";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import useChatSessions from "@/hooks/useChatSessions";
@@ -570,19 +568,21 @@ export default function AppChrome({ children }: AppChromeProps) {
   }, [currentChatSession?.name, appName, appFocus]);
 
   const { hasBackground, appBackgroundUrl } = useAppBackground();
-  const { resolvedTheme } = useTheme();
-  const { isSafari } = useBrowserInfo();
-  const isLightMode = resolvedTheme === "light";
   const showBackground =
     hasBackground && (appFocus.isChat() || appFocus.isNewSession());
-
-  const horizontalBlurMask = `linear-gradient(
-    to right,
-    transparent 0%,
-    black max(0%, calc(50% - 25rem)),
-    black min(100%, calc(50% + 25rem)),
-    transparent 100%
-  )`;
+  const backgroundImageStyle =
+    showBackground && appBackgroundUrl
+      ? {
+          backgroundImage: `url(${appBackgroundUrl})`,
+        }
+      : undefined;
+  const backgroundScrimStyle = showBackground
+    ? {
+        background: appFocus.isChat()
+          ? "linear-gradient(90deg, rgba(5, 9, 24, 0.9) 0%, rgba(9, 12, 26, 0.76) 22%, rgba(32, 16, 25, 0.46) 48%, rgba(70, 17, 3, 0.34) 68%, rgba(7, 6, 8, 0.68) 100%), radial-gradient(circle at 32% 74%, rgba(210, 225, 255, 0.22) 0%, rgba(210, 225, 255, 0.1) 14%, rgba(0, 0, 0, 0) 32%), linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.08) 30%, rgba(0, 0, 0, 0.5) 100%)"
+          : "linear-gradient(90deg, rgba(5, 9, 24, 0.62) 0%, rgba(11, 14, 32, 0.36) 42%, rgba(62, 19, 4, 0.24) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.06) 34%, rgba(0, 0, 0, 0.32) 100%)",
+      }
+    : undefined;
 
   const inputWasFocused = useRef(false);
 
@@ -624,58 +624,30 @@ export default function AppChrome({ children }: AppChromeProps) {
         <div className="flex flex-row flex-1 min-h-0">
           <div
             className={cn(
-              "@container relative isolate flex-1 flex flex-col min-h-0",
-              showBackground && "bg-cover bg-center bg-fixed"
+              "@container relative isolate flex-1 flex flex-col min-h-0 overflow-hidden bg-background",
+              showBackground && "isolate"
             )}
-            style={
-              showBackground
-                ? { backgroundImage: `url(${appBackgroundUrl})` }
-                : undefined
-            }
           >
-            {/* Effect 1 — Vignette overlay for custom backgrounds (disabled in light mode).
-              z-[-1] keeps overlays below the normal-flow header/content/footer. */}
-            {showBackground && !isLightMode && (
+            {showBackground && (
               <div
-                className="absolute z-[-1] inset-0 pointer-events-none"
-                style={{
-                  background: `
-                  linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, transparent 4rem),
-                  linear-gradient(to top, rgba(0, 0, 0, 0.4) 0%, transparent 4rem)
-                `,
-                }}
+                aria-hidden
+                className="absolute inset-0 z-0 bg-cover bg-center bg-fixed pointer-events-none"
+                style={backgroundImageStyle}
               />
             )}
-            {/* Effect 2 — Semi-transparent overlay for readability when background is set */}
-            {showBackground && appFocus.isChat() && (
-              <>
-                <div className="absolute z-[-1] inset-0 backdrop-blur-[1px] pointer-events-none" />
-                {isSafari ? (
-                  <div
-                    className="absolute z-[-1] inset-0 bg-cover bg-center bg-fixed pointer-events-none"
-                    style={{
-                      backgroundImage: `url(${appBackgroundUrl})`,
-                      filter: "blur(16px)",
-                      maskImage: horizontalBlurMask,
-                      WebkitMaskImage: horizontalBlurMask,
-                    }}
-                  />
-                ) : (
-                  <div
-                    className="absolute z-[-1] inset-0 backdrop-blur-md transition-all duration-600 pointer-events-none"
-                    style={{
-                      maskImage: horizontalBlurMask,
-                      WebkitMaskImage: horizontalBlurMask,
-                    }}
-                  />
-                )}
-              </>
+            {showBackground && (
+              <div
+                aria-hidden
+                className="absolute inset-0 z-0 pointer-events-none"
+                style={backgroundScrimStyle}
+              />
             )}
 
-            {/* Header */}
-            <Header />
-            <RootLayout.MainContent>{children}</RootLayout.MainContent>
-            <Footer />
+            <div className="relative z-10 flex flex-1 min-h-0 flex-col">
+              <Header />
+              <RootLayout.MainContent>{children}</RootLayout.MainContent>
+              <Footer />
+            </div>
           </div>
           {rightPanel}
         </div>

@@ -180,12 +180,20 @@ export default function NRFPage({ isSidePanel = false }: NRFPageProps) {
 
   // Determine if we should show centered welcome or messages
   const hasMessages = messageHistory.length > 0;
-  const backgroundScrimStyle = hasMessages
-    ? {
-        background:
-          "linear-gradient(90deg, rgba(6, 10, 27, 0.84) 0%, rgba(16, 14, 31, 0.62) 30%, rgba(72, 19, 2, 0.36) 58%, rgba(9, 7, 9, 0.68) 100%), radial-gradient(circle at 34% 72%, rgba(220, 231, 255, 0.22) 0%, rgba(220, 231, 255, 0.08) 16%, rgba(0, 0, 0, 0) 34%), linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0%, rgba(0, 0, 0, 0.08) 28%, rgba(0, 0, 0, 0.38) 100%)",
-      }
-    : undefined;
+  const backgroundImageStyle =
+    !isSidePanel && hasBackground && appBackgroundUrl
+      ? {
+          backgroundImage: `url(${appBackgroundUrl})`,
+        }
+      : undefined;
+  const backgroundScrimStyle =
+    !isSidePanel && hasBackground
+      ? {
+          background: hasMessages
+            ? "linear-gradient(90deg, rgba(5, 9, 24, 0.9) 0%, rgba(9, 12, 26, 0.76) 22%, rgba(32, 16, 25, 0.46) 48%, rgba(70, 17, 3, 0.34) 68%, rgba(7, 6, 8, 0.68) 100%), radial-gradient(circle at 32% 74%, rgba(210, 225, 255, 0.22) 0%, rgba(210, 225, 255, 0.1) 14%, rgba(0, 0, 0, 0) 32%), linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.08) 30%, rgba(0, 0, 0, 0.5) 100%)"
+            : "linear-gradient(90deg, rgba(5, 9, 24, 0.62) 0%, rgba(11, 14, 32, 0.36) 42%, rgba(62, 19, 4, 0.24) 100%), linear-gradient(180deg, rgba(0, 0, 0, 0.28) 0%, rgba(0, 0, 0, 0.06) 34%, rgba(0, 0, 0, 0.32) 100%)",
+        }
+      : undefined;
 
   // Resolved assistant to use throughout the component
   const resolvedAgent = liveAgent ?? undefined;
@@ -422,24 +430,22 @@ export default function NRFPage({ isSidePanel = false }: NRFPageProps) {
   return (
     <div
       className={cn(
-        "relative w-full h-full flex flex-col overflow-hidden",
-        isSidePanel
-          ? "bg-background"
-          : hasBackground && "bg-cover bg-center bg-fixed"
+        "relative w-full h-full flex flex-col overflow-hidden bg-background",
+        !isSidePanel && hasBackground && "isolate"
       )}
-      style={
-        !isSidePanel && hasBackground
-          ? { backgroundImage: `url(${appBackgroundUrl})` }
-          : undefined
-      }
     >
-      {/* Semi-transparent overlay for readability when background is set */}
       {!isSidePanel && hasBackground && (
         <div
-          className={cn(
-            "absolute inset-0 pointer-events-none",
-            hasMessages ? "bg-transparent" : "bg-background/80"
-          )}
+          aria-hidden
+          className="absolute inset-0 z-0 bg-cover bg-center bg-fixed"
+          style={backgroundImageStyle}
+        />
+      )}
+
+      {!isSidePanel && hasBackground && (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-0 pointer-events-none"
           style={backgroundScrimStyle}
         />
       )}
@@ -454,7 +460,7 @@ export default function NRFPage({ isSidePanel = false }: NRFPageProps) {
 
       {/* Settings button */}
       {!isSidePanel && (
-        <div className="absolute top-0 right-0 p-4 z-10">
+        <div className="absolute top-0 right-0 p-4 z-30">
           <Button
             prominence="secondary"
             icon={SvgMenu}
@@ -469,7 +475,7 @@ export default function NRFPage({ isSidePanel = false }: NRFPageProps) {
           <div
             {...getRootProps()}
             className={cn(
-              "flex-1 min-h-0 w-full flex flex-col items-center outline-hidden",
+              "relative z-10 flex-1 min-h-0 w-full flex flex-col items-center outline-hidden",
               isSidePanel && "px-3"
             )}
           >
