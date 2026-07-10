@@ -180,6 +180,12 @@ export default function NRFPage({ isSidePanel = false }: NRFPageProps) {
 
   // Determine if we should show centered welcome or messages
   const hasMessages = messageHistory.length > 0;
+  const backgroundScrimStyle = hasMessages
+    ? {
+        background:
+          "linear-gradient(90deg, rgba(6, 10, 27, 0.84) 0%, rgba(16, 14, 31, 0.62) 30%, rgba(72, 19, 2, 0.36) 58%, rgba(9, 7, 9, 0.68) 100%), radial-gradient(circle at 34% 72%, rgba(220, 231, 255, 0.22) 0%, rgba(220, 231, 255, 0.08) 16%, rgba(0, 0, 0, 0) 34%), linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0%, rgba(0, 0, 0, 0.08) 28%, rgba(0, 0, 0, 0.38) 100%)",
+      }
+    : undefined;
 
   // Resolved assistant to use throughout the component
   const resolvedAgent = liveAgent ?? undefined;
@@ -429,7 +435,13 @@ export default function NRFPage({ isSidePanel = false }: NRFPageProps) {
     >
       {/* Semi-transparent overlay for readability when background is set */}
       {!isSidePanel && hasBackground && (
-        <div className="absolute inset-0 bg-background/80 pointer-events-none" />
+        <div
+          className={cn(
+            "absolute inset-0 pointer-events-none",
+            hasMessages ? "bg-transparent" : "bg-background/80"
+          )}
+          style={backgroundScrimStyle}
+        />
       )}
 
       {/* Side panel header */}

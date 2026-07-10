@@ -23,14 +23,14 @@ export default function AgentAvatar({
   if (agent.id === DEFAULT_AGENT_ID) {
     return enterpriseSettings?.use_custom_logo ? (
       <div
-        className="aspect-square rounded-full overflow-hidden relative"
+        className="aspect-square relative flex items-center justify-center"
         style={{ height: size, width: size }}
       >
         <Image
           alt="Logo"
           src="/api/enterprise-settings/logo"
           fill
-          className="object-cover object-center"
+          className="object-contain object-center"
           sizes={`${size}px`}
         />
       </div>
