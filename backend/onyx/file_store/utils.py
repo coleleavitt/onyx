@@ -331,7 +331,7 @@ def verify_user_files(
         ValueError: If any file does not belong to the user or is not found
     """
     from onyx.db.models import Project__UserFile
-    from onyx.db.projects import check_project_ownership
+    from onyx.db.projects import check_project_access
 
     # Extract user_file_ids and project file_ids from the file descriptors
     user_file_ids = []
@@ -364,8 +364,7 @@ def verify_user_files(
                 "Project files provided but no project_id specified for verification"
             )
 
-        # Verify user owns the project
-        if not check_project_ownership(project_id, user_id, db_session):
+        if not check_project_access(project_id, user_id, db_session):
             raise ValueError(
                 f"User {user_id} does not have access to project {project_id}"
             )

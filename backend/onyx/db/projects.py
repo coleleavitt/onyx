@@ -1,14 +1,21 @@
 import datetime
 import uuid
+from enum import Enum
 from typing import List
+from typing import Mapping
 from uuid import UUID
 
-from fastapi import HTTPException
 from fastapi import UploadFile
 from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
+from sqlalchemy import ColumnElement
 from sqlalchemy import func
+from sqlalchemy import or_
+from sqlalchemy import Select
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
@@ -18,11 +25,21 @@ from onyx.configs.constants import FileOrigin
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
+from onyx.db.enums import ProjectAccessLevel
+from onyx.db.enums import ProjectJoinRequestStatus
+from onyx.db.enums import ProjectSharePermission
 from onyx.db.enums import UserFileStatus
+from onyx.db.models import Project__User
 from onyx.db.models import Project__UserFile
+from onyx.db.models import Project__UserGroup
+from onyx.db.models import ProjectJoinRequest
 from onyx.db.models import User
+from onyx.db.models import User__UserGroup
 from onyx.db.models import UserFile
 from onyx.db.models import UserProject
+from onyx.db.utils import is_fk_violation
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from onyx.server.documents.connector import upload_files
 from onyx.server.features.projects.projects_file_utils import categorize_uploaded_files
 from onyx.server.features.projects.projects_file_utils import RejectedFile
@@ -30,6 +47,280 @@ from onyx.utils.logger import setup_logger
 from shared_configs.contextvars import get_current_tenant_id
 
 logger = setup_logger()
+
+
+class ProjectAccessPolicy(str, Enum):
+    VIEW = "view"
+    EDIT = "edit"
+    OWN = "own"
+
+
+def _is_project_shared_with_user(
+    user: User,
+    permission: ProjectSharePermission | None = None,
+) -> ColumnElement[bool]:
+    stmt = (
+        select(Project__User.project_id)
+        .where(Project__User.project_id == UserProject.id)
+        .where(Project__User.user_id == user.id)
+    )
+    if permission is not None:
+        stmt = stmt.where(Project__User.permission == permission)
+    return stmt.exists()
+
+
+def _is_project_shared_with_user_group(
+    user: User,
+    permission: ProjectSharePermission | None = None,
+) -> ColumnElement[bool]:
+    stmt = (
+        select(Project__UserGroup.project_id)
+        .join(
+            User__UserGroup,
+            User__UserGroup.user_group_id == Project__UserGroup.user_group_id,
+        )
+        .where(Project__UserGroup.project_id == UserProject.id)
+        .where(User__UserGroup.user_id == user.id)
+    )
+    if permission is not None:
+        stmt = stmt.where(Project__UserGroup.permission == permission)
+    return stmt.exists()
+
+
+def _project_base_select() -> Select[tuple[UserProject]]:
+    return select(UserProject).options(
+        selectinload(UserProject.user),
+        selectinload(UserProject.user_shares).selectinload(Project__User.user),
+        selectinload(UserProject.group_shares).selectinload(
+            Project__UserGroup.user_group
+        ),
+        selectinload(UserProject.join_requests).selectinload(
+            ProjectJoinRequest.requester
+        ),
+        selectinload(UserProject.chat_sessions),
+    )
+
+
+def _project_select_for_user(
+    *, user: User, policy: ProjectAccessPolicy
+) -> Select[tuple[UserProject]]:
+    stmt = _project_base_select()
+    if user.id is None:
+        return stmt
+
+    owned = UserProject.user_id == user.id
+    if policy == ProjectAccessPolicy.OWN:
+        return stmt.where(owned)
+
+    shared_with_user = _is_project_shared_with_user(user)
+    shared_with_group = _is_project_shared_with_user_group(user)
+    if policy == ProjectAccessPolicy.VIEW:
+        return stmt.where(
+            or_(
+                owned,
+                UserProject.organization_permission.isnot(None),
+                shared_with_user,
+                shared_with_group,
+            )
+        )
+
+    if policy == ProjectAccessPolicy.EDIT:
+        return stmt.where(
+            or_(
+                owned,
+                UserProject.organization_permission == ProjectSharePermission.EDITOR,
+                _is_project_shared_with_user(user, ProjectSharePermission.EDITOR),
+                _is_project_shared_with_user_group(user, ProjectSharePermission.EDITOR),
+            )
+        )
+
+    raise ValueError(f"Unknown project access policy: {policy}")
+
+
+def list_projects_for_user(*, user: User, db_session: Session) -> list[UserProject]:
+    stmt = _project_select_for_user(
+        user=user, policy=ProjectAccessPolicy.VIEW
+    ).order_by(UserProject.created_at.desc())
+    return list(db_session.scalars(stmt).unique())
+
+
+def fetch_project_for_user(
+    project_id: int,
+    *,
+    user: User,
+    db_session: Session,
+    policy: ProjectAccessPolicy,
+) -> UserProject | None:
+    stmt = _project_select_for_user(user=user, policy=policy).where(
+        UserProject.id == project_id
+    )
+    return db_session.scalars(stmt).unique().one_or_none()
+
+
+def fetch_project_by_id(
+    project_id: int,
+    *,
+    db_session: Session,
+) -> UserProject | None:
+    stmt = _project_base_select().where(UserProject.id == project_id)
+    return db_session.scalars(stmt).unique().one_or_none()
+
+
+def get_project_access_level(
+    project: UserProject,
+    *,
+    user: User,
+    db_session: Session,
+) -> ProjectAccessLevel:
+    if user.id is None or project.user_id == user.id:
+        return ProjectAccessLevel.OWNER
+
+    editable = fetch_project_for_user(
+        project.id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.EDIT,
+    )
+    return (
+        ProjectAccessLevel.EDITOR if editable is not None else ProjectAccessLevel.VIEWER
+    )
+
+
+def replace_project_shares(
+    *,
+    project: UserProject,
+    organization_permission: ProjectSharePermission | None,
+    user_shares: Mapping[UUID, ProjectSharePermission],
+    group_shares: Mapping[int, ProjectSharePermission],
+    db_session: Session,
+) -> UserProject:
+    requested_user_shares = dict(user_shares)
+    if project.user_id is not None:
+        requested_user_shares.pop(project.user_id, None)
+
+    project.organization_permission = organization_permission
+    project.user_shares = [
+        Project__User(user_id=user_id, permission=permission)
+        for user_id, permission in requested_user_shares.items()
+    ]
+    project.group_shares = [
+        Project__UserGroup(user_group_id=group_id, permission=permission)
+        for group_id, permission in group_shares.items()
+    ]
+    try:
+        db_session.flush()
+    except IntegrityError as e:
+        if is_fk_violation(e):
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT,
+                "One or more project share targets are unavailable.",
+            ) from e
+        raise
+    return project
+
+
+def create_or_reset_project_join_request(
+    *,
+    project: UserProject,
+    requester: User,
+    requested_permission: ProjectSharePermission,
+    db_session: Session,
+) -> ProjectJoinRequest:
+    if requester.id is None:
+        raise OnyxError(OnyxErrorCode.UNAUTHENTICATED)
+    if project.user_id == requester.id:
+        raise OnyxError(OnyxErrorCode.CONFLICT, "Project owners already have access.")
+
+    existing = db_session.scalar(
+        select(ProjectJoinRequest).where(
+            ProjectJoinRequest.project_id == project.id,
+            ProjectJoinRequest.requester_user_id == requester.id,
+        )
+    )
+    if existing is None:
+        existing = ProjectJoinRequest(
+            project_id=project.id,
+            requester_user_id=requester.id,
+            requested_permission=requested_permission,
+        )
+        db_session.add(existing)
+    else:
+        existing.requested_permission = requested_permission
+        existing.status = ProjectJoinRequestStatus.PENDING
+        existing.resolution_comment = None
+        existing.resolved_at = None
+    db_session.flush()
+    return existing
+
+
+def resolve_project_join_request(
+    *,
+    project: UserProject,
+    request_id: int,
+    approve: bool,
+    resolution_comment: str | None,
+    db_session: Session,
+) -> ProjectJoinRequest:
+    join_request = db_session.scalar(
+        select(ProjectJoinRequest).where(
+            ProjectJoinRequest.id == request_id,
+            ProjectJoinRequest.project_id == project.id,
+        )
+    )
+    if join_request is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project access request not found.")
+    if join_request.status != ProjectJoinRequestStatus.PENDING:
+        raise OnyxError(
+            OnyxErrorCode.CONFLICT, "Project access request has already been resolved."
+        )
+
+    join_request.status = (
+        ProjectJoinRequestStatus.APPROVED
+        if approve
+        else ProjectJoinRequestStatus.DENIED
+    )
+    join_request.resolution_comment = resolution_comment
+    join_request.resolved_at = datetime.datetime.now(datetime.timezone.utc)
+    if approve:
+        existing_share = db_session.scalar(
+            select(Project__User).where(
+                Project__User.project_id == project.id,
+                Project__User.user_id == join_request.requester_user_id,
+            )
+        )
+        if existing_share is None:
+            db_session.add(
+                Project__User(
+                    project_id=project.id,
+                    user_id=join_request.requester_user_id,
+                    permission=join_request.requested_permission,
+                )
+            )
+        else:
+            existing_share.permission = join_request.requested_permission
+    db_session.flush()
+    return join_request
+
+
+def cancel_project_join_request(
+    *,
+    project: UserProject,
+    requester: User,
+    db_session: Session,
+) -> None:
+    if requester.id is None:
+        raise OnyxError(OnyxErrorCode.UNAUTHENTICATED)
+    join_request = db_session.scalar(
+        select(ProjectJoinRequest).where(
+            ProjectJoinRequest.project_id == project.id,
+            ProjectJoinRequest.requester_user_id == requester.id,
+            ProjectJoinRequest.status == ProjectJoinRequestStatus.PENDING,
+        )
+    )
+    if join_request is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project access request not found.")
+    db_session.delete(join_request)
+    db_session.flush()
 
 
 class CategorizedFilesResult(BaseModel):
@@ -124,8 +415,13 @@ def upload_files_to_user_files_with_indexing(
     background_tasks: BackgroundTasks | None = None,
 ) -> CategorizedFilesResult:
     if project_id is not None and user is not None:
-        if not check_project_ownership(project_id, user.id, db_session):
-            raise HTTPException(status_code=404, detail="Project not found")
+        if not check_project_access(
+            project_id,
+            user.id,
+            db_session,
+            policy=ProjectAccessPolicy.EDIT,
+        ):
+            raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project not found.")
 
     categorized_files_result = create_user_files(
         files,
@@ -197,11 +493,33 @@ def check_project_ownership(
     )
 
 
+def check_project_access(
+    project_id: int,
+    user_id: UUID | None,
+    db_session: Session,
+    *,
+    policy: ProjectAccessPolicy = ProjectAccessPolicy.VIEW,
+) -> bool:
+    if user_id is None:
+        return db_session.get(UserProject, project_id) is not None
+    user = db_session.get(User, user_id)
+    if user is None:
+        return False
+    return (
+        fetch_project_for_user(
+            project_id,
+            user=user,
+            db_session=db_session,
+            policy=policy,
+        )
+        is not None
+    )
+
+
 def get_user_files_from_project(
     project_id: int, user_id: UUID | None, db_session: Session
 ) -> list[UserFile]:
-    # First check if the user owns the project
-    if not check_project_ownership(project_id, user_id, db_session):
+    if not check_project_access(project_id, user_id, db_session):
         return []
 
     return (
@@ -244,11 +562,12 @@ def get_project_token_count(
     """
     if project_id is None:
         return 0
+    if not check_project_access(project_id, user_id, db_session):
+        return 0
 
     total_tokens = (
         db_session.query(func.coalesce(func.sum(UserFile.token_count), 0))
         .filter(
-            UserFile.user_id == user_id,
             UserFile.projects.any(id=project_id),
         )
         .scalar()

@@ -617,6 +617,25 @@ class SkillAccessLevel(str, PyEnum):
     VIEWER = "VIEWER"
 
 
+class ProjectSharePermission(str, PyEnum):
+    """Level granted to a user, group, or the organization for a project."""
+
+    EDITOR = "EDITOR"
+    VIEWER = "VIEWER"
+
+
+class ProjectAccessLevel(str, PyEnum):
+    OWNER = "OWNER"
+    EDITOR = "EDITOR"
+    VIEWER = "VIEWER"
+
+
+class ProjectJoinRequestStatus(str, PyEnum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    DENIED = "DENIED"
+
+
 class PersonaAccessLevel(str, PyEnum):
     """Computed access the requesting user holds on a persona.
 

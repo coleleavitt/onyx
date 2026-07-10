@@ -92,6 +92,8 @@ from onyx.db.enums import PermissionSyncStatus
 from onyx.db.enums import PersonaSharePermission
 from onyx.db.enums import PortAttemptStatus
 from onyx.db.enums import ProcessingMode
+from onyx.db.enums import ProjectJoinRequestStatus
+from onyx.db.enums import ProjectSharePermission
 from onyx.db.enums import SandboxStatus
 from onyx.db.enums import ScheduledTaskRunStatus
 from onyx.db.enums import ScheduledTaskStatus
@@ -5106,6 +5108,46 @@ class Project__UserFile(Base):
     )
 
 
+class Project__User(Base):
+    __tablename__ = "project__user"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("user_project.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
+    permission: Mapped[ProjectSharePermission] = mapped_column(
+        Enum(ProjectSharePermission, native_enum=False),
+        nullable=False,
+        default=ProjectSharePermission.VIEWER,
+        server_default=ProjectSharePermission.VIEWER.value,
+    )
+
+    user: Mapped["User"] = relationship("User")
+
+    __table_args__ = (Index("ix_project__user_user_id", "user_id"),)
+
+
+class Project__UserGroup(Base):
+    __tablename__ = "project__user_group"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("user_project.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_group_id: Mapped[int] = mapped_column(
+        ForeignKey("user_group.id", ondelete="CASCADE"), primary_key=True
+    )
+    permission: Mapped[ProjectSharePermission] = mapped_column(
+        Enum(ProjectSharePermission, native_enum=False),
+        nullable=False,
+        default=ProjectSharePermission.VIEWER,
+        server_default=ProjectSharePermission.VIEWER.value,
+    )
+
+    user_group: Mapped["UserGroup"] = relationship("UserGroup")
+
+
 class UserProject(Base):
     __tablename__ = "user_project"
 
@@ -5126,6 +5168,69 @@ class UserProject(Base):
         "ChatSession", back_populates="project", lazy="selectin"
     )
     instructions: Mapped[str] = mapped_column(String)
+    organization_permission: Mapped[ProjectSharePermission | None] = mapped_column(
+        Enum(ProjectSharePermission, native_enum=False), nullable=True
+    )
+    user_shares: Mapped[list[Project__User]] = relationship(
+        Project__User,
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    group_shares: Mapped[list[Project__UserGroup]] = relationship(
+        Project__UserGroup,
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    join_requests: Mapped[list["ProjectJoinRequest"]] = relationship(
+        "ProjectJoinRequest",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class ProjectJoinRequest(Base):
+    __tablename__ = "project_join_request"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("user_project.id", ondelete="CASCADE"), nullable=False
+    )
+    requester_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+    )
+    requested_permission: Mapped[ProjectSharePermission] = mapped_column(
+        Enum(ProjectSharePermission, native_enum=False),
+        nullable=False,
+        default=ProjectSharePermission.VIEWER,
+        server_default=ProjectSharePermission.VIEWER.value,
+    )
+    status: Mapped[ProjectJoinRequestStatus] = mapped_column(
+        Enum(ProjectJoinRequestStatus, native_enum=False),
+        nullable=False,
+        default=ProjectJoinRequestStatus.PENDING,
+        server_default=ProjectJoinRequestStatus.PENDING.value,
+    )
+    resolution_comment: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    resolved_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    project: Mapped[UserProject] = relationship(
+        UserProject, back_populates="join_requests"
+    )
+    requester: Mapped["User"] = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "requester_user_id",
+            name="uq_project_join_request_project_requester",
+        ),
+        Index("ix_project_join_request_project_status", "project_id", "status"),
+    )
 
 
 class UserDocument(str, Enum):
