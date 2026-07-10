@@ -25,7 +25,7 @@ Usage:
   ./run.sh --check         Verify local commands/env needed by source dev mode.
   ./run.sh --clean-only    Stop orphaned source-dev workers from this checkout.
   ./run.sh --setup         Force uv sync, Playwright install, and bun install before starting.
-  ./run.sh --no-setup      Skip dependency setup checks.
+  ./run.sh --no-setup      Skip dependency installation; fail if the installed web runtime is stale.
   ./run.sh --no-clean-orphans
                            Do not stop pre-existing source-dev workers before starting.
 
@@ -202,8 +202,41 @@ setup_dependencies() {
 
   if [[ "$SETUP" == "always" || ! -d "$WEB_DIR/node_modules" ]]; then
     log "installing web dependencies"
-    (cd "$WEB_DIR" && bun install)
+    (cd "$WEB_DIR" && bun install --frozen-lockfile)
   fi
+}
+
+verify_web_runtime() {
+  require_cmd bun
+
+  local expected_next_version
+  local installed_next_version
+  expected_next_version="$({
+    cd "$WEB_DIR"
+    bun -e 'process.stdout.write(require("./package.json").dependencies.next)'
+  })"
+  installed_next_version="$({
+    cd "$WEB_DIR"
+    bun -e 'process.stdout.write(require("./node_modules/next/package.json").version)'
+  } 2>/dev/null || true)"
+
+  if [[ "$installed_next_version" == "$expected_next_version" ]]; then
+    return 0
+  fi
+
+  if [[ "$SETUP" == "never" ]]; then
+    die "web dependencies are stale (Next.js ${installed_next_version:-missing}; expected $expected_next_version). Run ./run.sh --setup."
+  fi
+
+  log "web dependencies changed (Next.js ${installed_next_version:-missing} -> $expected_next_version); installing"
+  (cd "$WEB_DIR" && bun install --frozen-lockfile)
+
+  installed_next_version="$({
+    cd "$WEB_DIR"
+    bun -e 'process.stdout.write(require("./node_modules/next/package.json").version)'
+  })"
+  [[ "$installed_next_version" == "$expected_next_version" ]] ||
+    die "installed Next.js $installed_next_version does not match expected $expected_next_version"
 }
 
 check_source_dev() {
@@ -349,6 +382,7 @@ run_source_dev() {
   ensure_local_env_files
   cleanup_orphan_dev_processes
   setup_dependencies
+  verify_web_runtime
   start_infra
   run_migrations
 
