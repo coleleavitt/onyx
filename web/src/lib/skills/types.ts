@@ -6,6 +6,11 @@
 export type SkillSource = "builtin" | "custom";
 export type SkillAccessLevel = "OWNER" | "EDITOR" | "VIEWER";
 export type SkillSharePermission = "EDITOR" | "VIEWER";
+export type SkillReviewStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "OUTDATED";
 
 export interface SkillUserShare {
   user: {
@@ -47,6 +52,8 @@ export interface Skill {
   group_shares: SkillGroupShare[];
   public_permission: SkillSharePermission | null;
   user_permission: SkillAccessLevel | null;
+  review_status: SkillReviewStatus | null;
+  review_submitted_at: string | null;
 }
 
 export type BuiltinSkill = Skill & {
@@ -76,3 +83,54 @@ export interface SkillPreview {
 export type SkillEditableDetail = CustomSkill & {
   instructions_markdown: string;
 };
+
+export interface SkillPackageFile {
+  path: string;
+  size: number;
+  sha256: string;
+  is_text: boolean;
+  content: string | null;
+  content_truncated: boolean;
+}
+
+export interface SkillPackageFinding {
+  code: string;
+  severity: "INFO" | "WARNING";
+  message: string;
+  path: string | null;
+}
+
+export interface SkillPackage {
+  status: "PASS" | "REVIEW";
+  files: SkillPackageFile[];
+  findings: SkillPackageFinding[];
+  total_uncompressed_bytes: number;
+}
+
+export interface SkillPackageFileDiff {
+  path: string;
+  change_type: "ADDED" | "MODIFIED" | "DELETED";
+  diff: string | null;
+}
+
+export interface SkillPackageDiff {
+  files: SkillPackageFileDiff[];
+  candidate: SkillPackage;
+}
+
+export interface SkillReviewSubmission {
+  id: string;
+  skill_id: string;
+  skill_name: string;
+  skill_slug: string;
+  submitted_by: { id: string; email: string };
+  reviewed_by: { id: string; email: string } | null;
+  bundle_sha256: string;
+  current_bundle_sha256: string | null;
+  is_current_bundle: boolean;
+  status: SkillReviewStatus;
+  submission_comment: string | null;
+  review_comment: string | null;
+  submitted_at: string;
+  reviewed_at: string | null;
+}

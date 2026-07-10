@@ -27,6 +27,7 @@ import {
   SvgArrowLeft,
   SvgBlocks,
   SvgShare,
+  SvgShield,
   SvgSimpleLoader,
   SvgTrash,
   SvgUploadCloud,
@@ -52,6 +53,8 @@ import InstructionsDisplayModeToggle, {
   type InstructionsDisplayMode,
 } from "@/sections/skills/InstructionsDisplayModeToggle";
 import ShareSkillModal from "@/sections/modals/skills/ShareSkillModal";
+import SkillPackageInspectorModal from "@/sections/modals/skills/SkillPackageInspectorModal";
+import SubmitSkillReviewModal from "@/sections/modals/skills/SubmitSkillReviewModal";
 import { ConfirmEntityModal } from "@/sections/modals/ConfirmEntityModal";
 
 interface SkillEditorPageProps {
@@ -113,6 +116,9 @@ export default function SkillEditorPage({ skillId }: SkillEditorPageProps) {
     useState<InstructionsDisplayMode>("raw");
   const [hydratedSkillId, setHydratedSkillId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [packageOpen, setPackageOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [candidateBundle, setCandidateBundle] = useState<File | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isReplacingFiles, setIsReplacingFiles] = useState(false);
@@ -219,6 +225,12 @@ export default function SkillEditorPage({ skillId }: SkillEditorPageProps) {
     event.target.value = "";
     if (!skill || !file || !canManageSkill || isDirty) return;
 
+    setCandidateBundle(file);
+    setPackageOpen(true);
+  }
+
+  async function replaceSkillFiles(file: File) {
+    if (!skill) return;
     setIsReplacingFiles(true);
     try {
       const updated = await replaceUserSkillBundle(skill.id, file);
@@ -460,25 +472,86 @@ export default function SkillEditorPage({ skillId }: SkillEditorPageProps) {
                       </InputHorizontal>
                     )}
 
+                    <InputHorizontal
+                      title="Skill package"
+                      description="Inspect the validated ZIP file tree, review security findings, and edit text files."
+                      center
+                    >
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          prominence="secondary"
+                          icon={SvgShield}
+                          onClick={() => {
+                            setCandidateBundle(null);
+                            setPackageOpen(true);
+                          }}
+                        >
+                          Inspect files
+                        </Button>
+                        {canManageSkill && (
+                          <Tooltip tooltip={replaceFilesTooltip} side="bottom">
+                            <Button
+                              type="button"
+                              prominence="secondary"
+                              icon={SvgUploadCloud}
+                              disabled={replaceFilesDisabled}
+                              onClick={handleReplaceFilesClick}
+                            >
+                              {isReplacingFiles
+                                ? "Replacing..."
+                                : "Replace files"}
+                            </Button>
+                          </Tooltip>
+                        )}
+                      </div>
+                    </InputHorizontal>
+
                     {canManageSkill && (
                       <InputHorizontal
-                        title="Skill files"
-                        description="Replace the ZIP bundle for this skill. The slug stays the same; name, description, and instructions are read from the new SKILL.md."
+                        title="Organization review"
+                        description={
+                          skill.review_status === "APPROVED"
+                            ? "This exact package version was approved and published to the organization."
+                            : skill.review_status === "PENDING"
+                              ? "An administrator is reviewing this package version."
+                              : skill.review_status === "OUTDATED"
+                                ? "The package changed after its last review. Submit the current version again."
+                                : skill.review_status === "REJECTED"
+                                  ? "The last submission was not approved. Update the package and resubmit it."
+                                  : "Submit this package for security review and organization publishing."
+                        }
                         center
                       >
-                        <Tooltip tooltip={replaceFilesTooltip} side="bottom">
-                          <Button
-                            type="button"
-                            prominence="secondary"
-                            icon={SvgUploadCloud}
-                            disabled={replaceFilesDisabled}
-                            onClick={handleReplaceFilesClick}
-                          >
-                            {isReplacingFiles
-                              ? "Replacing..."
-                              : "Replace files"}
-                          </Button>
-                        </Tooltip>
+                        <div className="flex items-center gap-2">
+                          {skill.review_status && (
+                            <Tag
+                              color={
+                                skill.review_status === "APPROVED"
+                                  ? "green"
+                                  : skill.review_status === "PENDING"
+                                    ? "blue"
+                                    : skill.review_status === "REJECTED"
+                                      ? "red"
+                                      : "amber"
+                              }
+                              title={skill.review_status.toLowerCase()}
+                            />
+                          )}
+                          {skill.review_status !== "PENDING" &&
+                            skill.review_status !== "APPROVED" && (
+                              <Button
+                                type="button"
+                                icon={SvgShield}
+                                prominence="secondary"
+                                onClick={() => setReviewOpen(true)}
+                              >
+                                {skill.review_status
+                                  ? "Resubmit for review"
+                                  : "Submit for review"}
+                              </Button>
+                            )}
+                        </div>
                       </InputHorizontal>
                     )}
 
@@ -547,6 +620,31 @@ export default function SkillEditorPage({ skillId }: SkillEditorPageProps) {
         open={shareOpen}
         onClose={() => setShareOpen(false)}
         onSaved={handleSharingSaved}
+      />
+
+      <SkillPackageInspectorModal
+        skill={packageOpen ? (skill ?? null) : null}
+        candidateFile={candidateBundle}
+        open={packageOpen}
+        onClose={() => {
+          setPackageOpen(false);
+          setCandidateBundle(null);
+        }}
+        onCandidateApproved={replaceSkillFiles}
+        onPackageSaved={async () => {
+          await refreshSkill();
+          await refreshSkillList();
+        }}
+      />
+
+      <SubmitSkillReviewModal
+        skill={reviewOpen ? (skill ?? null) : null}
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        onSubmitted={async () => {
+          await refreshSkill();
+          await refreshSkillList();
+        }}
       />
 
       {skill && deleteOpen && (

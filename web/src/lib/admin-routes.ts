@@ -84,6 +84,12 @@ export const ADMIN_ROUTES = {
     title: "Agents",
     sidebarLabel: "Agents",
   },
+  SKILL_REVIEWS: {
+    path: "/admin/skills/reviews",
+    icon: SvgShield,
+    title: "Skill Reviews",
+    sidebarLabel: "Skill Reviews",
+  },
   SLACK_BOTS: {
     path: "/admin/bots",
     icon: SvgSlack,

@@ -6,7 +6,14 @@
  * them to `toast.error` directly.
  */
 
-import type { CustomSkill, SkillSharePermission } from "@/lib/skills/types";
+import type {
+  CustomSkill,
+  SkillPackage,
+  SkillPackageDiff,
+  SkillReviewSubmission,
+  SkillReviewStatus,
+  SkillSharePermission,
+} from "@/lib/skills/types";
 
 async function readErrorDetail(res: Response): Promise<string> {
   try {
@@ -76,6 +83,70 @@ export async function replaceUserSkillBundle(
     body: form,
   });
   return handle<CustomSkill>(res);
+}
+
+export async function getSkillPackage(skillId: string): Promise<SkillPackage> {
+  const res = await fetch(`/api/skills/custom/${skillId}/package`);
+  return handle<SkillPackage>(res);
+}
+
+export async function inspectSkillPackageCandidate(
+  skillId: string,
+  bundle: File
+): Promise<SkillPackageDiff> {
+  const form = new FormData();
+  form.append("bundle", bundle);
+  const res = await fetch(`/api/skills/custom/${skillId}/package/diff`, {
+    method: "POST",
+    body: form,
+  });
+  return handle<SkillPackageDiff>(res);
+}
+
+export async function updateSkillPackageFile(
+  skillId: string,
+  path: string,
+  content: string
+): Promise<SkillPackage> {
+  const res = await fetch(`/api/skills/custom/${skillId}/package/file`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, content }),
+  });
+  return handle<SkillPackage>(res);
+}
+
+export async function submitSkillForReview(
+  skillId: string,
+  submissionComment: string | null
+): Promise<SkillReviewSubmission> {
+  const res = await fetch(`/api/skills/custom/${skillId}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ submission_comment: submissionComment }),
+  });
+  return handle<SkillReviewSubmission>(res);
+}
+
+export async function listSkillReviews(
+  status?: SkillReviewStatus
+): Promise<SkillReviewSubmission[]> {
+  const query = status ? `?status=${status}` : "";
+  const res = await fetch(`/api/skills/reviews${query}`);
+  return handle<SkillReviewSubmission[]>(res);
+}
+
+export async function resolveSkillReview(
+  submissionId: string,
+  approve: boolean,
+  reviewComment: string | null
+): Promise<SkillReviewSubmission> {
+  const res = await fetch(`/api/skills/reviews/${submissionId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approve, review_comment: reviewComment }),
+  });
+  return handle<SkillReviewSubmission>(res);
 }
 
 export async function patchUserSkill(
