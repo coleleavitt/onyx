@@ -617,6 +617,13 @@ class SkillAccessLevel(str, PyEnum):
     VIEWER = "VIEWER"
 
 
+class SkillReviewStatus(str, PyEnum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    OUTDATED = "OUTDATED"
+
+
 class ProjectSharePermission(str, PyEnum):
     """Level granted to a user, group, or the organization for a project."""
 

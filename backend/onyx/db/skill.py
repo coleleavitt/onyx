@@ -189,6 +189,7 @@ def _skill_select_with_eager_load(*, order_by_name: bool) -> Select[tuple[Skill]
         selectinload(Skill.author),
         selectinload(Skill.user_shares).selectinload(Skill__User.user),
         selectinload(Skill.group_shares).selectinload(Skill__UserGroup.user_group),
+        selectinload(Skill.review_submissions),
     )
     if order_by_name:
         stmt = stmt.order_by(Skill.name)

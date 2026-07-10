@@ -12,10 +12,14 @@ from pydantic import model_validator
 from sqlalchemy.orm import Session
 
 from onyx.db.enums import SkillAccessLevel
+from onyx.db.enums import SkillReviewStatus
 from onyx.db.enums import SkillSharePermission
 from onyx.db.models import Skill
+from onyx.db.models import SkillReviewSubmission
 from onyx.server.models import MinimalUserSnapshot
 from onyx.skills.built_in import BuiltInSkillDefinition
+from onyx.skills.bundle import SkillBundleDiff
+from onyx.skills.bundle import SkillBundleInspection
 
 
 class SkillUserShare(BaseModel):
@@ -51,6 +55,8 @@ class SkillResponse(BaseModel):
     public_permission: SkillSharePermission | None = None
     is_personal: bool = False
     user_permission: SkillAccessLevel | None = None
+    review_status: SkillReviewStatus | None = None
+    review_submitted_at: datetime.datetime | None = None
 
     @classmethod
     def from_builtin(
@@ -97,6 +103,17 @@ class SkillResponse(BaseModel):
         ]
         visible_user_shares = user_shares if include_share_details else []
         visible_group_shares = group_shares if include_share_details else []
+        latest_review = max(
+            skill.review_submissions,
+            key=lambda submission: submission.submitted_at,
+            default=None,
+        )
+        review_status = latest_review.status if latest_review is not None else None
+        if (
+            latest_review is not None
+            and latest_review.bundle_sha256 != skill.bundle_sha256
+        ):
+            review_status = SkillReviewStatus.OUTDATED
         return cls(
             source="custom",
             id=skill.id,
@@ -123,6 +140,10 @@ class SkillResponse(BaseModel):
             and not user_shares
             and not group_shares,
             user_permission=user_permission,
+            review_status=review_status,
+            review_submitted_at=(
+                latest_review.submitted_at if latest_review is not None else None
+            ),
         )
 
 
@@ -174,6 +195,126 @@ class SkillPreviewResponse(BaseModel):
 
 class SkillEditableDetailResponse(SkillResponse):
     instructions_markdown: str
+
+
+class SkillPackageFile(BaseModel):
+    path: str
+    size: int
+    sha256: str
+    is_text: bool
+    content: str | None
+    content_truncated: bool
+
+
+class SkillPackageFinding(BaseModel):
+    code: str
+    severity: Literal["INFO", "WARNING"]
+    message: str
+    path: str | None
+
+
+class SkillPackageResponse(BaseModel):
+    status: Literal["PASS", "REVIEW"]
+    files: list[SkillPackageFile]
+    findings: list[SkillPackageFinding]
+    total_uncompressed_bytes: int
+
+    @classmethod
+    def from_inspection(
+        cls, inspection: SkillBundleInspection
+    ) -> "SkillPackageResponse":
+        return cls.model_validate(inspection, from_attributes=True)
+
+
+class SkillPackageFileDiff(BaseModel):
+    path: str
+    change_type: Literal["ADDED", "MODIFIED", "DELETED"]
+    diff: str | None
+
+
+class SkillPackageDiffResponse(BaseModel):
+    files: list[SkillPackageFileDiff]
+    candidate: SkillPackageResponse
+
+    @classmethod
+    def from_diff(cls, diff: SkillBundleDiff) -> "SkillPackageDiffResponse":
+        return cls(
+            files=[
+                SkillPackageFileDiff.model_validate(entry, from_attributes=True)
+                for entry in diff.files
+            ],
+            candidate=SkillPackageResponse.from_inspection(diff.candidate),
+        )
+
+
+class SkillPackageFileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    content: str
+
+
+class SubmitSkillReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    submission_comment: str | None = None
+
+
+class ResolveSkillReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    approve: bool
+    review_comment: str | None = None
+
+
+class SkillReviewSubmissionResponse(BaseModel):
+    id: UUID
+    skill_id: UUID
+    skill_name: str
+    skill_slug: str
+    submitted_by: MinimalUserSnapshot
+    reviewed_by: MinimalUserSnapshot | None
+    bundle_sha256: str
+    current_bundle_sha256: str | None
+    is_current_bundle: bool
+    status: SkillReviewStatus
+    submission_comment: str | None
+    review_comment: str | None
+    submitted_at: datetime.datetime
+    reviewed_at: datetime.datetime | None
+
+    @classmethod
+    def from_model(
+        cls, submission: SkillReviewSubmission
+    ) -> "SkillReviewSubmissionResponse":
+        return cls(
+            id=submission.id,
+            skill_id=submission.skill_id,
+            skill_name=submission.skill.name,
+            skill_slug=submission.skill.slug,
+            submitted_by=MinimalUserSnapshot(
+                id=submission.submitted_by.id,
+                email=submission.submitted_by.email,
+            ),
+            reviewed_by=(
+                MinimalUserSnapshot(
+                    id=submission.reviewed_by.id,
+                    email=submission.reviewed_by.email,
+                )
+                if submission.reviewed_by is not None
+                else None
+            ),
+            bundle_sha256=submission.bundle_sha256,
+            current_bundle_sha256=submission.skill.bundle_sha256,
+            is_current_bundle=(
+                submission.bundle_sha256 == submission.skill.bundle_sha256
+            ),
+            status=submission.status,
+            submission_comment=submission.submission_comment,
+            review_comment=submission.review_comment,
+            submitted_at=submission.submitted_at,
+            reviewed_at=submission.reviewed_at,
+        )
 
 
 class SkillPatchRequest(BaseModel):

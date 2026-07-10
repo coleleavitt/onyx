@@ -11,6 +11,7 @@ from onyx.auth.schemas import UserRole
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import AccountType
 from onyx.db.enums import Permission
+from onyx.db.enums import SkillReviewStatus
 from onyx.db.enums import SkillSharePermission
 from onyx.db.models import Skill
 from onyx.db.models import User
@@ -24,16 +25,25 @@ from onyx.db.skill import replace_skill_shares
 from onyx.db.skill import SkillAccessPolicy
 from onyx.db.skill import transfer_skill_ownership
 from onyx.db.skill import update_skill_fields
+from onyx.db.skill_review import list_skill_review_submissions
+from onyx.db.skill_review import resolve_skill_review_submission
+from onyx.db.skill_review import submit_skill_for_review
 from onyx.db.users import fetch_user_by_id
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import get_default_file_store
+from onyx.server.features.skill.models import ResolveSkillReviewRequest
 from onyx.server.features.skill.models import SkillEditableDetailResponse
+from onyx.server.features.skill.models import SkillPackageDiffResponse
+from onyx.server.features.skill.models import SkillPackageFileUpdate
+from onyx.server.features.skill.models import SkillPackageResponse
 from onyx.server.features.skill.models import SkillPatchRequest
 from onyx.server.features.skill.models import SkillPreviewResponse
 from onyx.server.features.skill.models import SkillResponse
+from onyx.server.features.skill.models import SkillReviewSubmissionResponse
 from onyx.server.features.skill.models import SkillShareRequest
 from onyx.server.features.skill.models import SkillsList
+from onyx.server.features.skill.models import SubmitSkillReviewRequest
 from onyx.server.features.skill.models import TransferSkillOwnershipRequest
 from onyx.server.features.skill.response_helpers import skill_preview_response
 from onyx.server.features.skill.response_helpers import skill_response_for_user
@@ -41,9 +51,13 @@ from onyx.server.features.skill.response_helpers import skills_list_response_for
 from onyx.skills.built_in import BUILT_IN_SKILLS
 from onyx.skills.built_in import EXTERNAL_APP_BUILT_IN_SKILL_IDS
 from onyx.skills.bundle import compute_bundle_sha256
+from onyx.skills.bundle import diff_custom_bundles
+from onyx.skills.bundle import inspect_custom_bundle
+from onyx.skills.bundle import parse_skill_md_metadata
 from onyx.skills.bundle import read_bundle_file
 from onyx.skills.bundle import read_custom_bundle_instructions
 from onyx.skills.bundle import rewrite_custom_bundle_skill_md
+from onyx.skills.bundle import rewrite_custom_bundle_text_file
 from onyx.skills.bundle import slug_from_filename
 from onyx.skills.content import read_custom_skill_bundle_bytes
 from onyx.skills.content import read_custom_skill_bundle_instructions
@@ -67,6 +81,11 @@ def _ensure_can_edit_org_visibility(skill: Skill, user: User) -> None:
     )
 
 
+def _ensure_admin(user: User) -> None:
+    if user.role != UserRole.ADMIN:
+        raise OnyxError(OnyxErrorCode.ADMIN_ONLY)
+
+
 @user_router.get("")
 def list_skills_for_current_user(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
@@ -78,6 +97,45 @@ def list_skills_for_current_user(
         db_session=db_session,
     )
     return skills_list_response_for_user(rows, user, db_session)
+
+
+@user_router.get("/reviews")
+def list_skill_reviews(
+    status: SkillReviewStatus | None = None,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[SkillReviewSubmissionResponse]:
+    _ensure_admin(user)
+    submissions = list_skill_review_submissions(
+        db_session=db_session,
+        status=status,
+    )
+    return [
+        SkillReviewSubmissionResponse.from_model(submission)
+        for submission in submissions
+    ]
+
+
+@user_router.post("/reviews/{submission_id}")
+def resolve_skill_review(
+    submission_id: UUID,
+    body: ResolveSkillReviewRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillReviewSubmissionResponse:
+    _ensure_admin(user)
+    submission = resolve_skill_review_submission(
+        submission_id=submission_id,
+        reviewer=user,
+        approve=body.approve,
+        review_comment=body.review_comment,
+        db_session=db_session,
+    )
+    db_session.commit()
+    db_session.refresh(submission)
+    if submission.status == SkillReviewStatus.APPROVED:
+        push_skill_to_affected_sandboxes(submission.skill, db_session)
+    return SkillReviewSubmissionResponse.from_model(submission)
 
 
 @user_router.get("/{skill_id}")
@@ -179,6 +237,126 @@ def fetch_custom_skill_for_edit(
         **response.model_dump(),
         instructions_markdown=read_custom_skill_bundle_instructions(skill),
     )
+
+
+@user_router.get("/custom/{skill_id}/package")
+def inspect_current_user_skill_package(
+    skill_id: UUID,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillPackageResponse:
+    skill = fetch_skill(
+        skill_id,
+        policy=SkillAccessPolicy.VIEW,
+        user=user,
+        db_session=db_session,
+    )
+    if skill is None or skill.bundle_file_id is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Custom skill not found")
+    bundle_bytes = read_custom_skill_bundle_bytes(skill, get_default_file_store())
+    return SkillPackageResponse.from_inspection(
+        inspect_custom_bundle(bundle_bytes, slug=skill.slug)
+    )
+
+
+@user_router.post("/custom/{skill_id}/package/diff")
+def inspect_current_user_skill_candidate(
+    skill_id: UUID,
+    bundle: UploadFile = File(...),
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillPackageDiffResponse:
+    skill = fetch_skill(
+        skill_id,
+        policy=SkillAccessPolicy.EDIT,
+        user=user,
+        db_session=db_session,
+    )
+    if skill is None or skill.bundle_file_id is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Custom skill not found")
+    current_bundle = read_custom_skill_bundle_bytes(skill, get_default_file_store())
+    candidate_bundle = read_bundle_file(bundle.file)
+    return SkillPackageDiffResponse.from_diff(
+        diff_custom_bundles(current_bundle, candidate_bundle, slug=skill.slug)
+    )
+
+
+@user_router.put("/custom/{skill_id}/package/file")
+def update_current_user_skill_package_file(
+    skill_id: UUID,
+    body: SkillPackageFileUpdate,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillPackageResponse:
+    skill = fetch_skill(
+        skill_id,
+        policy=SkillAccessPolicy.EDIT,
+        user=user,
+        db_session=db_session,
+    )
+    if skill is None or skill.bundle_file_id is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Custom skill not found")
+
+    file_store = get_default_file_store()
+    old_bundle = read_custom_skill_bundle_bytes(skill, file_store)
+    new_bundle = rewrite_custom_bundle_text_file(
+        old_bundle,
+        slug=skill.slug,
+        path=body.path,
+        content=body.content,
+    )
+    name, description = parse_skill_md_metadata(new_bundle)
+    new_bundle_file_id = save_skill_bundle_bytes(
+        new_bundle,
+        display_name=f"{skill.slug}.zip",
+        file_store=file_store,
+    )
+    try:
+        old_bundle_file_id = replace_skill_bundle(
+            skill=skill,
+            new_bundle_file_id=new_bundle_file_id,
+            new_bundle_sha256=compute_bundle_sha256(new_bundle),
+            new_name=name,
+            new_description=description,
+            db_session=db_session,
+        )
+        db_session.commit()
+    except Exception:
+        delete_bundle_blob(file_store, new_bundle_file_id)
+        raise
+
+    db_session.expire(skill)
+    push_skill_to_affected_sandboxes(skill, db_session)
+    delete_bundle_blob(file_store, old_bundle_file_id)
+    return SkillPackageResponse.from_inspection(
+        inspect_custom_bundle(new_bundle, slug=skill.slug)
+    )
+
+
+@user_router.post("/custom/{skill_id}/review")
+def submit_current_user_skill_for_review(
+    skill_id: UUID,
+    body: SubmitSkillReviewRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillReviewSubmissionResponse:
+    skill = fetch_skill(
+        skill_id,
+        policy=SkillAccessPolicy.EDIT,
+        user=user,
+        db_session=db_session,
+    )
+    if skill is None or skill.bundle_file_id is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Custom skill not found")
+    submission = submit_skill_for_review(
+        skill=skill,
+        submitter=user,
+        submission_comment=body.submission_comment,
+        db_session=db_session,
+    )
+    db_session.commit()
+    db_session.refresh(submission)
+    return SkillReviewSubmissionResponse.from_model(submission)
 
 
 @user_router.put("/custom/{skill_id}/bundle")

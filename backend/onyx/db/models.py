@@ -100,6 +100,7 @@ from onyx.db.enums import ScheduledTaskStatus
 from onyx.db.enums import ScheduledTaskTriggerSource
 from onyx.db.enums import SessionOrigin
 from onyx.db.enums import SharingScope
+from onyx.db.enums import SkillReviewStatus
 from onyx.db.enums import SkillSharePermission
 from onyx.db.enums import SSOProviderType
 from onyx.db.enums import SwitchoverType
@@ -4557,6 +4558,12 @@ class Skill(Base):
         viewonly=True,
         overlaps="group_shares",
     )
+    review_submissions: Mapped[list["SkillReviewSubmission"]] = relationship(
+        "SkillReviewSubmission",
+        back_populates="skill",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
     __table_args__ = (
         UniqueConstraint("slug", name="uq_skill_slug"),
@@ -4564,6 +4571,55 @@ class Skill(Base):
             "(built_in_skill_id IS NULL) <> (bundle_file_id IS NULL)",
             name="ck_skill_definition_source",
         ),
+    )
+
+
+class SkillReviewSubmission(Base):
+    __tablename__ = "skill_review_submission"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    skill_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("skill.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    submitted_by_user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reviewed_by_user_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    bundle_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[SkillReviewStatus] = mapped_column(
+        Enum(SkillReviewStatus, native_enum=False),
+        nullable=False,
+        default=SkillReviewStatus.PENDING,
+        server_default=SkillReviewStatus.PENDING.value,
+    )
+    submission_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    review_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    submitted_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    reviewed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    skill: Mapped[Skill] = relationship(Skill, back_populates="review_submissions")
+    submitted_by: Mapped[User] = relationship(User, foreign_keys=[submitted_by_user_id])
+    reviewed_by: Mapped[User | None] = relationship(
+        User, foreign_keys=[reviewed_by_user_id]
+    )
+
+    __table_args__ = (
+        Index("ix_skill_review_submission_status_submitted", status, submitted_at),
+        Index("ix_skill_review_submission_skill", skill_id),
     )
 
 
