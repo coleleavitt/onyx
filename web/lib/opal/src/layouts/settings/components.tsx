@@ -63,6 +63,7 @@ export interface SettingsHeaderProps {
   rightChildren?: React.ReactNode;
   backButton?: boolean | (() => void);
   divider?: boolean;
+  density?: "default" | "compact";
 }
 
 /**
@@ -80,6 +81,7 @@ function SettingsHeader({
   rightChildren,
   backButton,
   divider,
+  density = "default",
 }: SettingsHeaderProps) {
   const router = useRouter();
   const [showShadow, setShowShadow] = useState(false);
@@ -125,9 +127,14 @@ function SettingsHeader({
         </div>
       )}
 
-      <Spacer rem={3.25} />
+      <Spacer rem={density === "compact" ? 2 : 3.25} />
 
-      <div className="flex flex-col gap-6 px-4">
+      <div
+        className={cn(
+          "flex flex-col px-4",
+          density === "compact" ? "gap-4" : "gap-6"
+        )}
+      >
         <div className="flex w-full justify-between">
           <div aria-label="admin-page-title">
             <Content
@@ -146,11 +153,11 @@ function SettingsHeader({
 
       {divider ? (
         <>
-          <Spacer rem={1.5} />
+          <Spacer rem={density === "compact" ? 1 : 1.5} />
           <Divider paddingParallel="md" paddingPerpendicular="fit" />
         </>
       ) : (
-        <Spacer rem={0.5} />
+        <Spacer rem={density === "compact" ? 0.25 : 0.5} />
       )}
 
       {isSticky && (
@@ -173,11 +180,21 @@ function SettingsHeader({
 // Body
 // ---------------------------------------------------------------------------
 
-function SettingsBody(
-  props: WithoutStyles<HtmlHTMLAttributes<HTMLDivElement>>
-) {
+interface SettingsBodyProps extends WithoutStyles<
+  HtmlHTMLAttributes<HTMLDivElement>
+> {
+  density?: "default" | "compact";
+}
+
+function SettingsBody({ density = "default", ...props }: SettingsBodyProps) {
   return (
-    <div className="pt-6 pb-18 px-4 flex flex-col gap-8 w-full" {...props} />
+    <div
+      className={cn(
+        "px-4 flex flex-col w-full",
+        density === "compact" ? "pt-4 pb-12 gap-6" : "pt-6 pb-18 gap-8"
+      )}
+      {...props}
+    />
   );
 }
 

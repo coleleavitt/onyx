@@ -150,7 +150,8 @@ export default function SkillsPage() {
       <SettingsLayouts.Header
         icon={SvgBlocks}
         title="Skills"
-        description="Reusable capability bundles available to your Craft agent."
+        description="Choose the reusable capabilities available to your agents."
+        density="compact"
         rightChildren={
           <div className="hidden sm:block">
             <Button icon={SvgPlus} onClick={handleCreateClick}>
@@ -166,8 +167,9 @@ export default function SkillsPage() {
             </Button>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="w-full shrink-0 sm:w-[32rem]">
+            <div className="w-full shrink-0 sm:w-[22rem]">
               <Tabs
+                variant="underline"
                 value={scope}
                 onValueChange={(value) => setScope(value as SkillScope)}
               >
@@ -205,7 +207,7 @@ export default function SkillsPage() {
         </div>
       </SettingsLayouts.Header>
 
-      <SettingsLayouts.Body>
+      <SettingsLayouts.Body density="compact">
         {isLoading ? (
           <div className="flex justify-center py-16">
             <SvgSimpleLoader className="h-6 w-6" />

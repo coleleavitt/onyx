@@ -1,27 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Route } from "next";
-import { Button, InputTypeIn, Tabs, Tag, Text } from "@opal/components";
+import { Button, InputTypeIn, Tabs, Text } from "@opal/components";
 import { IllustrationContent, SettingsLayouts } from "@opal/layouts";
 import SvgNoResult from "@opal/illustrations/no-result";
 import {
-  SvgArrowRight,
   SvgClock,
-  SvgFileChartPie,
-  SvgPin,
-  SvgPinned,
   SvgSimpleLoader,
   SvgSparkle,
   SvgWorkflow,
 } from "@opal/icons";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
 import type { ScheduledTaskTemplateCategory } from "@/app/craft/v1/tasks/task-starters";
-import { SEARCH_PARAM_NAMES } from "@/app/app/services/searchParams";
-import {
-  newTaskFromTemplatePath,
-  TASKS_PATH,
-} from "@/app/craft/v1/tasks/constants";
+import { TASKS_PATH } from "@/app/craft/v1/tasks/constants";
 import { pinWorkflow, unpinWorkflow } from "@/lib/workflows/api";
 import { useWorkflowPins } from "@/lib/workflows/hooks";
 import {
@@ -29,6 +20,7 @@ import {
   type WorkflowCatalogItem,
 } from "@/lib/workflows/catalog";
 import { toast } from "@/hooks/useToast";
+import WorkflowCard from "@/sections/cards/WorkflowCard";
 
 type CatalogScope = "browse" | "pinned";
 type CategoryFilter = "All" | ScheduledTaskTemplateCategory;
@@ -38,71 +30,6 @@ const FEATURED_IDS = new Set([
   "compliance-monitor",
   "weekly-status-review",
 ]);
-
-interface WorkflowCardProps {
-  workflow: WorkflowCatalogItem;
-  pinned: boolean;
-  busy: boolean;
-  onTogglePin: (workflow: WorkflowCatalogItem) => void;
-}
-
-function workflowLaunchPath(workflow: WorkflowCatalogItem): Route {
-  return workflow.execution === "scheduled"
-    ? newTaskFromTemplatePath(workflow.id)
-    : (`/app?${SEARCH_PARAM_NAMES.USER_PROMPT}=${encodeURIComponent(workflow.prompt)}` as Route);
-}
-
-function WorkflowCard({
-  workflow,
-  pinned,
-  busy,
-  onTogglePin,
-}: WorkflowCardProps) {
-  return (
-    <article className="flex min-h-52 flex-col rounded-08 border border-border-01 bg-background-01 p-4 transition-colors hover:bg-background-tint-01">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-08 bg-background-tint-02">
-          <SvgFileChartPie className="h-5 w-5 stroke-text-03" />
-        </div>
-        <Button
-          icon={pinned ? SvgPinned : SvgPin}
-          prominence="tertiary"
-          size="xs"
-          tooltip={pinned ? "Unpin workflow" : "Pin workflow"}
-          disabled={busy}
-          onClick={() => onTogglePin(workflow)}
-        />
-      </div>
-      <div className="mt-4 min-w-0 flex-1">
-        <Text font="heading-h3" color="text-05" maxLines={2}>
-          {workflow.name}
-        </Text>
-        <div className="mt-1">
-          <Text font="secondary-body" color="text-03" maxLines={4}>
-            {workflow.description}
-          </Text>
-        </div>
-      </div>
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-1">
-          <Tag color="gray" title={workflow.category} />
-          <Tag
-            color={workflow.execution === "scheduled" ? "blue" : "gray"}
-            title={workflow.execution === "scheduled" ? "Recurring" : "Guided"}
-          />
-        </div>
-        <Button
-          href={workflowLaunchPath(workflow)}
-          icon={workflow.execution === "scheduled" ? SvgClock : SvgArrowRight}
-          prominence="secondary"
-          size="sm"
-        >
-          {workflow.execution === "scheduled" ? "Schedule" : "Start"}
-        </Button>
-      </div>
-    </article>
-  );
-}
 
 export default function WorkflowCatalogPage() {
   const { data: pinData, isLoading: pinsLoading, mutate } = useWorkflowPins();
@@ -176,8 +103,14 @@ export default function WorkflowCatalogPage() {
     }
   }
 
-  const renderGrid = (workflows: WorkflowCatalogItem[]) => (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+  const renderGrid = (workflows: WorkflowCatalogItem[], featured = false) => (
+    <div
+      className={
+        featured
+          ? "grid grid-cols-1 gap-3 md:grid-cols-3"
+          : "grid grid-cols-1 gap-3 lg:grid-cols-2"
+      }
+    >
       {workflows.map((workflow) => (
         <WorkflowCard
           key={workflow.id}
@@ -196,6 +129,7 @@ export default function WorkflowCatalogPage() {
         icon={SvgWorkflow}
         title="Workflows"
         description="Start guided work or schedule recurring, reviewable automations."
+        density="compact"
         rightChildren={
           <div className="hidden sm:block">
             <Button href={TASKS_PATH} icon={SvgClock} prominence="secondary">
@@ -211,8 +145,9 @@ export default function WorkflowCatalogPage() {
             </Button>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="w-full shrink-0 sm:w-64">
+            <div className="w-full shrink-0 sm:w-44">
               <Tabs
+                variant="underline"
                 value={scope}
                 onValueChange={(value) => setScope(value as CatalogScope)}
               >
@@ -249,7 +184,7 @@ export default function WorkflowCatalogPage() {
           </div>
         </div>
       </SettingsLayouts.Header>
-      <SettingsLayouts.Body>
+      <SettingsLayouts.Body density="compact">
         {pinsLoading ? (
           <div className="flex justify-center py-16">
             <SvgSimpleLoader className="h-6 w-6" />
@@ -267,7 +202,7 @@ export default function WorkflowCatalogPage() {
             }
           />
         ) : (
-          <div className="flex w-full flex-col gap-8">
+          <div className="flex w-full flex-col gap-6">
             {recommended.length > 0 ? (
               <section className="flex flex-col gap-3">
                 <div className="flex items-center gap-2">
@@ -276,14 +211,19 @@ export default function WorkflowCatalogPage() {
                     Recommended
                   </Text>
                 </div>
-                {renderGrid(recommended)}
+                {renderGrid(recommended, true)}
               </section>
             ) : null}
             {grouped.map(([groupCategory, workflows]) => (
               <section key={groupCategory} className="flex flex-col gap-3">
-                <Text font="heading-h3" color="text-05">
-                  {groupCategory}
-                </Text>
+                <div className="flex items-baseline gap-2">
+                  <Text font="heading-h3" color="text-05">
+                    {groupCategory}
+                  </Text>
+                  <Text font="secondary-body" color="text-03">
+                    {String(workflows.length)}
+                  </Text>
+                </div>
                 {renderGrid(workflows)}
               </section>
             ))}

@@ -61,6 +61,11 @@ export default function SkillCard({
 
   const authorTitle =
     item.source === "builtin" ? appName : item.author_email || appName;
+  const footerTitle =
+    item.source === "builtin"
+      ? item.category || "Built-in capability"
+      : authorTitle;
+  const FooterIcon = item.source === "builtin" ? SvgBlocks : SvgUser;
   const isDisabled =
     item.user_enabled === false ||
     (item.source === "custom" && item.enabled === false);
@@ -115,8 +120,8 @@ export default function SkillCard({
           <div className="bg-background-tint-01 p-1 flex flex-row items-center justify-between w-full">
             <div className="py-1 px-2 min-w-0 flex-1">
               <Content
-                icon={SvgUser}
-                title={authorTitle}
+                icon={FooterIcon}
+                title={footerTitle}
                 sizePreset="secondary"
                 variant="body"
                 color="muted"

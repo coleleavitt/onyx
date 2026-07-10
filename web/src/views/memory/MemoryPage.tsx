@@ -39,7 +39,6 @@ type ViewMode = "grid" | "list";
 interface CategoryDefinition {
   value: CategoryFilter;
   label: string;
-  description: string;
   icon: IconFunctionComponent;
 }
 
@@ -47,31 +46,26 @@ const CATEGORIES: readonly CategoryDefinition[] = [
   {
     value: "all",
     label: "All",
-    description: "Every stored memory",
     icon: SvgBookOpen,
   },
   {
     value: "concepts",
     label: "Concepts",
-    description: "Ideas and preferences",
     icon: SvgLightbulbSimple,
   },
   {
     value: "entities",
     label: "Entities",
-    description: "People and organizations",
     icon: SvgUsers,
   },
   {
     value: "workstreams",
     label: "Workstreams",
-    description: "Active projects and goals",
     icon: SvgFolder,
   },
   {
     value: "notes",
     label: "Notes",
-    description: "General remembered context",
     icon: SvgMenu,
   },
 ] as const;
@@ -108,7 +102,7 @@ function MemorySettingsModal({ open, onClose }: MemorySettingsModalProps) {
         />
         <Modal.Body>
           <div className="flex w-full flex-col gap-3">
-            <div className="flex items-center justify-between gap-4 rounded-08 border border-border-01 bg-background-01 p-4">
+            <div className="flex items-center justify-between gap-4 rounded-08 border border-border-01 bg-background-tint-02 p-4">
               <div className="min-w-0">
                 <Text font="main-ui-body" color="text-05">
                   Reference stored memories
@@ -131,7 +125,7 @@ function MemorySettingsModal({ open, onClose }: MemorySettingsModalProps) {
                 }}
               />
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-08 border border-border-01 bg-background-01 p-4">
+            <div className="flex items-center justify-between gap-4 rounded-08 border border-border-01 bg-background-tint-02 p-4">
               <div className="min-w-0">
                 <Text font="main-ui-body" color="text-05">
                   Allow memory updates
@@ -248,6 +242,7 @@ export default function MemoryPage() {
         icon={SvgBookOpen}
         title="Memory"
         description="Review and manage the durable context Onyx has learned about your work."
+        density="compact"
         rightChildren={<div className="hidden sm:block">{headerActions}</div>}
       >
         <div className="flex w-full flex-col gap-2">
@@ -262,7 +257,7 @@ export default function MemoryPage() {
                 onChange={(event) => setQuery(event.target.value)}
               />
             </div>
-            <div className="flex shrink-0 rounded-08 border border-border-01 bg-background-01 p-0.5">
+            <div className="flex shrink-0 rounded-08 border border-border-01 bg-background-tint-02 p-0.5">
               <Button
                 icon={SvgBlocks}
                 prominence={view === "grid" ? "secondary" : "tertiary"}
@@ -281,7 +276,7 @@ export default function MemoryPage() {
           </div>
         </div>
       </SettingsLayouts.Header>
-      <SettingsLayouts.Body>
+      <SettingsLayouts.Body density="compact">
         <div className="flex w-full flex-col gap-5 md:flex-row md:items-start">
           <div className="flex w-full gap-1 overflow-x-auto pb-1 md:sticky md:top-4 md:w-56 md:shrink-0 md:flex-col md:overflow-visible">
             {CATEGORIES.map((item) => {
@@ -301,16 +296,7 @@ export default function MemoryPage() {
                     </Text>
                   }
                 >
-                  <div className="min-w-0 flex-1">
-                    <Text font="main-ui-body" color="text-05" nowrap>
-                      {item.label}
-                    </Text>
-                    <div className="hidden md:block">
-                      <Text font="secondary-body" color="text-02" maxLines={1}>
-                        {item.description}
-                      </Text>
-                    </div>
-                  </div>
+                  {item.label}
                 </SidebarTab>
               );
             })}
@@ -351,7 +337,7 @@ export default function MemoryPage() {
                 }
               />
             ) : view === "grid" ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {visibleMemories.map((memory) => (
                   <MemoryCard
                     key={memory.id}
