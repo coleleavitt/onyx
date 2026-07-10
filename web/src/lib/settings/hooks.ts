@@ -2,9 +2,11 @@
 
 import useSWR from "swr";
 import { useMemo } from "react";
+import { usePathname } from "next/navigation";
 import useCCPairs from "@/hooks/useCCPairs";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import { SWR_KEYS } from "@/lib/swr-keys";
+import { isAuthPath } from "@/lib/auth/paths";
 import {
   ApplicationStatus,
   AppSettings,
@@ -39,30 +41,41 @@ const DEFAULT_SETTINGS: Settings = {
  * never have to re-derive them or fetch enterprise settings separately.
  */
 export function useSettings(): AppSettings {
+  // Skip core settings on /auth/* routes: unauthenticated callers 403 there, and
+  // the login shell only needs enterprise-derived `appName` (fetched below).
+  const onAuthPath = isAuthPath(usePathname());
+
   const {
     data: rawSettings,
     error: settingsError,
     isLoading: settingsLoading,
-  } = useSWR<Settings>(SWR_KEYS.settings, errorHandlingFetcher, {
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false,
-    revalidateIfStale: false,
-    dedupingInterval: 30_000,
-    errorRetryInterval: SETTINGS_ERROR_RETRY_INTERVAL,
-  });
+  } = useSWR<Settings>(
+    onAuthPath ? null : SWR_KEYS.settings,
+    errorHandlingFetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      dedupingInterval: 30_000,
+      errorRetryInterval: SETTINGS_ERROR_RETRY_INTERVAL,
+    }
+  );
 
   const core = rawSettings ?? DEFAULT_SETTINGS;
   // Enterprise appearance settings are public so login and password-reset
   // surfaces can resolve branding before the authenticated core settings call
-  // succeeds. Once core settings load, preserve the normal CE/EE gate.
+  // succeeds. On /auth/* the core fetch is skipped, so still fetch public
+  // enterprise settings for hostname branding. Once core settings load,
+  // preserve the normal CE/EE gate.
   const shouldFetchEnterprise =
-    settingsLoading || settingsError
-      ? true
-      : enterpriseFeaturesAvailable({
-          isLoading: false,
-          error: undefined,
-          enabled: core.ee_features_enabled,
-        });
+    onAuthPath ||
+    (!settingsLoading &&
+      !settingsError &&
+      enterpriseFeaturesAvailable({
+        isLoading: false,
+        error: undefined,
+        enabled: core.ee_features_enabled,
+      }));
 
   const {
     data: enterprise,

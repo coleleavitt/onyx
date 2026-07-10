@@ -20,12 +20,7 @@ export interface LogoProps {
   onyxBranded?: boolean;
 }
 
-export default function Logo({
-  folded,
-  size,
-  className,
-  onyxBranded,
-}: LogoProps) {
+export function Logo({ folded, size, className, onyxBranded }: LogoProps) {
   const resolvedSize = size ?? DEFAULT_LOGO_SIZE_PX;
   const { enterprise, logoUrl, darkLogoUrl, wordmarkUrl, darkWordmarkUrl } =
     useSettings();

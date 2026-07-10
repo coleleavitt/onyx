@@ -167,6 +167,7 @@ class DriveItemData(BaseModel):
     size: int | None = None
     mime_type: str | None = None
     download_url: str | None = None
+    created_datetime: datetime | None = None
     last_modified_datetime: datetime | None = None
     last_modified_by_display_name: str | None = None
     last_modified_by_email: str | None = None
@@ -180,6 +181,11 @@ class DriveItemData(BaseModel):
         if isinstance(last_mod_raw, str):
             last_mod = datetime.fromisoformat(last_mod_raw.replace("Z", "+00:00"))
 
+        created_raw = item.get("createdDateTime")
+        created: datetime | None = None
+        if isinstance(created_raw, str):
+            created = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+
         last_modified_by = item.get("lastModifiedBy", {}).get("user", {})
         parent_ref = item.get("parentReference", {})
 
@@ -190,6 +196,7 @@ class DriveItemData(BaseModel):
             size=item.get("size"),
             mime_type=item.get("file", {}).get("mimeType"),
             download_url=item.get("@microsoft.graph.downloadUrl"),
+            created_datetime=created,
             last_modified_datetime=last_mod,
             last_modified_by_display_name=last_modified_by.get("displayName"),
             last_modified_by_email=(
@@ -1184,6 +1191,11 @@ def _convert_driveitem_to_document_with_permissions(
         source=DocumentSource.SHAREPOINT,
         semantic_identifier=driveitem.name,
         external_access=external_access,
+        doc_created_at=(
+            driveitem.created_datetime.replace(tzinfo=timezone.utc)
+            if driveitem.created_datetime
+            else None
+        ),
         doc_updated_at=(
             driveitem.last_modified_datetime.replace(tzinfo=timezone.utc)
             if driveitem.last_modified_datetime
@@ -1304,6 +1316,7 @@ def _convert_sitepage_to_document(
         source=DocumentSource.SHAREPOINT,
         external_access=external_access,
         semantic_identifier=semantic_identifier,
+        doc_created_at=created_datetime,
         doc_updated_at=last_modified_datetime or created_datetime,
         primary_owners=primary_owners,
         metadata=metadata,
@@ -1403,11 +1416,23 @@ def _convert_listitem_to_document(
         external_access=external_access,
         semantic_identifier=title,
         title=title,
+        doc_created_at=item.created_datetime,
         doc_updated_at=item.last_modified_datetime or item.created_datetime,
         primary_owners=primary_owners or None,
         metadata=metadata,
         parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
     )
+
+
+def _parse_sharepoint_datetime(value: Any) -> datetime | None:
+    """Parse a SharePoint Graph datetime that may be an ISO string or datetime."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if not value.tzinfo:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def _convert_driveitem_to_slim_document(
@@ -1434,6 +1459,11 @@ def _convert_driveitem_to_slim_document(
         id=driveitem.id,
         external_access=external_access,
         parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
+        doc_created_at=(
+            driveitem.created_datetime.replace(tzinfo=timezone.utc)
+            if driveitem.created_datetime
+            else None
+        ),
     )
 
 
@@ -1460,6 +1490,7 @@ def _convert_sitepage_to_slim_document(
         id=page_id,
         external_access=external_access,
         parent_hierarchy_raw_node_id=parent_hierarchy_raw_node_id,
+        doc_created_at=_parse_sharepoint_datetime(site_page.get("createdDateTime")),
     )
 
 
@@ -2987,6 +3018,13 @@ class SharepointConnector(
                                     id=driveitem.id,
                                     external_access=ExternalAccess.empty(),
                                     parent_hierarchy_raw_node_id=parent_hierarchy_url,
+                                    doc_created_at=(
+                                        driveitem.created_datetime.replace(
+                                            tzinfo=timezone.utc
+                                        )
+                                        if driveitem.created_datetime
+                                        else None
+                                    ),
                                 )
                             )
                     except Exception as e:
@@ -3030,6 +3068,9 @@ class SharepointConnector(
                                         id=page_id,
                                         external_access=ExternalAccess.empty(),
                                         parent_hierarchy_raw_node_id=site_descriptor.url,
+                                        doc_created_at=_parse_sharepoint_datetime(
+                                            site_page.get("createdDateTime")
+                                        ),
                                     )
                                 )
                         except Exception as e:

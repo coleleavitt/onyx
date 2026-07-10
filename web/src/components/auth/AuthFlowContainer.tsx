@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { useSettings } from "@/lib/settings/hooks";
-import Logo from "@/refresh-components/Logo";
+import { Logo } from "@/lib/app/components";
 
 export default function AuthFlowContainer({
   children,
