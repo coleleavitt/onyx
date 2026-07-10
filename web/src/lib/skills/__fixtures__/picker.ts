@@ -11,6 +11,8 @@ export function builtinFixture(over: Partial<BuiltinSkill> = {}): BuiltinSkill {
     slug: "pptx",
     name: "PPTX",
     description: "Build PowerPoint decks.",
+    category: "Content creation",
+    user_enabled: true,
     is_available: true,
     unavailable_reason: null,
     is_personal: false,
@@ -26,6 +28,8 @@ export function builtinFixture(over: Partial<BuiltinSkill> = {}): BuiltinSkill {
     public_permission: null,
     user_permission: "VIEWER",
     ...over,
+    review_status: over.review_status ?? null,
+    review_submitted_at: over.review_submitted_at ?? null,
   };
 }
 
@@ -36,6 +40,8 @@ export function customFixture(over: Partial<CustomSkill> = {}): CustomSkill {
     slug: "report-writer",
     name: "Report Writer",
     description: "Draft a structured report from notes.",
+    category: "Custom",
+    user_enabled: true,
     is_available: null,
     unavailable_reason: null,
     is_personal: false,
@@ -51,6 +57,8 @@ export function customFixture(over: Partial<CustomSkill> = {}): CustomSkill {
     public_permission: "VIEWER",
     user_permission: "VIEWER",
     ...over,
+    review_status: over.review_status ?? null,
+    review_submitted_at: over.review_submitted_at ?? null,
   };
 }
 

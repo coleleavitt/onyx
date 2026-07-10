@@ -32,6 +32,8 @@ export interface Skill {
   slug: string;
   name: string;
   description: string;
+  category: string;
+  user_enabled: boolean;
 
   is_available: boolean | null;
   unavailable_reason: string | null;

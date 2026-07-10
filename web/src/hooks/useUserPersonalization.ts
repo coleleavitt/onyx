@@ -10,6 +10,8 @@ const DEFAULT_PERSONALIZATION: UserPersonalization = {
   use_memories: true,
   enable_memory_tool: true,
   user_preferences: "",
+  organization_memories_enabled: true,
+  organization_memory_creation_enabled: true,
 };
 
 function derivePersonalizationFromUser(user: User | null): UserPersonalization {
@@ -27,6 +29,10 @@ function derivePersonalizationFromUser(user: User | null): UserPersonalization {
       user.personalization.enable_memory_tool ??
       DEFAULT_PERSONALIZATION.enable_memory_tool,
     user_preferences: user.personalization.user_preferences ?? "",
+    organization_memories_enabled:
+      user.personalization.organization_memories_enabled ?? true,
+    organization_memory_creation_enabled:
+      user.personalization.organization_memory_creation_enabled ?? true,
   };
 }
 

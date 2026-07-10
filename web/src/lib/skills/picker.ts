@@ -41,7 +41,7 @@ export function toPickerSections(
   const apps: PickerApp[] = [];
 
   for (const b of skillsData?.builtins ?? []) {
-    if (!b.is_available) continue;
+    if (!b.is_available || !b.user_enabled) continue;
     skills.push({
       kind: "skill",
       slug: b.slug,
@@ -51,7 +51,7 @@ export function toPickerSections(
   }
 
   for (const c of skillsData?.customs ?? []) {
-    if (!c.enabled) continue;
+    if (!c.enabled || !c.user_enabled) continue;
     skills.push({
       kind: "skill",
       slug: c.slug,

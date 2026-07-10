@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, type MouseEvent } from "react";
-import { Button, Tag, Tooltip } from "@opal/components";
+import { Button, Switch, Tag, Tooltip } from "@opal/components";
 import { Content } from "@opal/layouts";
 import { SvgBlocks, SvgEdit, SvgUser } from "@opal/icons";
 import { CardItemLayout } from "@/layouts/general-layouts";
@@ -16,6 +16,8 @@ interface SkillCardItemBase {
   id: string;
   name: string;
   description: string;
+  category?: string;
+  user_enabled?: boolean;
 }
 
 export interface BuiltinSkillCardItem extends SkillCardItemBase {
@@ -40,9 +42,17 @@ export interface SkillCardProps {
   item: SkillCardItem;
   onClick?: (item: SkillCardItem) => void;
   onEdit?: (item: CustomSkillCardItem) => void;
+  onToggleEnabled?: (item: SkillCardItem, enabled: boolean) => void;
+  enableToggleDisabled?: boolean;
 }
 
-export default function SkillCard({ item, onClick, onEdit }: SkillCardProps) {
+export default function SkillCard({
+  item,
+  onClick,
+  onEdit,
+  onToggleEnabled,
+  enableToggleDisabled,
+}: SkillCardProps) {
   const { appName } = useSettings();
 
   const handleClick = useCallback(() => {
@@ -51,8 +61,12 @@ export default function SkillCard({ item, onClick, onEdit }: SkillCardProps) {
 
   const authorTitle =
     item.source === "builtin" ? appName : item.author_email || appName;
-  const isDisabled = item.source === "custom" && item.enabled === false;
+  const isDisabled =
+    item.user_enabled === false ||
+    (item.source === "custom" && item.enabled === false);
   const isBuiltinUnavailable = item.source === "builtin" && !item.is_available;
+  const isOrganizationDisabled =
+    item.source === "custom" && item.enabled === false;
   const tooltip = isBuiltinUnavailable
     ? "Skill is currently unavailable. Click to view details."
     : undefined;
@@ -109,6 +123,36 @@ export default function SkillCard({ item, onClick, onEdit }: SkillCardProps) {
               />
             </div>
             <div className="p-0.5 pr-1.5 flex items-center gap-1">
+              <Tooltip
+                tooltip={
+                  isOrganizationDisabled
+                    ? "Disabled by your organization"
+                    : undefined
+                }
+                side="top"
+              >
+                <div
+                  className="mr-1 flex items-center"
+                  onClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <Switch
+                    checked={
+                      !isOrganizationDisabled &&
+                      !isBuiltinUnavailable &&
+                      item.user_enabled !== false
+                    }
+                    disabled={
+                      enableToggleDisabled ||
+                      isBuiltinUnavailable ||
+                      isOrganizationDisabled
+                    }
+                    onCheckedChange={(checked) =>
+                      onToggleEnabled?.(item, checked)
+                    }
+                  />
+                </div>
+              </Tooltip>
               {item.source === "builtin" ? (
                 item.is_available ? (
                   <Tag title="Built-in" color="blue" />
@@ -121,7 +165,7 @@ export default function SkillCard({ item, onClick, onEdit }: SkillCardProps) {
               ) : item.is_personal ? (
                 <Tag title="Personal" color="purple" />
               ) : (
-                <Tag title="Custom" color="gray" />
+                <Tag title={item.category || "Shared"} color="gray" />
               )}
             </div>
           </div>

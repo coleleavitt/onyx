@@ -18,6 +18,7 @@ import { toast } from "@/hooks/useToast";
 import ConfirmationModalLayout from "@/refresh-components/layouts/ConfirmationModalLayout";
 import {
   SvgClock,
+  SvgArrowRight,
   SvgPlus,
   SvgRefreshCw,
   SvgSparkle,
@@ -183,39 +184,40 @@ export default function ScheduledTasksListPage() {
     [busyTaskId]
   );
 
-  const headerActions = useMemo(
-    () => (
-      <div className="flex items-center gap-2">
-        <Button
-          variant="default"
-          prominence="secondary"
-          icon={SvgSparkle}
-          href={TASK_TEMPLATES_PATH}
-        >
-          Templates
-        </Button>
-        <Button
-          variant="default"
-          prominence="primary"
-          icon={SvgPlus}
-          href={NEW_TASK_PATH}
-          data-testid="new-task-button"
-        >
-          New Scheduled Task
-        </Button>
-      </div>
-    ),
-    []
+  const renderHeaderActions = () => (
+    <div className="flex w-full items-center gap-2 md:w-auto">
+      <Button
+        variant="default"
+        prominence="secondary"
+        icon={SvgSparkle}
+        href={TASK_TEMPLATES_PATH}
+      >
+        Templates
+      </Button>
+      <Button
+        variant="default"
+        prominence="primary"
+        icon={SvgPlus}
+        href={NEW_TASK_PATH}
+        data-testid="new-task-button"
+      >
+        New workflow
+      </Button>
+    </div>
   );
 
   return (
     <SettingsLayouts.Root>
       <SettingsLayouts.Header
         icon={SvgClock}
-        title="Scheduled Tasks"
-        description="Run Craft prompts on a timer. Each fire creates a fresh session that runs in the background."
-        rightChildren={headerActions}
-      />
+        title="Workflows"
+        description="Run reusable Craft prompts on a schedule and review every execution."
+        rightChildren={
+          <div className="hidden md:block">{renderHeaderActions()}</div>
+        }
+      >
+        <div className="md:hidden">{renderHeaderActions()}</div>
+      </SettingsLayouts.Header>
       <SettingsLayouts.Body>
         {isLoading ? (
           <div className="flex justify-center py-12">
@@ -235,24 +237,100 @@ export default function ScheduledTasksListPage() {
               Try again
             </Button>
           </Section>
-        ) : (
-          <Table
-            data={tasks}
-            columns={columns}
-            getRowId={(row) => row.id}
-            pageSize={
-              tasks.length > 0 ? Math.min(tasks.length, TASKS_PAGE_SIZE) : 1
-            }
-            selectionBehavior="single-select"
-            onRowClick={(row) => router.push(taskDetailPath(row.id))}
-            emptyState={
-              <IllustrationContent
-                illustration={SvgNoResult}
-                title="No scheduled tasks found"
-                description="No scheduled tasks have been created yet."
-              />
-            }
+        ) : tasks.length === 0 ? (
+          <IllustrationContent
+            illustration={SvgNoResult}
+            title="No workflows found"
+            description="Create a workflow from a template or schedule a new one."
           />
+        ) : (
+          <>
+            <div className="hidden md:block">
+              <Table
+                data={tasks}
+                columns={columns}
+                getRowId={(row) => row.id}
+                pageSize={Math.min(tasks.length, TASKS_PAGE_SIZE)}
+                selectionBehavior="single-select"
+                onRowClick={(row) => router.push(taskDetailPath(row.id))}
+                emptyState={
+                  <IllustrationContent
+                    illustration={SvgNoResult}
+                    title="No workflows found"
+                    description="Create a workflow from a template or schedule a new one."
+                  />
+                }
+              />
+            </div>
+            <div className="flex w-full flex-col gap-3 md:hidden">
+              {tasks.map((task) => (
+                <article
+                  key={task.id}
+                  className="flex flex-col gap-3 rounded-08 border border-border-01 bg-background-01 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Text font="main-ui-body" color="text-05" maxLines={2}>
+                        {task.name}
+                      </Text>
+                      <Text font="secondary-body" color="text-03" maxLines={2}>
+                        {task.human_readable_schedule}
+                      </Text>
+                    </div>
+                    <TaskStatusBadge status={task.status} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <Text font="secondary-body" color="text-02">
+                        Last run
+                      </Text>
+                      {task.last_run ? (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <RunStatusBadge status={task.last_run.status} />
+                          <Text font="secondary-body" color="text-03">
+                            {formatRelativeShort(task.last_run.started_at)}
+                          </Text>
+                        </div>
+                      ) : (
+                        <Text font="secondary-body" color="text-03">
+                          Not run
+                        </Text>
+                      )}
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <Text font="secondary-body" color="text-02">
+                        Next run
+                      </Text>
+                      <Text font="secondary-body" color="text-03" maxLines={1}>
+                        {task.next_run_at
+                          ? formatRelativeShort(task.next_run_at)
+                          : "Not scheduled"}
+                      </Text>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      icon={SvgTrash}
+                      variant="danger"
+                      prominence="tertiary"
+                      size="sm"
+                      tooltip="Delete workflow"
+                      onClick={() => setPendingDelete(task)}
+                      disabled={busyTaskId === task.id}
+                    />
+                    <Button
+                      rightIcon={SvgArrowRight}
+                      prominence="secondary"
+                      size="sm"
+                      onClick={() => router.push(taskDetailPath(task.id))}
+                    >
+                      Open
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
         )}
       </SettingsLayouts.Body>
 

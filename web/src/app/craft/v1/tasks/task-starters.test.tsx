@@ -95,5 +95,9 @@ describe("scheduled task starters", () => {
       "Daily company briefing"
     );
     expect(getScheduledTaskTemplate("does-not-exist")).toBeUndefined();
+    expect(getScheduledTaskTemplate("prompt-refinement")).toBeUndefined();
+    expect(getScheduledTaskTemplate("compliance-monitor")?.name).toBe(
+      "Compliance monitor"
+    );
   });
 });

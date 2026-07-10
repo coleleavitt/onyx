@@ -8,6 +8,7 @@
 
 import type {
   CustomSkill,
+  Skill,
   SkillPackage,
   SkillPackageDiff,
   SkillReviewSubmission,
@@ -50,6 +51,18 @@ export async function createCustomSkill(bundle: File): Promise<CustomSkill> {
     body: form,
   });
   return handle<CustomSkill>(res);
+}
+
+export async function updateSkillUserSettings(
+  skillId: string,
+  enabled: boolean
+): Promise<Skill> {
+  const res = await fetch(`/api/skills/${skillId}/settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  return handle<Skill>(res);
 }
 
 export interface PatchCustomSkillInput {

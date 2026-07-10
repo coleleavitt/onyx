@@ -77,6 +77,22 @@ describe("toPickerSections", () => {
     ]);
   });
 
+  it("filters out skills disabled by the current user", () => {
+    const data = skillsList({
+      builtins: [
+        builtinFixture({ slug: "browser", user_enabled: false }),
+        builtinFixture({ slug: "pptx" }),
+      ],
+      customs: [
+        customFixture({ slug: "disabled-custom", user_enabled: false }),
+        customFixture({ slug: "enabled-custom" }),
+      ],
+    });
+    expect(
+      toPickerSections(data, []).skills.map((skill) => skill.slug)
+    ).toEqual(["enabled-custom", "pptx"]);
+  });
+
   it("appends enabled customs to `skills`", () => {
     const data = skillsList({
       builtins: [builtinFixture({ slug: "pptx" })],
