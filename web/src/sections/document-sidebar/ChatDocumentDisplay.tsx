@@ -10,7 +10,13 @@ import { openDocument } from "@/lib/search/utils";
 import { ValidSources } from "@/lib/types";
 import { cn } from "@opal/utils";
 import Truncated from "@/refresh-components/texts/Truncated";
-import Text from "@/refresh-components/texts/Text";
+import { Tag, Text, Tooltip } from "@opal/components";
+import LegacyText from "@/refresh-components/texts/Text";
+import {
+  EVIDENCE_METADATA_KEYS,
+  getSourceAuthority,
+  getSourceAuthorityReason,
+} from "@/sections/document-sidebar/sourceEvidence";
 
 interface DocumentMetadataBlockProps {
   modal?: boolean;
@@ -22,7 +28,9 @@ function DocumentMetadataBlock({
   document,
 }: DocumentMetadataBlockProps) {
   const MAX_METADATA_ITEMS = 3;
-  const metadataEntries = Object.entries(document.metadata);
+  const metadataEntries = Object.entries(document.metadata).filter(
+    ([key]) => !EVIDENCE_METADATA_KEYS.has(key)
+  );
 
   return (
     <div className="flex items-center overflow-hidden">
@@ -77,6 +85,11 @@ export default function ChatDocumentDisplay({
 
   const hasMetadata =
     document.updated_at || Object.keys(document.metadata).length > 0;
+  const authority = getSourceAuthority(document);
+  const authorityReason = getSourceAuthorityReason(document);
+  const authorityLabel = authority
+    ? authority.charAt(0).toUpperCase() + authority.slice(1)
+    : null;
 
   return (
     <div
@@ -95,15 +108,29 @@ export default function ChatDocumentDisplay({
         <Truncated className="line-clamp-2" side="left">
           {title}
         </Truncated>
+        {authorityLabel && (
+          <Tooltip tooltip={authorityReason ?? `${authorityLabel} source`}>
+            <Tag
+              title={authorityLabel}
+              color={authority === "authoritative" ? "blue" : "gray"}
+              size="sm"
+            />
+          </Tooltip>
+        )}
       </div>
 
       {hasMetadata && (
         <DocumentMetadataBlock modal={modal} document={document} />
       )}
 
-      <Text as="p" className="line-clamp-2 text-left" secondaryBody text03>
+      <LegacyText
+        as="p"
+        className="line-clamp-2 text-left"
+        secondaryBody
+        text03
+      >
         {buildDocumentSummaryDisplay(document.match_highlights, document.blurb)}
-      </Text>
+      </LegacyText>
     </div>
   );
 }

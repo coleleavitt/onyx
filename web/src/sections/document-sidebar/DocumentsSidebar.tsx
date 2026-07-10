@@ -3,15 +3,22 @@
 import { MinimalOnyxDocument, OnyxDocument } from "@/lib/search/interfaces";
 import ChatDocumentDisplay from "@/sections/document-sidebar/ChatDocumentDisplay";
 import { removeDuplicateDocs } from "@/lib/documentUtils";
-import { Dispatch, SetStateAction, useMemo, memo } from "react";
+import { Dispatch, SetStateAction, useMemo, memo, useState } from "react";
 import { getCitations } from "@/app/app/services/packetUtils";
 import {
   useCurrentMessageTree,
   useSelectedNodeForDocDisplay,
 } from "@/app/app/stores/useChatSessionStore";
-import Text from "@/refresh-components/texts/Text";
-import { Button, Divider } from "@opal/components";
-import { SvgSearchMenu, SvgX } from "@opal/icons";
+import { Button, Divider, Text } from "@opal/components";
+import {
+  SvgCheckCircle,
+  SvgChevronDown,
+  SvgChevronRight,
+  SvgFile,
+  SvgSearchMenu,
+  SvgX,
+} from "@opal/icons";
+import { partitionSourceEvidence } from "@/sections/document-sidebar/sourceEvidence";
 
 // Build an OnyxDocument from basic file info
 const buildOnyxDocumentFromFile = (
@@ -48,7 +55,7 @@ function Header({ children, onClose }: HeaderProps) {
       <div className="flex flex-row w-full items-center justify-between gap-2 py-3">
         <div className="flex items-center gap-2 w-full px-3">
           <SvgSearchMenu className="w-[1.3rem] h-[1.3rem] stroke-text-03" />
-          <Text as="p" headingH3 text03>
+          <Text as="h2" font="heading-h3" color="text-03">
             {children}
           </Text>
         </div>
@@ -60,6 +67,32 @@ function Header({ children, onClose }: HeaderProps) {
         />
       </div>
       <Divider paddingParallel="fit" paddingPerpendicular="fit" />
+    </div>
+  );
+}
+
+interface EvidenceSectionHeaderProps {
+  count: number;
+  icon: typeof SvgCheckCircle;
+  title: string;
+}
+
+function EvidenceSectionHeader({
+  count,
+  icon: Icon,
+  title,
+}: EvidenceSectionHeaderProps) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-2">
+      <div className="flex items-center gap-2">
+        <Icon size={16} className="stroke-text-03" />
+        <Text font="main-ui-action" color="text-04">
+          {title}
+        </Text>
+      </div>
+      <Text font="secondary-body" color="text-02">
+        {String(count)}
+      </Text>
     </div>
   );
 }
@@ -92,6 +125,9 @@ const DocumentsSidebar = memo(
     selectedDocuments,
     setPresentingDocument,
   }: DocumentsSidebarProps) => {
+    const [showReviewedSources, setShowReviewedSources] = useState(false);
+    const [showLowerRelevanceSources, setShowLowerRelevanceSources] =
+      useState(false);
     const idOfMessageToDisplay = useSelectedNodeForDocDisplay();
     const currentMessageTree = useCurrentMessageTree();
 
@@ -136,37 +172,30 @@ const DocumentsSidebar = memo(
       selectedDocuments?.map((document) => document.document_id) || [];
     const currentDocuments = selectedMessage.documents || null;
     const dedupedDocuments = removeDuplicateDocs(currentDocuments || []);
-    const citedDocuments = dedupedDocuments
-      .filter(
-        (doc) =>
-          doc.document_id !== null &&
-          doc.document_id !== undefined &&
-          citedDocumentIds.has(doc.document_id)
-      )
-      .sort((a, b) => {
-        // Sort by citation order (order citations appeared in the answer)
-        const orderA = citationOrder.get(a.document_id) ?? Infinity;
-        const orderB = citationOrder.get(b.document_id) ?? Infinity;
-        return orderA - orderB;
-      });
-    const otherDocuments = dedupedDocuments.filter(
-      (doc) =>
-        doc.document_id === null ||
-        doc.document_id === undefined ||
-        !citedDocumentIds.has(doc.document_id)
-    );
+    const { citedDocuments, reviewedDocuments, lowerRelevanceDocuments } =
+      partitionSourceEvidence(
+        dedupedDocuments,
+        citedDocumentIds,
+        citationOrder
+      );
     const hasCited = citedDocuments.length > 0;
-    const hasOther = otherDocuments.length > 0;
+    const hasReviewed = reviewedDocuments.length > 0;
+    const hasLowerRelevance = lowerRelevanceDocuments.length > 0;
 
     return (
       <div
         id="onyx-chat-sidebar"
         className="bg-background-tint-01 overflow-y-scroll h-full w-full border-l"
       >
-        <div className="flex flex-col px-3 gap-6">
+        <Header onClose={closeSidebar}>Sources</Header>
+        <div className="flex flex-col px-3 pb-6 gap-4">
           {hasCited && (
-            <div>
-              <Header onClose={closeSidebar}>Cited Sources</Header>
+            <section>
+              <EvidenceSectionHeader
+                count={citedDocuments.length}
+                icon={SvgCheckCircle}
+                title="Sourced"
+              />
               <ChatDocumentDisplayWrapper>
                 {citedDocuments.map((document) => (
                   <ChatDocumentDisplay
@@ -180,33 +209,91 @@ const DocumentsSidebar = memo(
                   />
                 ))}
               </ChatDocumentDisplayWrapper>
-            </div>
+            </section>
           )}
 
-          {hasOther && (
-            <div>
-              <Header onClose={closeSidebar}>
-                {citedDocuments.length > 0 ? "More" : "Found Sources"}
-              </Header>
-              <ChatDocumentDisplayWrapper>
-                {otherDocuments.map((document) => (
-                  <ChatDocumentDisplay
-                    key={document.document_id}
-                    setPresentingDocument={setPresentingDocument}
-                    modal={modal}
-                    document={document}
-                    isSelected={selectedDocumentIds.includes(
-                      document.document_id
-                    )}
+          {hasReviewed && (
+            <section>
+              <Button
+                prominence="tertiary"
+                icon={showReviewedSources ? SvgChevronDown : SvgChevronRight}
+                onClick={() => setShowReviewedSources((visible) => !visible)}
+              >
+                {showReviewedSources
+                  ? "Hide reviewed sources"
+                  : `Show ${reviewedDocuments.length} reviewed ${
+                      reviewedDocuments.length === 1 ? "source" : "sources"
+                    }`}
+              </Button>
+              {showReviewedSources && (
+                <>
+                  <EvidenceSectionHeader
+                    count={reviewedDocuments.length}
+                    icon={SvgSearchMenu}
+                    title="Reviewed"
                   />
-                ))}
-              </ChatDocumentDisplayWrapper>
-            </div>
+                  <ChatDocumentDisplayWrapper>
+                    {reviewedDocuments.map((document) => (
+                      <ChatDocumentDisplay
+                        key={document.document_id}
+                        setPresentingDocument={setPresentingDocument}
+                        modal={modal}
+                        document={document}
+                        isSelected={selectedDocumentIds.includes(
+                          document.document_id
+                        )}
+                      />
+                    ))}
+                  </ChatDocumentDisplayWrapper>
+                </>
+              )}
+            </section>
+          )}
+
+          {showReviewedSources && hasLowerRelevance && (
+            <section>
+              <Button
+                prominence="tertiary"
+                icon={
+                  showLowerRelevanceSources ? SvgChevronDown : SvgChevronRight
+                }
+                onClick={() =>
+                  setShowLowerRelevanceSources((visible) => !visible)
+                }
+              >
+                {showLowerRelevanceSources
+                  ? "Hide lower-relevance results"
+                  : `Show ${lowerRelevanceDocuments.length} lower-relevance ${
+                      lowerRelevanceDocuments.length === 1
+                        ? "result"
+                        : "results"
+                    }`}
+              </Button>
+              {showLowerRelevanceSources && (
+                <ChatDocumentDisplayWrapper>
+                  {lowerRelevanceDocuments.map((document) => (
+                    <ChatDocumentDisplay
+                      key={document.document_id}
+                      setPresentingDocument={setPresentingDocument}
+                      modal={modal}
+                      document={document}
+                      isSelected={selectedDocumentIds.includes(
+                        document.document_id
+                      )}
+                    />
+                  ))}
+                </ChatDocumentDisplayWrapper>
+              )}
+            </section>
           )}
 
           {humanFileDescriptors && humanFileDescriptors.length > 0 && (
-            <div>
-              <Header onClose={closeSidebar}>User Files</Header>
+            <section>
+              <EvidenceSectionHeader
+                count={humanFileDescriptors.length}
+                icon={SvgFile}
+                title="Attached"
+              />
               <ChatDocumentDisplayWrapper>
                 {humanFileDescriptors.map((file) => (
                   <ChatDocumentDisplay
@@ -222,7 +309,7 @@ const DocumentsSidebar = memo(
                   />
                 ))}
               </ChatDocumentDisplayWrapper>
-            </div>
+            </section>
           )}
         </div>
       </div>
