@@ -39,6 +39,8 @@ class SkillResponse(BaseModel):
     slug: str
     name: str
     description: str
+    category: str
+    user_enabled: bool = True
 
     is_available: bool | None = None
     unavailable_reason: str | None = None
@@ -64,6 +66,7 @@ class SkillResponse(BaseModel):
         skill: Skill,
         definition: BuiltInSkillDefinition,
         db_session: Session,
+        user_enabled: bool = True,
     ) -> "SkillResponse":
         return cls(
             source="builtin",
@@ -71,6 +74,8 @@ class SkillResponse(BaseModel):
             slug=skill.slug,
             name=skill.name,
             description=skill.description,
+            category=skill.category,
+            user_enabled=user_enabled,
             is_available=definition.is_available(db_session),
             unavailable_reason=definition.unavailable_reason,
             user_permission=SkillAccessLevel.VIEWER,
@@ -83,6 +88,7 @@ class SkillResponse(BaseModel):
         *,
         user_permission: SkillAccessLevel | None = None,
         include_share_details: bool = False,
+        user_enabled: bool = True,
     ) -> "SkillResponse":
         user_shares = [
             SkillUserShare(
@@ -120,6 +126,8 @@ class SkillResponse(BaseModel):
             slug=skill.slug,
             name=skill.name,
             description=skill.description,
+            category=skill.category,
+            user_enabled=user_enabled,
             enabled=skill.enabled,
             author_user_id=skill.author_user_id,
             author_email=skill.author.email if skill.author is not None else None,
@@ -363,6 +371,12 @@ class SkillPatchRequest(BaseModel):
     @property
     def has_db_field_update(self) -> bool:
         return bool(self.model_fields_set & {"public_permission", "enabled"})
+
+
+class SkillUserSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
 
 
 class SkillUserShareRequest(BaseModel):

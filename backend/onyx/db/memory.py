@@ -9,19 +9,25 @@ from pydantic import ConfigDict
 from sqlalchemy import delete
 from sqlalchemy import distinct
 from sqlalchemy import func
+from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from onyx.db.engine.sql_engine import get_session_with_current_tenant_if_none
+from onyx.db.enums import MemoryCategory
 from onyx.db.enums import MemoryGovernanceAuditAction
 from onyx.db.models import Memory
 from onyx.db.models import MemoryGovernanceAudit
 from onyx.db.models import MemoryGovernancePolicy
+from onyx.db.models import MemoryRevision
 from onyx.db.models import User
 
-MAX_MEMORIES_PER_USER = 10
+MAX_MEMORIES_PER_USER = 200
+MAX_CONTEXT_MEMORIES = 20
+MAX_CONTEXT_MEMORY_CHARACTERS = 8_000
 MEMORY_GOVERNANCE_POLICY_ID = 1
+MEMORY_TITLE_MAX_LENGTH = 200
 
 
 @dataclass(frozen=True)
@@ -83,25 +89,212 @@ def get_memories(user: User, db_session: Session) -> UserMemoryContext:
         email=user.email,
     )
 
-    user_preferences = None
-    if user.user_preferences:
-        user_preferences = user.user_preferences
-
+    user_preferences = user.user_preferences or None
     policy = get_memory_governance_policy(db_session)
     memory_rows = (
         db_session.scalars(
-            select(Memory).where(Memory.user_id == user.id).order_by(Memory.id.asc())
+            select(Memory)
+            .where(Memory.user_id == user.id)
+            .order_by(Memory.updated_at.desc(), Memory.id.desc())
+            .limit(MAX_CONTEXT_MEMORIES)
         ).all()
         if policy.memories_enabled
         else []
     )
-    memories = tuple(memory.memory_text for memory in memory_rows if memory.memory_text)
+    bounded_memories: list[str] = []
+    remaining_characters = MAX_CONTEXT_MEMORY_CHARACTERS
+    for memory in memory_rows:
+        memory_text = memory.memory_text.strip()
+        if not memory_text or remaining_characters <= 0:
+            continue
+        bounded_text = memory_text[:remaining_characters].rstrip()
+        if bounded_text:
+            bounded_memories.append(bounded_text)
+            remaining_characters -= len(bounded_text)
 
     return UserMemoryContext(
         user_id=user.id,
         user_info=user_info,
         user_preferences=user_preferences,
-        memories=memories,
+        memories=tuple(bounded_memories),
+    )
+
+
+def memory_title_for_content(memory_text: str, title: str | None = None) -> str:
+    normalized_title = " ".join((title or "").split())
+    if normalized_title:
+        return normalized_title[:MEMORY_TITLE_MAX_LENGTH]
+
+    normalized_text = " ".join(memory_text.split())
+    first_line = normalized_text.split(". ", maxsplit=1)[0]
+    return (first_line or "Untitled memory")[:MEMORY_TITLE_MAX_LENGTH]
+
+
+def record_memory_revision_no_commit(
+    memory: Memory,
+    *,
+    source: str,
+    db_session: Session,
+) -> MemoryRevision:
+    if memory.id is None:
+        db_session.flush()
+    revision = MemoryRevision(
+        memory_id=memory.id,
+        title=memory.title,
+        category=memory.category,
+        memory_text=memory.memory_text,
+        source=source,
+    )
+    db_session.add(revision)
+    return revision
+
+
+def list_memory_items_for_user(
+    user_id: UUID,
+    *,
+    db_session: Session,
+    category: MemoryCategory | None = None,
+    query: str | None = None,
+) -> list[Memory]:
+    stmt = select(Memory).where(Memory.user_id == user_id)
+    if category is not None:
+        stmt = stmt.where(Memory.category == category)
+    normalized_query = (query or "").strip()
+    if normalized_query:
+        pattern = f"%{normalized_query}%"
+        stmt = stmt.where(
+            or_(Memory.title.ilike(pattern), Memory.memory_text.ilike(pattern))
+        )
+    return list(db_session.scalars(stmt.order_by(Memory.updated_at.desc(), Memory.id)))
+
+
+def get_memory_item_for_user(
+    memory_id: int,
+    user_id: UUID,
+    *,
+    db_session: Session,
+) -> Memory | None:
+    return db_session.scalar(
+        select(Memory).where(Memory.id == memory_id, Memory.user_id == user_id)
+    )
+
+
+def create_memory_item(
+    *,
+    user_id: UUID,
+    memory_text: str,
+    title: str | None,
+    category: MemoryCategory,
+    source: str,
+    db_session: Session,
+) -> Memory | None:
+    if not is_memory_creation_allowed(db_session):
+        return None
+
+    existing = list(
+        db_session.scalars(
+            select(Memory)
+            .where(Memory.user_id == user_id)
+            .order_by(Memory.created_at.asc(), Memory.id.asc())
+        )
+    )
+    if len(existing) >= MAX_MEMORIES_PER_USER:
+        db_session.delete(existing[0])
+
+    memory = Memory(
+        user_id=user_id,
+        title=memory_title_for_content(memory_text, title),
+        category=category,
+        memory_text=memory_text,
+    )
+    db_session.add(memory)
+    db_session.flush()
+    record_memory_revision_no_commit(memory, source=source, db_session=db_session)
+    db_session.commit()
+    db_session.refresh(memory)
+    return memory
+
+
+def update_memory_item(
+    memory: Memory,
+    *,
+    memory_text: str,
+    title: str | None,
+    category: MemoryCategory,
+    source: str,
+    db_session: Session,
+) -> Memory | None:
+    if not is_memory_creation_allowed(db_session):
+        return None
+
+    normalized_title = memory_title_for_content(memory_text, title)
+    changed = (
+        memory.memory_text != memory_text
+        or memory.title != normalized_title
+        or memory.category != category
+    )
+    if changed:
+        memory.memory_text = memory_text
+        memory.title = normalized_title
+        memory.category = category
+        record_memory_revision_no_commit(
+            memory,
+            source=source,
+            db_session=db_session,
+        )
+        db_session.commit()
+        db_session.refresh(memory)
+    return memory
+
+
+def delete_memory_item(memory: Memory, *, db_session: Session) -> None:
+    db_session.delete(memory)
+    db_session.commit()
+
+
+def list_memory_revisions(
+    memory_id: int,
+    *,
+    db_session: Session,
+) -> list[MemoryRevision]:
+    return list(
+        db_session.scalars(
+            select(MemoryRevision)
+            .where(MemoryRevision.memory_id == memory_id)
+            .order_by(MemoryRevision.created_at.desc())
+        )
+    )
+
+
+def get_memory_revision(
+    revision_id: UUID,
+    memory_id: int,
+    *,
+    db_session: Session,
+) -> MemoryRevision | None:
+    return db_session.scalar(
+        select(MemoryRevision).where(
+            MemoryRevision.id == revision_id,
+            MemoryRevision.memory_id == memory_id,
+        )
+    )
+
+
+def restore_memory_revision(
+    memory: Memory,
+    revision: MemoryRevision,
+    *,
+    db_session: Session,
+) -> Memory | None:
+    if revision.memory_id != memory.id:
+        return None
+    return update_memory_item(
+        memory,
+        memory_text=revision.memory_text,
+        title=revision.title,
+        category=revision.category,
+        source="restore",
+        db_session=db_session,
     )
 
 
@@ -121,20 +314,15 @@ def add_memory(
         if not is_memory_creation_allowed(db_session):
             return None
 
-        existing = db_session.scalars(
-            select(Memory).where(Memory.user_id == user_id).order_by(Memory.id.asc())
-        ).all()
-
-        if len(existing) >= MAX_MEMORIES_PER_USER:
-            db_session.delete(existing[0])
-
-        memory = Memory(
+        memory = create_memory_item(
             user_id=user_id,
             memory_text=memory_text,
+            title=None,
+            category=MemoryCategory.NOTES,
+            source="conversation",
+            db_session=db_session,
         )
-        db_session.add(memory)
-        db_session.commit()
-        return memory.id
+        return memory.id if memory is not None else None
 
 
 def update_memory_at_index(
@@ -158,10 +346,15 @@ def update_memory_at_index(
         if index < 0 or index >= len(memory_rows):
             return None
 
-        memory = memory_rows[index]
-        memory.memory_text = new_text
-        db_session.commit()
-        return memory.id
+        memory = update_memory_item(
+            memory_rows[index],
+            memory_text=new_text,
+            title=memory_rows[index].title,
+            category=memory_rows[index].category,
+            source="conversation",
+            db_session=db_session,
+        )
+        return memory.id if memory is not None else None
 
 
 def get_memory_governance_policy(

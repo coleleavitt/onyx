@@ -65,6 +65,11 @@ plans/
 /.gjc/
 /research/
 
+# This is application source, not generated build output. A common global
+# gitignore rule for `build/` otherwise hides this package.
+!backend/onyx/server/features/build/
+!backend/onyx/server/features/build/**
+
 # Added context for LLMs
 .claude/CLAUDE.md
 .claude/settings.local.json

@@ -69,7 +69,10 @@ class ArtifactLibraryItemSnapshot(BaseModel):
             id=item.id,
             name=item.name,
             type=item.type,
-            is_pinned=item.is_pinned,
+            is_pinned=any(
+                state.user_id == requesting_user_id and state.is_pinned
+                for state in item.user_states
+            ),
             published_at=item.published_at,
             created_at=item.created_at,
             updated_at=item.updated_at,
@@ -112,8 +115,11 @@ class ArtifactLibraryImportRequest(BaseModel):
 
 class ArtifactLibraryUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
-    is_pinned: bool | None = None
     published: bool | None = None
+
+
+class ArtifactLibraryPinRequest(BaseModel):
+    pinned: bool
 
 
 class ArtifactLibraryShareRequest(BaseModel):
@@ -126,6 +132,7 @@ class ArtifactLibraryBulkAction(str, Enum):
     UNPIN = "unpin"
     PUBLISH = "publish"
     UNPUBLISH = "unpublish"
+    REMOVE_SHARED = "remove_shared"
     DELETE = "delete"
 
 

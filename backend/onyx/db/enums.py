@@ -646,6 +646,13 @@ class ProjectJoinRequestStatus(str, PyEnum):
     DENIED = "DENIED"
 
 
+class MemoryCategory(str, PyEnum):
+    NOTES = "notes"
+    CONCEPTS = "concepts"
+    ENTITIES = "entities"
+    WORKSTREAMS = "workstreams"
+
+
 class MemoryGovernanceAuditAction(str, PyEnum):
     POLICY_UPDATED = "POLICY_UPDATED"
     RETENTION_CLEANUP = "RETENTION_CLEANUP"

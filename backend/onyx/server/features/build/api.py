@@ -27,6 +27,9 @@ from onyx.server.features.build.session.api import router as sessions_router
 from onyx.server.features.build.session.messages import router as messages_router
 from onyx.server.features.build.user_library.api import router as user_library_router
 from onyx.server.features.build.utils import is_craft_enabled_for_user
+from onyx.server.features.build.workflow_catalog.api import (
+    router as workflow_catalog_router,
+)
 from onyx.utils.logger import setup_logger
 
 logger = setup_logger()
@@ -51,6 +54,7 @@ router.include_router(messages_router, tags=["build"])
 router.include_router(turns_router, tags=["build"])
 router.include_router(user_library_router, tags=["build"])
 router.include_router(scheduled_tasks_router, tags=["build"])
+router.include_router(workflow_catalog_router, tags=["build"])
 router.include_router(external_apps_router, tags=["build"])
 router.include_router(external_apps_oauth_router, tags=["build"])
 router.include_router(debug_router, tags=["build-debug"])

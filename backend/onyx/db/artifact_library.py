@@ -2,6 +2,7 @@ import datetime
 from enum import Enum
 from uuid import UUID
 
+from sqlalchemy import and_
 from sqlalchemy import func
 from sqlalchemy import or_
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from onyx.db.models import Artifact
 from onyx.db.models import ArtifactLibraryItem
 from onyx.db.models import ArtifactLibraryItem__User
 from onyx.db.models import ArtifactLibraryItem__UserGroup
+from onyx.db.models import ArtifactLibraryItem__UserState
 from onyx.db.models import User
 from onyx.db.models import User__UserGroup
 from onyx.db.utils import is_fk_violation
@@ -34,13 +36,20 @@ class ArtifactLibraryScope(str, Enum):
     SHARED = "shared"
 
 
-def _shared_with_user(user: User) -> ColumnElement[bool]:
+def _user_id(user: User) -> UUID:
+    if user.id is None:
+        raise OnyxError(OnyxErrorCode.UNAUTHENTICATED)
+    return user.id
+
+
+def _raw_shared_access(user: User) -> ColumnElement[bool]:
+    user_id = _user_id(user)
     direct = (
         select(ArtifactLibraryItem__User.artifact_library_item_id)
         .where(
             ArtifactLibraryItem__User.artifact_library_item_id
             == ArtifactLibraryItem.id,
-            ArtifactLibraryItem__User.user_id == user.id,
+            ArtifactLibraryItem__User.user_id == user_id,
         )
         .exists()
     )
@@ -54,11 +63,38 @@ def _shared_with_user(user: User) -> ColumnElement[bool]:
         .where(
             ArtifactLibraryItem__UserGroup.artifact_library_item_id
             == ArtifactLibraryItem.id,
-            User__UserGroup.user_id == user.id,
+            User__UserGroup.user_id == user_id,
         )
         .exists()
     )
     return or_(ArtifactLibraryItem.published_at.isnot(None), direct, group)
+
+
+def _has_user_state(
+    user: User, state_filter: ColumnElement[bool]
+) -> ColumnElement[bool]:
+    return (
+        select(ArtifactLibraryItem__UserState.artifact_library_item_id)
+        .where(
+            ArtifactLibraryItem__UserState.artifact_library_item_id
+            == ArtifactLibraryItem.id,
+            ArtifactLibraryItem__UserState.user_id == _user_id(user),
+            state_filter,
+        )
+        .exists()
+    )
+
+
+def _is_pinned_by_user(user: User) -> ColumnElement[bool]:
+    return _has_user_state(user, ArtifactLibraryItem__UserState.is_pinned.is_(True))
+
+
+def _is_dismissed_by_user(user: User) -> ColumnElement[bool]:
+    return _has_user_state(user, ArtifactLibraryItem__UserState.is_dismissed.is_(True))
+
+
+def _shared_with_user(user: User) -> ColumnElement[bool]:
+    return and_(_raw_shared_access(user), ~_is_dismissed_by_user(user))
 
 
 def _base_select() -> Select[tuple[ArtifactLibraryItem]]:
@@ -71,6 +107,7 @@ def _base_select() -> Select[tuple[ArtifactLibraryItem]]:
         selectinload(ArtifactLibraryItem.group_shares).selectinload(
             ArtifactLibraryItem__UserGroup.user_group
         ),
+        selectinload(ArtifactLibraryItem.user_states),
     )
 
 
@@ -86,8 +123,9 @@ def list_artifact_library_items(
     limit: int = 100,
     offset: int = 0,
 ) -> list[ArtifactLibraryItem]:
-    owned = ArtifactLibraryItem.owner_user_id == user.id
+    owned = ArtifactLibraryItem.owner_user_id == _user_id(user)
     shared = _shared_with_user(user)
+    pinned_by_user = _is_pinned_by_user(user)
     stmt = _base_select()
     if scope == ArtifactLibraryScope.CREATED:
         stmt = stmt.where(owned)
@@ -104,7 +142,7 @@ def list_artifact_library_items(
     if artifact_type is not None:
         stmt = stmt.where(ArtifactLibraryItem.type == artifact_type)
     if pinned is not None:
-        stmt = stmt.where(ArtifactLibraryItem.is_pinned.is_(pinned))
+        stmt = stmt.where(pinned_by_user if pinned else ~pinned_by_user)
     if published is not None:
         stmt = stmt.where(
             ArtifactLibraryItem.published_at.isnot(None)
@@ -113,9 +151,7 @@ def list_artifact_library_items(
         )
 
     stmt = (
-        stmt.order_by(
-            ArtifactLibraryItem.is_pinned.desc(), ArtifactLibraryItem.updated_at.desc()
-        )
+        stmt.order_by(pinned_by_user.desc(), ArtifactLibraryItem.updated_at.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -132,12 +168,12 @@ def fetch_artifact_library_item(
 ) -> ArtifactLibraryItem | None:
     stmt = _base_select().where(ArtifactLibraryItem.id == item_id)
     if access == ArtifactLibraryAccess.OWN:
-        stmt = stmt.where(ArtifactLibraryItem.owner_user_id == user.id)
+        stmt = stmt.where(ArtifactLibraryItem.owner_user_id == _user_id(user))
     else:
         stmt = stmt.where(
             or_(
-                ArtifactLibraryItem.owner_user_id == user.id,
-                _shared_with_user(user),
+                ArtifactLibraryItem.owner_user_id == _user_id(user),
+                _raw_shared_access(user),
             )
         )
     if lock:
@@ -240,19 +276,77 @@ def update_artifact_library_item(
     *,
     item: ArtifactLibraryItem,
     name: str | None = None,
-    is_pinned: bool | None = None,
     published: bool | None = None,
     db_session: Session,
 ) -> ArtifactLibraryItem:
     if name is not None:
         item.name = name
-    if is_pinned is not None:
-        item.is_pinned = is_pinned
     if published is not None:
         item.published_at = (
             datetime.datetime.now(datetime.timezone.utc) if published else None
         )
     item.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    db_session.flush()
+    return item
+
+
+def _find_user_state(
+    item: ArtifactLibraryItem, user_id: UUID
+) -> ArtifactLibraryItem__UserState | None:
+    return next(
+        (state for state in item.user_states if state.user_id == user_id),
+        None,
+    )
+
+
+def set_artifact_library_item_pin(
+    *,
+    item: ArtifactLibraryItem,
+    user: User,
+    pinned: bool,
+    db_session: Session,
+) -> ArtifactLibraryItem:
+    user_id = _user_id(user)
+    state = _find_user_state(item, user_id)
+    if state is None and pinned:
+        state = ArtifactLibraryItem__UserState(
+            artifact_library_item_id=item.id,
+            user_id=user_id,
+            is_pinned=True,
+            is_dismissed=False,
+        )
+        item.user_states.append(state)
+    elif state is not None:
+        state.is_pinned = pinned
+        if pinned:
+            state.is_dismissed = False
+        elif not state.is_dismissed:
+            item.user_states.remove(state)
+    db_session.flush()
+    return item
+
+
+def dismiss_shared_artifact_library_item(
+    *,
+    item: ArtifactLibraryItem,
+    user: User,
+    db_session: Session,
+) -> ArtifactLibraryItem:
+    user_id = _user_id(user)
+    if item.owner_user_id == user_id:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            "Owned artifacts cannot be removed from the shared library.",
+        )
+    state = _find_user_state(item, user_id)
+    if state is None:
+        state = ArtifactLibraryItem__UserState(
+            artifact_library_item_id=item.id,
+            user_id=user_id,
+        )
+        item.user_states.append(state)
+    state.is_pinned = False
+    state.is_dismissed = True
     db_session.flush()
     return item
 

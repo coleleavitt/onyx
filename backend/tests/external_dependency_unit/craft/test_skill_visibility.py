@@ -9,6 +9,7 @@ from onyx.db.models import User
 from onyx.db.models import UserRole
 from onyx.db.skill import fetch_skill
 from onyx.db.skill import list_skills
+from onyx.db.skill import set_skill_user_enabled__no_commit
 from onyx.db.skill import SkillAccessPolicy
 from onyx.db.skill import update_skill_fields
 from tests.external_dependency_unit.craft.db_helpers import add_user_to_group
@@ -36,6 +37,52 @@ def _user_skills(user: User, db_session: Session):
 
 
 class TestSkillVisibility:
+    def test_user_can_disable_runtime_use_without_hiding_catalog_entry(
+        self,
+        db_session: Session,
+        test_user: User,  # noqa: ARG002
+    ) -> None:
+        user = make_user(db_session, role=UserRole.BASIC)
+        other_user = make_user(db_session, role=UserRole.BASIC)
+        public_skill = make_skill(db_session, is_public=True, enabled=True)
+
+        set_skill_user_enabled__no_commit(
+            public_skill.id,
+            user.id,
+            enabled=False,
+            db_session=db_session,
+        )
+        db_session.commit()
+
+        catalog_ids = {
+            skill.id
+            for skill in list_skills(
+                policy=SkillAccessPolicy.VIEW,
+                user=user,
+                db_session=db_session,
+            )
+        }
+        user_runtime_ids = {
+            skill.id
+            for skill in list_skills(
+                policy=SkillAccessPolicy.USE,
+                user=user,
+                db_session=db_session,
+            )
+        }
+        other_runtime_ids = {
+            skill.id
+            for skill in list_skills(
+                policy=SkillAccessPolicy.USE,
+                user=other_user,
+                db_session=db_session,
+            )
+        }
+
+        assert public_skill.id in catalog_ids
+        assert public_skill.id not in user_runtime_ids
+        assert public_skill.id in other_runtime_ids
+
     def test_admin_sees_disabled_skill(
         self,
         db_session: Session,

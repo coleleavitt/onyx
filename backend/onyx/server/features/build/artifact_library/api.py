@@ -16,9 +16,11 @@ from onyx.db.artifact_library import ArtifactLibraryAccess
 from onyx.db.artifact_library import ArtifactLibraryScope
 from onyx.db.artifact_library import create_artifact_library_item
 from onyx.db.artifact_library import delete_artifact_library_item
+from onyx.db.artifact_library import dismiss_shared_artifact_library_item
 from onyx.db.artifact_library import fetch_artifact_library_item
 from onyx.db.artifact_library import list_artifact_library_items
 from onyx.db.artifact_library import replace_artifact_library_shares
+from onyx.db.artifact_library import set_artifact_library_item_pin
 from onyx.db.artifact_library import update_artifact_library_item
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import ArtifactType
@@ -42,6 +44,7 @@ from onyx.server.features.build.artifact_library.models import (
 from onyx.server.features.build.artifact_library.models import (
     ArtifactLibraryItemSnapshot,
 )
+from onyx.server.features.build.artifact_library.models import ArtifactLibraryPinRequest
 from onyx.server.features.build.artifact_library.models import (
     ArtifactLibraryShareRequest,
 )
@@ -236,10 +239,21 @@ def bulk_update_library_items(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> ArtifactLibraryBulkResponse:
-    items = [
-        _owned_item(item_id, user=user, db_session=db_session)
-        for item_id in dict.fromkeys(request.item_ids)
-    ]
+    item_ids = dict.fromkeys(request.item_ids)
+    if request.action in {
+        ArtifactLibraryBulkAction.PIN,
+        ArtifactLibraryBulkAction.UNPIN,
+        ArtifactLibraryBulkAction.REMOVE_SHARED,
+    }:
+        items = [
+            _visible_item(item_id, user=user, db_session=db_session)
+            for item_id in item_ids
+        ]
+    else:
+        items = [
+            _owned_item(item_id, user=user, db_session=db_session)
+            for item_id in item_ids
+        ]
     file_ids: list[str] = []
     for item in items:
         if request.action == ArtifactLibraryBulkAction.DELETE:
@@ -247,12 +261,16 @@ def bulk_update_library_items(
                 delete_artifact_library_item(item=item, db_session=db_session)
             )
         elif request.action == ArtifactLibraryBulkAction.PIN:
-            update_artifact_library_item(
-                item=item, is_pinned=True, db_session=db_session
+            set_artifact_library_item_pin(
+                item=item, user=user, pinned=True, db_session=db_session
             )
         elif request.action == ArtifactLibraryBulkAction.UNPIN:
-            update_artifact_library_item(
-                item=item, is_pinned=False, db_session=db_session
+            set_artifact_library_item_pin(
+                item=item, user=user, pinned=False, db_session=db_session
+            )
+        elif request.action == ArtifactLibraryBulkAction.REMOVE_SHARED:
+            dismiss_shared_artifact_library_item(
+                item=item, user=user, db_session=db_session
             )
         elif request.action == ArtifactLibraryBulkAction.PUBLISH:
             update_artifact_library_item(
@@ -265,6 +283,39 @@ def bulk_update_library_items(
     db_session.commit()
     _delete_blobs(file_ids, get_default_file_store())
     return ArtifactLibraryBulkResponse(affected=len(items))
+
+
+@router.put("/{item_id}/pin")
+def update_library_item_pin(
+    item_id: UUID,
+    request: ArtifactLibraryPinRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ArtifactLibraryItemSnapshot:
+    item = _visible_item(item_id, user=user, db_session=db_session)
+    set_artifact_library_item_pin(
+        item=item,
+        user=user,
+        pinned=request.pinned,
+        db_session=db_session,
+    )
+    db_session.commit()
+    return _snapshot(_visible_item(item_id, user=user, db_session=db_session), user)
+
+
+@router.delete("/{item_id}/shared")
+def remove_shared_library_item(
+    item_id: UUID,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> None:
+    item = _visible_item(item_id, user=user, db_session=db_session)
+    dismiss_shared_artifact_library_item(
+        item=item,
+        user=user,
+        db_session=db_session,
+    )
+    db_session.commit()
 
 
 @router.get("/{item_id}")
@@ -293,7 +344,6 @@ def update_library_item(
     update_artifact_library_item(
         item=item,
         name=name,
-        is_pinned=request.is_pinned,
         published=request.published,
         db_session=db_session,
     )

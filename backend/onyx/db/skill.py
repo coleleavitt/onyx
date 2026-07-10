@@ -43,6 +43,7 @@ from onyx.db.models import Sandbox
 from onyx.db.models import Skill
 from onyx.db.models import Skill__User
 from onyx.db.models import Skill__UserGroup
+from onyx.db.models import Skill__UserState
 from onyx.db.models import User
 from onyx.db.models import User__UserGroup
 from onyx.db.utils import is_fk_violation
@@ -72,6 +73,16 @@ def _is_shared_with_user(
     if permission is not None:
         stmt = stmt.where(Skill__User.permission == permission)
     return stmt.exists()
+
+
+def _is_disabled_by_user(user: User) -> ColumnElement[bool]:
+    return (
+        select(Skill__UserState.skill_id)
+        .where(Skill__UserState.skill_id == Skill.id)
+        .where(Skill__UserState.user_id == user.id)
+        .where(Skill__UserState.enabled.is_(False))
+        .exists()
+    )
 
 
 def _is_shared_with_user_group(
@@ -266,6 +277,7 @@ def _skill_select_for_access_policy(
             Skill.enabled.is_(True),
             available_in_sandbox,
             visible_to_user,
+            ~_is_disabled_by_user(user),
         )
         return _exclude_unavailable_built_in_skills(stmt, db_session)
 
@@ -374,6 +386,43 @@ def fetch_skill(
         order_by_name=False,
     ).where(Skill.id == skill_id)
     return db_session.scalars(stmt).one_or_none()
+
+
+def get_skill_user_enabled_states(
+    skill_ids: list[UUID],
+    user_id: UUID,
+    *,
+    db_session: Session,
+) -> dict[UUID, bool]:
+    if not skill_ids:
+        return {}
+    rows = db_session.execute(
+        select(Skill__UserState.skill_id, Skill__UserState.enabled).where(
+            Skill__UserState.user_id == user_id,
+            Skill__UserState.skill_id.in_(skill_ids),
+        )
+    )
+    return {skill_id: enabled for skill_id, enabled in rows}
+
+
+def set_skill_user_enabled__no_commit(
+    skill_id: UUID,
+    user_id: UUID,
+    *,
+    enabled: bool,
+    db_session: Session,
+) -> Skill__UserState:
+    state = db_session.get(Skill__UserState, (skill_id, user_id))
+    if state is None:
+        state = Skill__UserState(
+            skill_id=skill_id,
+            user_id=user_id,
+            enabled=enabled,
+        )
+        db_session.add(state)
+    else:
+        state.enabled = enabled
+    return state
 
 
 def create_skill__no_commit(

@@ -7,6 +7,7 @@ from onyx.db.models import Skill
 from onyx.db.models import User
 from onyx.db.persona_sharing import get_curated_user_group_ids_for_user
 from onyx.db.persona_sharing import get_user_group_ids_for_user
+from onyx.db.skill import get_skill_user_enabled_states
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.skill.models import SkillPreviewResponse
@@ -79,12 +80,22 @@ def skill_response_for_user(
     user_group_ids: set[int] | None = None,
     curated_user_group_ids: set[int] | None = None,
     include_share_details: bool = False,
+    user_enabled: bool | None = None,
 ) -> SkillResponse:
+    if user_enabled is None:
+        user_enabled = get_skill_user_enabled_states(
+            [skill.id], user.id, db_session=db_session
+        ).get(skill.id, True)
     if skill.built_in_skill_id is not None:
         definition = BUILT_IN_SKILLS.get(skill.built_in_skill_id)
         if definition is None:
             raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
-        return SkillResponse.from_builtin(skill, definition, db_session)
+        return SkillResponse.from_builtin(
+            skill,
+            definition,
+            db_session,
+            user_enabled=user_enabled,
+        )
 
     if user_group_ids is None:
         user_group_ids = get_user_group_ids_for_user(db_session, user.id)
@@ -101,6 +112,7 @@ def skill_response_for_user(
             curated_user_group_ids,
         ),
         include_share_details=include_share_details,
+        user_enabled=user_enabled,
     )
 
 
@@ -117,6 +129,9 @@ def skills_list_response_for_user(
         if user.role == UserRole.CURATOR
         else set()
     )
+    user_enabled_states = get_skill_user_enabled_states(
+        [skill.id for skill in rows], user.id, db_session=db_session
+    )
 
     for skill in rows:
         if skill.built_in_skill_id is not None:
@@ -128,7 +143,14 @@ def skills_list_response_for_user(
                     skill.built_in_skill_id,
                 )
                 continue
-            builtins.append(SkillResponse.from_builtin(skill, definition, db_session))
+            builtins.append(
+                SkillResponse.from_builtin(
+                    skill,
+                    definition,
+                    db_session,
+                    user_enabled=user_enabled_states.get(skill.id, True),
+                )
+            )
             continue
 
         customs.append(
@@ -138,6 +160,7 @@ def skills_list_response_for_user(
                 db_session,
                 user_group_ids=user_group_ids,
                 curated_user_group_ids=curated_user_group_ids,
+                user_enabled=user_enabled_states.get(skill.id, True),
             )
         )
 

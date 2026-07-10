@@ -85,6 +85,7 @@ from onyx.db.enums import MCPAuthenticationType
 from onyx.db.enums import MCPOAuthProviderMode
 from onyx.db.enums import MCPServerStatus
 from onyx.db.enums import MCPTransport
+from onyx.db.enums import MemoryCategory
 from onyx.db.enums import MemoryGovernanceAuditAction
 from onyx.db.enums import OpenSearchDocumentMigrationStatus
 from onyx.db.enums import OpenSearchTenantMigrationStatus
@@ -490,13 +491,27 @@ class AccessToken(SQLAlchemyBaseAccessTokenTableUUID, Base):
 
 class Memory(Base):
     __tablename__ = "memory"
-    __table_args__ = (Index("ix_memory_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_memory_created_at", "created_at"),
+        Index("ix_memory_user_category_updated", "user_id", "category", "updated_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False
     )
     memory_text: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    category: Mapped[MemoryCategory] = mapped_column(
+        Enum(
+            MemoryCategory,
+            native_enum=False,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
+        nullable=False,
+        default=MemoryCategory.NOTES,
+        server_default=MemoryCategory.NOTES.value,
+    )
     conversation_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), nullable=True
     )
@@ -512,6 +527,61 @@ class Memory(Base):
     )
 
     user: Mapped["User"] = relationship("User", back_populates="memories")
+    revisions: Mapped[list["MemoryRevision"]] = relationship(
+        "MemoryRevision",
+        back_populates="memory",
+        cascade="all, delete-orphan",
+        order_by="desc(MemoryRevision.created_at)",
+    )
+
+
+class MemoryRevision(Base):
+    __tablename__ = "memory_revision"
+
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    memory_id: Mapped[int] = mapped_column(
+        ForeignKey("memory.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    category: Mapped[MemoryCategory] = mapped_column(
+        Enum(
+            MemoryCategory,
+            native_enum=False,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
+        nullable=False,
+    )
+    memory_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="manual", server_default="manual"
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    memory: Mapped["Memory"] = relationship("Memory", back_populates="revisions")
+
+    __table_args__ = (
+        Index("ix_memory_revision_memory_created", "memory_id", "created_at"),
+    )
+
+
+class WorkflowPin(Base):
+    __tablename__ = "workflow_pin"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    workflow_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_workflow_pin_user_created", "user_id", "created_at"),)
 
 
 class MemoryGovernancePolicy(Base):
@@ -741,6 +811,35 @@ class Skill__User(Base):
     user: Mapped["User"] = relationship("User")
 
     __table_args__ = (Index("ix_skill__user_user_id", "user_id"),)
+
+
+class Skill__UserState(Base):
+    __tablename__ = "skill__user_state"
+
+    skill_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("skill.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=true()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (Index("ix_skill__user_state_user_id", "user_id"),)
 
 
 class DocumentSet__User(Base):
@@ -4568,6 +4667,9 @@ class Skill(Base):
     slug: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(
+        String(80), nullable=False, default="Custom", server_default="Custom"
+    )
 
     # Discriminator: when set, definition (source files, has_template, etc.)
     # comes from BUILT_IN_SKILLS in `onyx.skills.built_in`. When NULL, the
@@ -6170,6 +6272,49 @@ class ArtifactLibraryItem__UserGroup(Base):
     user_group: Mapped[UserGroup] = relationship("UserGroup")
 
 
+class ArtifactLibraryItem__UserState(Base):
+    __tablename__ = "artifact_library_item__user_state"
+
+    artifact_library_item_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("artifact_library_item.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    is_dismissed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_artifact_library_item__user_state_user_pinned",
+            "user_id",
+            "is_pinned",
+        ),
+        Index(
+            "ix_artifact_library_item__user_state_user_dismissed",
+            "user_id",
+            "is_dismissed",
+        ),
+    )
+
+
 class ArtifactLibraryItem(Base):
     """Stable identity and access policy shared by all artifact versions."""
 
@@ -6186,9 +6331,6 @@ class ArtifactLibraryItem(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     type: Mapped[ArtifactType] = mapped_column(
         Enum(ArtifactType, native_enum=False, name="artifacttype"), nullable=False
-    )
-    is_pinned: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default=false()
     )
     published_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -6218,6 +6360,11 @@ class ArtifactLibraryItem(Base):
     )
     group_shares: Mapped[list[ArtifactLibraryItem__UserGroup]] = relationship(
         ArtifactLibraryItem__UserGroup,
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    user_states: Mapped[list[ArtifactLibraryItem__UserState]] = relationship(
+        ArtifactLibraryItem__UserState,
         cascade="all, delete-orphan",
         lazy="selectin",
     )

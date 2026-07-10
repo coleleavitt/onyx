@@ -22,6 +22,7 @@ from onyx.db.skill import fetch_skill
 from onyx.db.skill import list_skills
 from onyx.db.skill import replace_skill_bundle
 from onyx.db.skill import replace_skill_shares
+from onyx.db.skill import set_skill_user_enabled__no_commit
 from onyx.db.skill import SkillAccessPolicy
 from onyx.db.skill import transfer_skill_ownership
 from onyx.db.skill import update_skill_fields
@@ -43,6 +44,7 @@ from onyx.server.features.skill.models import SkillResponse
 from onyx.server.features.skill.models import SkillReviewSubmissionResponse
 from onyx.server.features.skill.models import SkillShareRequest
 from onyx.server.features.skill.models import SkillsList
+from onyx.server.features.skill.models import SkillUserSettingsRequest
 from onyx.server.features.skill.models import SubmitSkillReviewRequest
 from onyx.server.features.skill.models import TransferSkillOwnershipRequest
 from onyx.server.features.skill.response_helpers import skill_preview_response
@@ -152,6 +154,32 @@ def fetch_skill_for_current_user(
     )
     if skill is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
+    return skill_response_for_user(skill, user, db_session)
+
+
+@user_router.patch("/{skill_id}/settings")
+def update_current_user_skill_settings(
+    skill_id: UUID,
+    body: SkillUserSettingsRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillResponse:
+    skill = fetch_skill(
+        skill_id,
+        policy=SkillAccessPolicy.VIEW,
+        user=user,
+        db_session=db_session,
+    )
+    if skill is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
+    set_skill_user_enabled__no_commit(
+        skill.id,
+        user.id,
+        enabled=body.enabled,
+        db_session=db_session,
+    )
+    db_session.commit()
+    push_skills_for_users({user.id}, db_session)
     return skill_response_for_user(skill, user, db_session)
 
 

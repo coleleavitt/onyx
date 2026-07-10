@@ -12,6 +12,8 @@ from onyx.auth.schemas import UserRole
 from onyx.db.enums import AccountType
 from onyx.db.enums import DefaultAppMode
 from onyx.db.enums import ThemePreference
+from onyx.db.memory import memory_title_for_content
+from onyx.db.memory import record_memory_revision_no_commit
 from onyx.db.models import AccessToken
 from onyx.db.models import Assistant__UserSpecificConfig
 from onyx.db.models import Memory
@@ -317,14 +319,36 @@ def update_user_personalization(
     existing_by_id = {mem.id: mem for mem in existing_memories}
     for item in memories:
         if item.id is not None and item.id in existing_by_id:
-            existing_by_id[item.id].memory_text = item.content
+            memory = existing_by_id[item.id]
+            if memory.memory_text != item.content:
+                memory.memory_text = item.content
+                if memory.title is None:
+                    memory.title = memory_title_for_content(item.content)
+                record_memory_revision_no_commit(
+                    memory,
+                    source="personalization",
+                    db_session=db_session,
+                )
 
     # Create new rows for items without an ID
     new_items = [m for m in memories if m.id is None]
     if new_items:
-        db_session.add_all(
-            [Memory(user_id=user_id, memory_text=item.content) for item in new_items]
-        )
+        new_memories = [
+            Memory(
+                user_id=user_id,
+                title=memory_title_for_content(item.content),
+                memory_text=item.content,
+            )
+            for item in new_items
+        ]
+        db_session.add_all(new_memories)
+        db_session.flush()
+        for memory in new_memories:
+            record_memory_revision_no_commit(
+                memory,
+                source="personalization",
+                db_session=db_session,
+            )
 
     db_session.commit()
 
