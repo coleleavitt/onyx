@@ -7,6 +7,7 @@ import {
   getBackgroundById,
   ChatBackgroundOption,
 } from "@/lib/constants/chatBackgrounds";
+import { useSettings } from "@/lib/settings/hooks";
 
 interface AppBackgroundContextType {
   /** The full background option object, or undefined if none/invalid */
@@ -27,9 +28,26 @@ export function AppBackgroundProvider({
   children: React.ReactNode;
 }) {
   const { user } = useUser();
+  const settings = useSettings();
 
   const value = useMemo(() => {
     const chatBackgroundId = user?.preferences?.chat_background;
+    const brandBackgroundUrl =
+      settings.enterprise?.login_background_url ?? null;
+
+    if (!chatBackgroundId && brandBackgroundUrl) {
+      return {
+        appBackground: {
+          id: "brand_default",
+          src: brandBackgroundUrl,
+          thumbnail: brandBackgroundUrl,
+          label: "Brand default",
+        },
+        appBackgroundUrl: brandBackgroundUrl,
+        hasBackground: true,
+      };
+    }
+
     const appBackground = getBackgroundById(chatBackgroundId ?? null);
     const hasBackground =
       !!appBackground && appBackground.src !== CHAT_BACKGROUND_NONE;
@@ -40,7 +58,10 @@ export function AppBackgroundProvider({
       appBackgroundUrl,
       hasBackground,
     };
-  }, [user?.preferences?.chat_background]);
+  }, [
+    settings.enterprise?.login_background_url,
+    user?.preferences?.chat_background,
+  ]);
 
   return (
     <AppBackgroundContext.Provider value={value}>

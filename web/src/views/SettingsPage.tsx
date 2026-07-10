@@ -60,13 +60,14 @@ import { FederatedConnectorOAuthStatus } from "@/components/chat/FederatedOAuthM
 import {
   CHAT_BACKGROUND_OPTIONS,
   CHAT_BACKGROUND_NONE,
+  type ChatBackgroundOption,
 } from "@/lib/constants/chatBackgrounds";
 import { SvgCheck } from "@opal/icons";
 import { cn } from "@opal/utils";
 import { Interactive } from "@opal/core";
 import { useTierAtLeast } from "@/hooks/useTierAtLeast";
 import { Tier } from "@/lib/settings/types";
-import { useIsSearchModeAvailable } from "@/lib/settings/hooks";
+import { useIsSearchModeAvailable, useSettings } from "@/lib/settings/hooks";
 import { Tooltip } from "@opal/components";
 import { useCloudSubscription } from "@/hooks/useCloudSubscription";
 import { useSmoothStreaming } from "@/hooks/useSmoothStreaming";
@@ -366,13 +367,30 @@ function GeneralSettings() {
     updateUserThemePreference,
     updateUserChatBackground,
   } = useUser();
+  const settings = useSettings();
   const { theme, setTheme, systemTheme } = useTheme();
+  const brandBackgroundUrl = settings.enterprise?.login_background_url ?? null;
+  const brandBackgroundOption: ChatBackgroundOption | null = brandBackgroundUrl
+    ? {
+        id: "brand_default",
+        src: brandBackgroundUrl,
+        thumbnail: brandBackgroundUrl,
+        label: "Brand default",
+      }
+    : null;
+  const backgroundOptions = brandBackgroundOption
+    ? [brandBackgroundOption, ...CHAT_BACKGROUND_OPTIONS]
+    : CHAT_BACKGROUND_OPTIONS;
 
   const applyBackground = useCallback(
-    async (bg: (typeof CHAT_BACKGROUND_OPTIONS)[number]) => {
+    async (bg: (typeof backgroundOptions)[number]) => {
       try {
         await updateUserChatBackground(
-          bg.id === CHAT_BACKGROUND_NONE ? null : bg.id
+          bg.id === brandBackgroundOption?.id
+            ? null
+            : bg.id === CHAT_BACKGROUND_NONE
+              ? CHAT_BACKGROUND_NONE
+              : bg.id
         );
         if (bg.theme) {
           setTheme(bg.theme);
@@ -383,7 +401,12 @@ function GeneralSettings() {
         // inside the update functions
       }
     },
-    [updateUserChatBackground, setTheme, updateUserThemePreference]
+    [
+      brandBackgroundOption?.id,
+      updateUserChatBackground,
+      setTheme,
+      updateUserThemePreference,
+    ]
   );
   const { refreshChatSessions } = useChatSessions();
   const router = useRouter();
@@ -583,9 +606,11 @@ function GeneralSettings() {
             </InputHorizontal>
             <InputVertical title="Chat Background">
               <div className="flex flex-wrap gap-2">
-                {CHAT_BACKGROUND_OPTIONS.map((bg) => {
+                {backgroundOptions.map((bg) => {
                   const currentBackgroundId =
-                    user?.preferences?.chat_background ?? "none";
+                    user?.preferences?.chat_background ??
+                    brandBackgroundOption?.id ??
+                    CHAT_BACKGROUND_NONE;
                   const isSelected = currentBackgroundId === bg.id;
                   const isNone = bg.src === CHAT_BACKGROUND_NONE;
 

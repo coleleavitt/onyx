@@ -13,6 +13,7 @@ import {
   CHAT_BACKGROUND_NONE,
   ChatBackgroundOption,
 } from "@/lib/constants/chatBackgrounds";
+import { useSettings } from "@/lib/settings/hooks";
 
 interface SettingRowProps {
   label: string;
@@ -98,8 +99,23 @@ export const SettingsPanel = ({
   const { theme, setTheme } = useTheme();
   const { user, updateUserChatBackground, updateUserThemePreference } =
     useUser();
+  const settings = useSettings();
 
-  const currentBackgroundId = user?.preferences?.chat_background ?? "none";
+  const brandBackgroundUrl = settings.enterprise?.login_background_url ?? null;
+  const brandBackgroundOption: ChatBackgroundOption | null = brandBackgroundUrl
+    ? {
+        id: "brand_default",
+        src: brandBackgroundUrl,
+        thumbnail: brandBackgroundUrl,
+        label: "Brand default",
+      }
+    : null;
+  const backgroundOptions = brandBackgroundOption
+    ? [brandBackgroundOption, ...CHAT_BACKGROUND_OPTIONS]
+    : CHAT_BACKGROUND_OPTIONS;
+  const currentBackgroundId =
+    user?.preferences?.chat_background ??
+    (brandBackgroundOption ? brandBackgroundOption.id : CHAT_BACKGROUND_NONE);
   const isDark = theme === "dark";
 
   const toggleTheme = () => {
@@ -109,7 +125,11 @@ export const SettingsPanel = ({
   const handleBackgroundChange = async (bg: ChatBackgroundOption) => {
     try {
       await updateUserChatBackground(
-        bg.id === CHAT_BACKGROUND_NONE ? null : bg.id
+        bg.id === brandBackgroundOption?.id
+          ? null
+          : bg.id === CHAT_BACKGROUND_NONE
+            ? CHAT_BACKGROUND_NONE
+            : bg.id
       );
       if (bg.theme) {
         setTheme(bg.theme);
@@ -195,7 +215,7 @@ export const SettingsPanel = ({
               Background
             </Text>
             <div className="grid grid-cols-3 gap-2">
-              {CHAT_BACKGROUND_OPTIONS.map((bg) => (
+              {backgroundOptions.map((bg) => (
                 <BackgroundThumbnail
                   key={bg.id}
                   thumbnailUrl={bg.thumbnail}
