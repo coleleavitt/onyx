@@ -25,6 +25,12 @@ import {
 } from "@/app/craft/services/apiServices";
 import { FileSystemEntry } from "@/app/craft/types/streamingTypes";
 import { getFileIcon } from "@/lib/utils";
+import SaveArtifactModal from "@/app/craft/v1/artifacts/SaveArtifactModal";
+
+interface SaveTarget {
+  name: string;
+  path: string;
+}
 
 interface ArtifactsTabProps {
   artifacts: Artifact[];
@@ -35,6 +41,7 @@ export default function ArtifactsTab({
   artifacts,
   sessionId,
 }: ArtifactsTabProps) {
+  const [saveTarget, setSaveTarget] = useState<SaveTarget | null>(null);
   const webappArtifacts = artifacts.filter(
     (a) => a.type === "nextjs_app" || a.type === "web_app"
   );
@@ -185,6 +192,17 @@ export default function ArtifactsTab({
                 <Button
                   variant="action"
                   prominence="tertiary"
+                  icon={SvgFiles}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSaveTarget({ name: artifact.name, path: artifact.path });
+                  }}
+                >
+                  Save
+                </Button>
+                <Button
+                  variant="action"
+                  prominence="tertiary"
                   icon={SvgDownloadCloud}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -206,10 +224,21 @@ export default function ArtifactsTab({
               depth={0}
               onDownload={handleOutputDownload}
               onFileOpen={handleFileOpen}
+              onSave={(entry) =>
+                setSaveTarget({ name: entry.name, path: entry.path })
+              }
             />
           ))}
         </div>
       </div>
+      {saveTarget ? (
+        <SaveArtifactModal
+          sessionId={sessionId}
+          path={saveTarget.path}
+          suggestedName={saveTarget.name}
+          onClose={() => setSaveTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -220,6 +249,7 @@ interface OutputEntryRowProps {
   depth: number;
   onDownload: (path: string, isDirectory: boolean) => void;
   onFileOpen: (path: string, fileName: string) => void;
+  onSave: (entry: FileSystemEntry) => void;
 }
 
 function OutputEntryRow({
@@ -228,6 +258,7 @@ function OutputEntryRow({
   depth,
   onDownload,
   onFileOpen,
+  onSave,
 }: OutputEntryRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FileSystemEntry[]>([]);
@@ -287,6 +318,17 @@ function OutputEntryRow({
           <Button
             variant="action"
             prominence="tertiary"
+            icon={SvgFiles}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSave(entry);
+            }}
+          >
+            Save
+          </Button>
+          <Button
+            variant="action"
+            prominence="tertiary"
             icon={SvgDownloadCloud}
             onClick={(e) => {
               e.stopPropagation();
@@ -307,6 +349,7 @@ function OutputEntryRow({
             depth={depth + 1}
             onDownload={onDownload}
             onFileOpen={onFileOpen}
+            onSave={onSave}
           />
         ))}
     </>

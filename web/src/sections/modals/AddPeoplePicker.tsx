@@ -22,6 +22,7 @@ interface Suggestion {
 
 export interface AddPeoplePickerProps {
   disabled?: boolean;
+  fixedPermissionLabel?: string;
   existingGroupIds: Set<number>;
   existingUserIds: Set<string>;
   groups: MinimalUserGroupSnapshot[];
@@ -38,6 +39,7 @@ export interface AddPeoplePickerProps {
 
 export function AddPeoplePicker({
   disabled = false,
+  fixedPermissionLabel,
   existingGroupIds,
   existingUserIds,
   groups,
@@ -216,13 +218,21 @@ export function AddPeoplePicker({
 
         {hasStagedItems ? (
           <div className="w-40 shrink-0">
-            <SharePermissionMenu
-              ariaLabel="Select staged permission"
-              onChange={onStagedPermissionChange}
-              options={permissionOptions}
-              value={stagedPermission}
-              width="full"
-            />
+            {fixedPermissionLabel ? (
+              <div className="flex h-10 items-center justify-end px-2">
+                <Text color="text-03" font="main-ui-body">
+                  {fixedPermissionLabel}
+                </Text>
+              </div>
+            ) : (
+              <SharePermissionMenu
+                ariaLabel="Select staged permission"
+                onChange={onStagedPermissionChange}
+                options={permissionOptions}
+                value={stagedPermission}
+                width="full"
+              />
+            )}
           </div>
         ) : null}
       </div>

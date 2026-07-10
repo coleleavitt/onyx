@@ -1080,6 +1080,48 @@ class SessionManager:
 
         return (content, mime_type or "application/octet-stream", filename)
 
+    def export_artifact_source(
+        self,
+        session_id: UUID,
+        user_id: UUID,
+        path: str,
+    ) -> tuple[bytes, str, str, bool] | None:
+        """Read a file or archive a directory for durable library storage."""
+        try:
+            file_result = self.download_artifact(session_id, user_id, path)
+        except ValueError as error:
+            if "directory" not in str(error).lower():
+                raise
+            file_result = None
+        if file_result is not None:
+            content, mime_type, filename = file_result
+            return content, mime_type, filename, False
+
+        resolved = self._resolve_owned_session_and_sandbox(session_id, user_id)
+        if resolved is None:
+            return None
+        _, sandbox = resolved
+        try:
+            self._sandbox_manager.list_directory(
+                sandbox_id=sandbox.id,
+                session_id=session_id,
+                path=path,
+            )
+        except ValueError:
+            return None
+
+        base_path = Path(path)
+        files = self._walk_sandbox_dir(
+            sandbox_id=sandbox.id,
+            session_id=session_id,
+            base_dir=path,
+            arcname_for=lambda value: str(Path(value).relative_to(base_path)),
+        )
+        if not files:
+            raise ValueError("Cannot save an empty directory")
+        archive = self._zip_files(sandbox.id, session_id, files)
+        return archive, "application/zip", f"{base_path.name}.zip", True
+
     def export_docx(
         self,
         session_id: UUID,

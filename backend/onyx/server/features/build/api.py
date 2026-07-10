@@ -9,6 +9,9 @@ from onyx.db.models import User
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.build.approvals.api import router as approvals_router
+from onyx.server.features.build.artifact_library.api import (
+    router as artifact_library_router,
+)
 from onyx.server.features.build.debug import router as debug_router
 from onyx.server.features.build.external_apps.api import router as external_apps_router
 from onyx.server.features.build.external_apps.oauth import (
@@ -42,6 +45,7 @@ def require_onyx_craft_enabled(
 
 router = APIRouter(prefix="/build", dependencies=[Depends(require_onyx_craft_enabled)])
 
+router.include_router(artifact_library_router, tags=["build"])
 router.include_router(sessions_router, tags=["build"])
 router.include_router(messages_router, tags=["build"])
 router.include_router(turns_router, tags=["build"])

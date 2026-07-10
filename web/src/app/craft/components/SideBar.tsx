@@ -32,6 +32,7 @@ import {
   SvgArrowLeft,
   SvgBlocks,
   SvgClock,
+  SvgFiles,
   SvgMoreHorizontal,
   SvgEdit,
   SvgTrash,
@@ -51,6 +52,7 @@ import {
   CRAFT_PATH,
   CRAFT_SKILLS_PATH,
   CRAFT_APPS_PATH,
+  CRAFT_ARTIFACTS_PATH,
   CRAFT_TASKS_PATH,
 } from "@/app/craft/v1/constants";
 
@@ -415,6 +417,20 @@ const MemoizedBuildSidebarInner = memo(() => {
     [folded, pathname]
   );
 
+  const artifactsTab = useMemo(
+    () => (
+      <SidebarTab
+        icon={SvgFiles}
+        folded={folded}
+        href={CRAFT_ARTIFACTS_PATH}
+        selected={pathname.startsWith(CRAFT_ARTIFACTS_PATH)}
+      >
+        Artifacts
+      </SidebarTab>
+    ),
+    [folded, pathname]
+  );
+
   const skillsPanel = useMemo(
     () => (
       <SidebarTab
@@ -460,6 +476,7 @@ const MemoizedBuildSidebarInner = memo(() => {
         <div className="flex flex-col gap-0.5">
           {newBuildButton}
           {scheduledTasksPanel}
+          {artifactsTab}
           {skillsPanel}
           {appsTab}
         </div>
@@ -481,6 +498,7 @@ const MemoizedBuildSidebarInner = memo(() => {
                   historyItem={historyItem}
                   isActive={
                     !pathname.startsWith(CRAFT_TASKS_PATH) &&
+                    !pathname.startsWith(CRAFT_ARTIFACTS_PATH) &&
                     !pathname.startsWith(CRAFT_SKILLS_PATH) &&
                     !pathname.startsWith(CRAFT_APPS_PATH) &&
                     session?.id === historyItem.id

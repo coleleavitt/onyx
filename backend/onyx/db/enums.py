@@ -461,9 +461,12 @@ class ArtifactType(str, PyEnum):
     WEB_APP = "web_app"
     PPTX = "pptx"
     DOCX = "docx"
+    PDF = "pdf"
     IMAGE = "image"
     MARKDOWN = "markdown"
     EXCEL = "excel"
+    CSV = "csv"
+    OTHER = "other"
 
 
 class HierarchyNodeType(str, PyEnum):
