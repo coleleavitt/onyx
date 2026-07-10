@@ -9,6 +9,7 @@ import { MinimalOnyxDocument } from "@/lib/search/interfaces";
 import { Button, Divider, LineItemButton, Text } from "@opal/components";
 import { Content, ContentAction } from "@opal/layouts";
 import AddInstructionModal from "@/sections/modals/AddInstructionModal";
+import ShareProjectModal from "@/sections/modals/ShareProjectModal";
 import UserFilesModal from "@/sections/modals/UserFilesModal";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
 import { FileCard } from "@/sections/cards/FileCard";
@@ -20,6 +21,7 @@ import {
   SvgFolderOpen,
   SvgPlusCircle,
   SvgSimpleLoader,
+  SvgShare,
 } from "@opal/icons";
 
 export interface ProjectContextPanelProps {
@@ -35,6 +37,7 @@ export default function ProjectContextPanel({
 }: ProjectContextPanelProps) {
   const addInstructionModal = useCreateModal();
   const projectFilesModal = useCreateModal();
+  const shareProjectModal = useCreateModal();
   // Convert ProjectFile to MinimalOnyxDocument format for viewing
   const handleOnView = useCallback(
     (file: ProjectFile) => {
@@ -59,7 +62,16 @@ export default function ProjectContextPanel({
     beginUpload,
     projects,
     renameProject,
+    fetchProjects,
+    refreshCurrentProjectDetails,
   } = useProjectsContext();
+  const currentProject =
+    currentProjectDetails?.project ??
+    projects.find((project) => project.id === currentProjectId) ??
+    null;
+  const canEdit =
+    currentProject !== null && currentProject.user_permission !== "VIEWER";
+  const isOwner = currentProject?.user_permission === "OWNER";
   const handleUploadFiles = useCallback(
     async (files: File[]) => {
       if (!files || files.length === 0) return;
@@ -83,6 +95,7 @@ export default function ProjectContextPanel({
 
   // Nested dropzone for drag-and-drop within ProjectContextPanel
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    disabled: !canEdit,
     noClick: true,
     noKeyboard: true,
     multiple: true,
@@ -92,7 +105,6 @@ export default function ProjectContextPanel({
     },
   });
 
-  const currentProject = projects.find((p) => p.id === currentProjectId);
   const projectName = currentProject?.name || "Loading project...";
 
   if (!currentProjectId) return null; // no selection yet
@@ -108,6 +120,16 @@ export default function ProjectContextPanel({
         <AddInstructionModal />
       </addInstructionModal.Provider>
 
+      <ShareProjectModal
+        project={currentProject}
+        open={shareProjectModal.isOpen}
+        onClose={() => shareProjectModal.toggle(false)}
+        onSaved={() => {
+          void fetchProjects();
+          void refreshCurrentProjectDetails();
+        }}
+      />
+
       <projectFilesModal.Provider>
         <UserFilesModal
           title="Project Files"
@@ -115,24 +137,44 @@ export default function ProjectContextPanel({
           recentFiles={[...allCurrentProjectFiles]}
           onView={handleOnView}
           handleUploadChange={handleUploadChange}
-          onDelete={async (file: ProjectFile) => {
-            if (!currentProjectId) return;
-            await unlinkFileFromProject(currentProjectId, file.id);
-          }}
+          onDelete={
+            canEdit
+              ? async (file: ProjectFile) => {
+                  if (!currentProjectId) return;
+                  await unlinkFileFromProject(currentProjectId, file.id);
+                }
+              : undefined
+          }
         />
       </projectFilesModal.Provider>
 
       <div className="w-(--app-page-main-content-width) mx-auto flex flex-col gap-6 pb-6">
-        <Content
-          icon={SvgFolderOpen}
-          title={projectName}
-          editable
-          onTitleChange={async (newName) => {
-            if (currentProjectId) {
-              await renameProject(currentProjectId, newName);
+        <div className="flex w-full items-start justify-between gap-3">
+          <Content
+            icon={SvgFolderOpen}
+            title={projectName}
+            editable={canEdit}
+            onTitleChange={
+              canEdit
+                ? async (newName) => {
+                    if (currentProjectId) {
+                      await renameProject(currentProjectId, newName);
+                    }
+                  }
+                : undefined
             }
-          }}
-        />
+          />
+          {isOwner && (
+            <Button
+              icon={SvgShare}
+              interaction={shareProjectModal.isOpen ? "active" : undefined}
+              onClick={() => shareProjectModal.toggle(true)}
+              prominence="secondary"
+            >
+              Share
+            </Button>
+          )}
+        </div>
 
         <Divider paddingParallel="fit" paddingPerpendicular="fit" />
 
@@ -150,14 +192,16 @@ export default function ProjectContextPanel({
           padding="fit"
           center
           rightChildren={
-            <Button
-              prominence="tertiary"
-              icon={SvgAddLines}
-              onClick={() => addInstructionModal.toggle(true)}
-              interaction={addInstructionModal.isOpen ? "active" : undefined}
-            >
-              Set Instructions
-            </Button>
+            canEdit ? (
+              <Button
+                prominence="tertiary"
+                icon={SvgAddLines}
+                onClick={() => addInstructionModal.toggle(true)}
+                interaction={addInstructionModal.isOpen ? "active" : undefined}
+              >
+                Set Instructions
+              </Button>
+            ) : undefined
           }
         />
 
@@ -173,38 +217,40 @@ export default function ProjectContextPanel({
             padding="fit"
             center
             rightChildren={
-              <FilePickerPopover
-                trigger={(open) => (
-                  <Button
-                    icon={SvgPlusCircle}
-                    prominence="tertiary"
-                    interaction={open ? "active" : undefined}
-                  >
-                    Add Files
-                  </Button>
-                )}
-                onFileClick={handleOnView}
-                onPickRecent={async (file) => {
-                  if (file.status === UserFileStatus.UPLOADING) return;
-                  if (file.status === UserFileStatus.DELETING) return;
-                  if (!currentProjectId) return;
-                  if (!linkFileToProject) return;
-                  linkFileToProject(currentProjectId, file);
-                }}
-                onUnpickRecent={async (file) => {
-                  if (!currentProjectId) return;
-                  await unlinkFileFromProject(currentProjectId, file.id);
-                }}
-                handleUploadChange={handleUploadChange}
-                selectedFileIds={(allCurrentProjectFiles || []).map(
-                  (f) => f.id
-                )}
-              />
+              canEdit ? (
+                <FilePickerPopover
+                  trigger={(open) => (
+                    <Button
+                      icon={SvgPlusCircle}
+                      prominence="tertiary"
+                      interaction={open ? "active" : undefined}
+                    >
+                      Add Files
+                    </Button>
+                  )}
+                  onFileClick={handleOnView}
+                  onPickRecent={async (file) => {
+                    if (file.status === UserFileStatus.UPLOADING) return;
+                    if (file.status === UserFileStatus.DELETING) return;
+                    if (!currentProjectId) return;
+                    if (!linkFileToProject) return;
+                    linkFileToProject(currentProjectId, file);
+                  }}
+                  onUnpickRecent={async (file) => {
+                    if (!currentProjectId) return;
+                    await unlinkFileFromProject(currentProjectId, file.id);
+                  }}
+                  handleUploadChange={handleUploadChange}
+                  selectedFileIds={(allCurrentProjectFiles || []).map(
+                    (f) => f.id
+                  )}
+                />
+              ) : undefined
             }
           />
 
           {/* Hidden input just to satisfy dropzone contract; we rely on FilePicker for clicks */}
-          <input {...getInputProps()} />
+          {canEdit && <input {...getInputProps()} />}
 
           {isLoadingProjectDetails && !currentProjectDetails ? (
             <SvgSimpleLoader />
@@ -229,10 +275,17 @@ export default function ProjectContextPanel({
                   <FileCard
                     key={f.id}
                     file={f}
-                    removeFile={async (fileId: string) => {
-                      if (!currentProjectId) return;
-                      await unlinkFileFromProject(currentProjectId, fileId);
-                    }}
+                    removeFile={
+                      canEdit
+                        ? async (fileId: string) => {
+                            if (!currentProjectId) return;
+                            await unlinkFileFromProject(
+                              currentProjectId,
+                              fileId
+                            );
+                          }
+                        : undefined
+                    }
                     onFileClick={handleOnView}
                     compactImages={shouldCompactImages}
                   />
@@ -275,7 +328,9 @@ export default function ProjectContextPanel({
               <Text as="p" font="secondary-body" color="inherit">
                 {isDragActive
                   ? "Drop files here to add to this project"
-                  : "Add documents, texts, or images to use in the project. Drag & drop supported."}
+                  : canEdit
+                    ? "Add documents, texts, or images to use in the project. Drag & drop supported."
+                    : "No files have been added to this project."}
               </Text>
             </div>
           )}

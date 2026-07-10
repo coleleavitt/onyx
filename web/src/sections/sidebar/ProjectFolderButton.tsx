@@ -40,11 +40,14 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
   const [isHoveringIcon, setIsHoveringIcon] = useState(false);
   const [allowHoverEffect, setAllowHoverEffect] = useState(true);
   const activeSidebar = useAppFocus();
+  const canEdit = project.user_permission !== "VIEWER";
+  const isOwner = project.user_permission === "OWNER";
 
   // Make project droppable
   const dropId = `project-${project.id}`;
   const { setNodeRef, isOver } = useDroppable({
     id: dropId,
+    disabled: !canEdit,
     data: {
       type: DRAG_TYPES.PROJECT,
       project,
@@ -83,24 +86,28 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
   }
 
   const popoverItems = [
-    <LineItemButton
-      key="rename-project"
-      sizePreset="main-ui"
-      rounding="sm"
-      icon={SvgEdit}
-      title="Rename Project"
-      onClick={noProp(() => setIsEditing(true))}
-    />,
+    canEdit ? (
+      <LineItemButton
+        key="rename-project"
+        sizePreset="main-ui"
+        rounding="sm"
+        icon={SvgEdit}
+        title="Rename Project"
+        onClick={noProp(() => setIsEditing(true))}
+      />
+    ) : null,
     null,
-    <LineItemButton
-      key="delete-project"
-      sizePreset="main-ui"
-      rounding="sm"
-      color="danger"
-      icon={SvgTrash}
-      title="Delete Project"
-      onClick={noProp(() => setDeleteConfirmationModalOpen(true))}
-    />,
+    isOwner ? (
+      <LineItemButton
+        key="delete-project"
+        sizePreset="main-ui"
+        rounding="sm"
+        color="danger"
+        icon={SvgTrash}
+        title="Delete Project"
+        onClick={noProp(() => setDeleteConfirmationModalOpen(true))}
+      />
+    ) : null,
   ];
 
   return (
@@ -112,7 +119,7 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
       )}
     >
       {/* Confirmation Modal (only for deletion) */}
-      {deleteConfirmationModalOpen && (
+      {isOwner && deleteConfirmationModalOpen && (
         <ConfirmationModalLayout
           title="Delete Project"
           icon={SvgTrash}
@@ -154,26 +161,28 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
             }
             onClick={noProp(handleTextClick)}
             rightChildren={
-              <>
-                <Popover.Trigger asChild onClick={noProp()}>
-                  <div>
-                    {/* TODO(@raunakab): migrate to opal Button once className/iconClassName is resolved */}
-                    <IconButton
-                      icon={SvgMoreHorizontal}
-                      className={cn(
-                        !popoverOpen && "hidden",
-                        !isEditing && "group-hover/SidebarTab:flex"
-                      )}
-                      transient={popoverOpen}
-                      internal
-                    />
-                  </div>
-                </Popover.Trigger>
+              canEdit ? (
+                <>
+                  <Popover.Trigger asChild onClick={noProp()}>
+                    <div>
+                      {/* TODO(@raunakab): migrate to opal Button once className/iconClassName is resolved */}
+                      <IconButton
+                        icon={SvgMoreHorizontal}
+                        className={cn(
+                          !popoverOpen && "hidden",
+                          !isEditing && "group-hover/SidebarTab:flex"
+                        )}
+                        transient={popoverOpen}
+                        internal
+                      />
+                    </div>
+                  </Popover.Trigger>
 
-                <Popover.Content side="right" align="end" width="md">
-                  <PopoverMenu>{popoverItems}</PopoverMenu>
-                </Popover.Content>
-              </>
+                  <Popover.Content side="right" align="end" width="md">
+                    <PopoverMenu>{popoverItems}</PopoverMenu>
+                  </Popover.Content>
+                </>
+              ) : undefined
             }
           >
             {isEditing ? (

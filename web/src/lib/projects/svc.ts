@@ -6,6 +6,8 @@ import type {
   UserFileDeleteResult,
   UserFileStatus,
   ProjectDetails,
+  ProjectSharing,
+  ProjectShareUpdate,
 } from "@/lib/projects/types";
 
 const handleRequestError = (action: string, response: Response): never => {
@@ -82,6 +84,50 @@ export async function getProject(projectId: number): Promise<Project> {
   const response = await fetch(`/api/user/projects/${projectId}`);
   if (!response.ok) {
     handleRequestError("Fetch project", response);
+  }
+  return response.json();
+}
+
+export async function getProjectSharing(
+  projectId: number
+): Promise<ProjectSharing> {
+  const response = await fetch(`/api/user/projects/${projectId}/sharing`);
+  if (!response.ok) {
+    handleRequestError("Fetch project sharing", response);
+  }
+  return response.json();
+}
+
+export async function updateProjectSharing(
+  projectId: number,
+  sharing: ProjectShareUpdate
+): Promise<ProjectSharing> {
+  const response = await fetch(`/api/user/projects/${projectId}/sharing`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sharing),
+  });
+  if (!response.ok) {
+    handleRequestError("Update project sharing", response);
+  }
+  return response.json();
+}
+
+export async function resolveProjectAccessRequest(
+  projectId: number,
+  requestId: number,
+  approve: boolean
+): Promise<ProjectSharing> {
+  const response = await fetch(
+    `/api/user/projects/${projectId}/join-requests/${requestId}/resolve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approve }),
+    }
+  );
+  if (!response.ok) {
+    handleRequestError("Resolve project access request", response);
   }
   return response.json();
 }
