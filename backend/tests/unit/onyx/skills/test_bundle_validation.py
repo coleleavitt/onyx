@@ -17,9 +17,12 @@ from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.skills.bundle import _ZIP_UNIX_CREATE_SYSTEM
 from onyx.skills.bundle import compute_bundle_sha256
+from onyx.skills.bundle import diff_custom_bundles
+from onyx.skills.bundle import inspect_custom_bundle
 from onyx.skills.bundle import parse_skill_md_metadata
 from onyx.skills.bundle import read_custom_bundle_instructions
 from onyx.skills.bundle import rewrite_custom_bundle_skill_md
+from onyx.skills.bundle import rewrite_custom_bundle_text_file
 from onyx.skills.bundle import slug_from_filename
 from onyx.skills.bundle import strip_skill_md_frontmatter
 from onyx.skills.bundle import validate_custom_bundle
@@ -227,6 +230,101 @@ def test_rewrite_custom_bundle_skill_md_preserves_supporting_files() -> None:
     with zipfile.ZipFile(io.BytesIO(rewritten)) as zf:
         assert zf.read("scripts/run.py") == b"print('hi')\n"
         assert zf.read("docs/notes.md") == b"# Notes\n"
+
+
+def test_inspect_custom_bundle_returns_tree_content_and_findings() -> None:
+    bundle = _build_zip(
+        [
+            ("SKILL.md", VALID_SKILL_MD),
+            ("scripts/run.sh", b"#!/bin/sh\necho hi\n"),
+            ("config.txt", b"OPENAI_API_KEY=sk-example-not-real\n"),
+            ("asset.bin", b"\x00\x01\x02"),
+        ]
+    )
+
+    inspection = inspect_custom_bundle(bundle, slug="hello")
+
+    assert [file.path for file in inspection.files] == [
+        "SKILL.md",
+        "asset.bin",
+        "config.txt",
+        "scripts/run.sh",
+    ]
+    assert inspection.files[0].content == VALID_SKILL_MD.decode()
+    assert inspection.files[1].content is None
+    assert inspection.status == "REVIEW"
+    assert {finding.code for finding in inspection.findings} == {
+        "POTENTIAL_SECRET",
+        "SCRIPT_FILE",
+    }
+    assert all("sk-example" not in finding.message for finding in inspection.findings)
+
+
+def test_diff_custom_bundles_reports_file_changes_and_text_diff() -> None:
+    current = _build_zip(
+        [
+            ("SKILL.md", VALID_SKILL_MD),
+            ("notes.md", b"old line\n"),
+            ("removed.txt", b"gone\n"),
+        ]
+    )
+    candidate = _build_zip(
+        [
+            ("SKILL.md", VALID_SKILL_MD),
+            ("notes.md", b"new line\n"),
+            ("added.txt", b"new\n"),
+        ]
+    )
+
+    diff = diff_custom_bundles(current, candidate, slug="hello")
+
+    assert [(entry.path, entry.change_type) for entry in diff.files] == [
+        ("added.txt", "ADDED"),
+        ("notes.md", "MODIFIED"),
+        ("removed.txt", "DELETED"),
+    ]
+    notes_diff = next(entry.diff for entry in diff.files if entry.path == "notes.md")
+    assert notes_diff is not None
+    assert "-old line" in notes_diff
+    assert "+new line" in notes_diff
+
+
+def test_rewrite_custom_bundle_text_file_preserves_and_revalidates_bundle() -> None:
+    original = _build_zip(
+        [
+            ("SKILL.md", VALID_SKILL_MD),
+            ("scripts/run.py", b"print('old')\n"),
+            ("docs/notes.md", b"keep me\n"),
+        ]
+    )
+
+    rewritten = rewrite_custom_bundle_text_file(
+        original,
+        slug="hello",
+        path="scripts/run.py",
+        content="print('new')\n",
+    )
+
+    assert validate_custom_bundle(rewritten, slug="hello") is None
+    with zipfile.ZipFile(io.BytesIO(rewritten)) as zf:
+        assert zf.read("scripts/run.py") == b"print('new')\n"
+        assert zf.read("docs/notes.md") == b"keep me\n"
+
+
+def test_validator_rejects_duplicate_file_paths() -> None:
+    bundle = _build_zip([("SKILL.md", VALID_SKILL_MD), ("notes.md", b"first")])
+    source = io.BytesIO(bundle)
+    output = io.BytesIO()
+    with (
+        zipfile.ZipFile(source) as source_zip,
+        zipfile.ZipFile(output, mode="w") as target_zip,
+    ):
+        for info in source_zip.infolist():
+            target_zip.writestr(info, source_zip.read(info))
+        target_zip.writestr("notes.md", b"second")
+
+    with pytest.raises(OnyxError, match="duplicate path"):
+        validate_custom_bundle(output.getvalue(), slug="hello")
 
 
 def test_rewrite_custom_bundle_skill_md_rejects_oversized_skill_md_before_zip_read(

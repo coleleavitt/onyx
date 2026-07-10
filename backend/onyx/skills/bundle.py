@@ -9,9 +9,12 @@ import re
 import shutil
 import stat
 import zipfile
+from dataclasses import dataclass
+from difflib import unified_diff
 from pathlib import Path
 from typing import BinaryIO
 from typing import Final
+from typing import Literal
 
 import yaml
 
@@ -26,6 +29,8 @@ DEFAULT_PER_FILE_MAX_BYTES: Final[int] = int(
 DEFAULT_TOTAL_MAX_BYTES: Final[int] = int(
     os.environ.get("SKILL_BUNDLE_TOTAL_MAX_BYTES") or 100 * 1024 * 1024
 )
+DEFAULT_TEXT_PREVIEW_MAX_BYTES: Final[int] = 256 * 1024
+DEFAULT_DIFF_MAX_CHARS: Final[int] = 20_000
 
 SKILL_MD_NAME: Final[str] = "SKILL.md"
 TEMPLATE_SUFFIX: Final[str] = ".template"
@@ -36,6 +41,58 @@ _FRONTMATTER_REGEX: Final[re.Pattern[str]] = re.compile(
 )
 
 _ZIP_UNIX_CREATE_SYSTEM: Final[int] = 3
+
+_SCRIPT_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".bat", ".cmd", ".js", ".ps1", ".py", ".sh", ".ts"}
+)
+_EXECUTABLE_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".dll", ".dylib", ".exe", ".so"}
+)
+_SECRET_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"(?i)(?:api[_-]?key|token|secret)\s*[:=]\s*[^\s]{8,}"),
+)
+
+
+@dataclass(frozen=True)
+class SkillBundleFileInspection:
+    path: str
+    size: int
+    sha256: str
+    is_text: bool
+    content: str | None
+    content_truncated: bool
+
+
+@dataclass(frozen=True)
+class SkillBundleSecurityFinding:
+    code: str
+    severity: Literal["INFO", "WARNING"]
+    message: str
+    path: str | None = None
+
+
+@dataclass(frozen=True)
+class SkillBundleInspection:
+    status: Literal["PASS", "REVIEW"]
+    files: list[SkillBundleFileInspection]
+    findings: list[SkillBundleSecurityFinding]
+    total_uncompressed_bytes: int
+
+
+@dataclass(frozen=True)
+class SkillBundleFileDiff:
+    path: str
+    change_type: Literal["ADDED", "MODIFIED", "DELETED"]
+    diff: str | None
+
+
+@dataclass(frozen=True)
+class SkillBundleDiff:
+    files: list[SkillBundleFileDiff]
+    candidate: SkillBundleInspection
 
 
 def check_slug(slug: str) -> None:
@@ -174,6 +231,138 @@ def read_custom_bundle_instructions(zip_bytes: bytes) -> str:
     return strip_skill_md_frontmatter(skill_md)
 
 
+def _decode_text_preview(raw: bytes) -> tuple[bool, str | None, bool]:
+    if b"\x00" in raw:
+        return False, None, False
+    truncated = len(raw) > DEFAULT_TEXT_PREVIEW_MAX_BYTES
+    preview = raw[:DEFAULT_TEXT_PREVIEW_MAX_BYTES]
+    try:
+        return True, preview.decode("utf-8"), truncated
+    except UnicodeDecodeError:
+        return False, None, False
+
+
+def inspect_custom_bundle(zip_bytes: bytes, *, slug: str) -> SkillBundleInspection:
+    validate_custom_bundle(zip_bytes, slug=slug)
+    files: list[SkillBundleFileInspection] = []
+    findings: list[SkillBundleSecurityFinding] = []
+    total_uncompressed_bytes = 0
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        for info in sorted(zf.infolist(), key=lambda entry: entry.filename):
+            if info.is_dir():
+                continue
+            path = _validated_bundle_path(info)
+            raw = zf.read(info)
+            total_uncompressed_bytes += len(raw)
+            is_text, content, content_truncated = _decode_text_preview(raw)
+            files.append(
+                SkillBundleFileInspection(
+                    path=path,
+                    size=len(raw),
+                    sha256=hashlib.sha256(raw).hexdigest(),
+                    is_text=is_text,
+                    content=content,
+                    content_truncated=content_truncated,
+                )
+            )
+
+            suffix = Path(path).suffix.lower()
+            if suffix in _EXECUTABLE_SUFFIXES:
+                findings.append(
+                    SkillBundleSecurityFinding(
+                        code="EXECUTABLE_FILE",
+                        severity="WARNING",
+                        message="Compiled executable content requires review.",
+                        path=path,
+                    )
+                )
+            elif suffix in _SCRIPT_SUFFIXES:
+                findings.append(
+                    SkillBundleSecurityFinding(
+                        code="SCRIPT_FILE",
+                        severity="INFO",
+                        message="Executable script content requires review.",
+                        path=path,
+                    )
+                )
+
+            if (
+                is_text
+                and content is not None
+                and any(pattern.search(content) for pattern in _SECRET_PATTERNS)
+            ):
+                findings.append(
+                    SkillBundleSecurityFinding(
+                        code="POTENTIAL_SECRET",
+                        severity="WARNING",
+                        message="Potential embedded credential detected; the value is hidden.",
+                        path=path,
+                    )
+                )
+
+    return SkillBundleInspection(
+        status="REVIEW" if findings else "PASS",
+        files=files,
+        findings=findings,
+        total_uncompressed_bytes=total_uncompressed_bytes,
+    )
+
+
+def diff_custom_bundles(
+    current_zip_bytes: bytes,
+    candidate_zip_bytes: bytes,
+    *,
+    slug: str,
+) -> SkillBundleDiff:
+    current = inspect_custom_bundle(current_zip_bytes, slug=slug)
+    candidate = inspect_custom_bundle(candidate_zip_bytes, slug=slug)
+    current_by_path = {file.path: file for file in current.files}
+    candidate_by_path = {file.path: file for file in candidate.files}
+    diffs: list[SkillBundleFileDiff] = []
+
+    for path in sorted(set(current_by_path) | set(candidate_by_path)):
+        before = current_by_path.get(path)
+        after = candidate_by_path.get(path)
+        if before is not None and after is not None and before.sha256 == after.sha256:
+            continue
+
+        if before is None:
+            change_type: Literal["ADDED", "MODIFIED", "DELETED"] = "ADDED"
+        elif after is None:
+            change_type = "DELETED"
+        else:
+            change_type = "MODIFIED"
+
+        text_diff: str | None = None
+        if (before is None or before.is_text) and (after is None or after.is_text):
+            before_lines = (
+                (before.content or "").splitlines(keepends=True) if before else []
+            )
+            after_lines = (
+                (after.content or "").splitlines(keepends=True) if after else []
+            )
+            rendered = "".join(
+                unified_diff(
+                    before_lines,
+                    after_lines,
+                    fromfile=f"a/{path}",
+                    tofile=f"b/{path}",
+                )
+            )
+            text_diff = rendered[:DEFAULT_DIFF_MAX_CHARS]
+
+        diffs.append(
+            SkillBundleFileDiff(
+                path=path,
+                change_type=change_type,
+                diff=text_diff,
+            )
+        )
+
+    return SkillBundleDiff(files=diffs, candidate=candidate)
+
+
 def build_skill_md(
     *,
     name: str,
@@ -290,6 +479,68 @@ def rewrite_custom_bundle_skill_md(
     return rewritten
 
 
+def rewrite_custom_bundle_text_file(
+    zip_bytes: bytes,
+    *,
+    slug: str,
+    path: str,
+    content: str,
+) -> bytes:
+    validate_custom_bundle(zip_bytes, slug=slug)
+    normalized_path = _validated_bundle_path(zipfile.ZipInfo(filename=path))
+    encoded_content = content.encode("utf-8")
+    if len(encoded_content) > DEFAULT_PER_FILE_MAX_BYTES:
+        raise OnyxError(
+            OnyxErrorCode.PAYLOAD_TOO_LARGE,
+            f"file '{normalized_path}' exceeds "
+            f"{DEFAULT_PER_FILE_MAX_BYTES // (1024 * 1024)} MiB",
+        )
+
+    output = io.BytesIO()
+    found = False
+    with (
+        zipfile.ZipFile(io.BytesIO(zip_bytes)) as source_zip,
+        zipfile.ZipFile(
+            output, mode="w", compression=zipfile.ZIP_DEFLATED
+        ) as target_zip,
+    ):
+        for info in source_zip.infolist():
+            normalized = _validated_bundle_path(info)
+            if info.is_dir():
+                target_zip.writestr(info, b"")
+                continue
+
+            raw = source_zip.read(info)
+            if normalized == normalized_path:
+                if b"\x00" in raw:
+                    raise OnyxError(
+                        OnyxErrorCode.INVALID_INPUT,
+                        f"file '{normalized_path}' is binary and cannot be edited as text",
+                    )
+                try:
+                    raw.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise OnyxError(
+                        OnyxErrorCode.INVALID_INPUT,
+                        f"file '{normalized_path}' is not UTF-8 text",
+                    ) from exc
+                raw = encoded_content
+                found = True
+            target_zip.writestr(info, raw)
+
+    if not found:
+        raise OnyxError(
+            OnyxErrorCode.NOT_FOUND,
+            f"file '{normalized_path}' was not found in the skill bundle",
+        )
+
+    rewritten = output.getvalue()
+    validate_custom_bundle(rewritten, slug=slug)
+    if normalized_path == SKILL_MD_NAME:
+        parse_skill_md_metadata(rewritten)
+    return rewritten
+
+
 def _validated_bundle_path(info: zipfile.ZipInfo) -> str:
     """Return the normalized bundle path, rejecting traversal and symlinks."""
     name = info.filename
@@ -351,9 +602,16 @@ def validate_custom_bundle(
     with zf:
         total = 0
         saw_skill_md = False
+        seen_paths: set[str] = set()
 
         for info in zf.infolist():
             normalized = _validated_bundle_path(info)
+            if normalized in seen_paths:
+                raise OnyxError(
+                    OnyxErrorCode.INVALID_INPUT,
+                    f"bundle contains duplicate path: '{normalized}'",
+                )
+            seen_paths.add(normalized)
             if info.is_dir():
                 continue
 
