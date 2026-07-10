@@ -71,11 +71,11 @@ function PreviewLogo({
       src={logoSrc}
       alt="Logo"
       style={{
-        objectFit: "cover",
+        objectFit: "contain",
         height: `${size}px`,
         width: `${size}px`,
       }}
-      className={cn("shrink-0 rounded-full", className)}
+      className={cn("shrink-0", className)}
     />
   ) : (
     <SvgOnyxLogo size={size} className={cn("shrink-0", className)} />

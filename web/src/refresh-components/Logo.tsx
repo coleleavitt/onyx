@@ -48,7 +48,7 @@ export default function Logo({
   const logo = resolvedLogoUrl ? (
     <div
       className={cn(
-        "aspect-square rounded-full overflow-hidden relative shrink-0",
+        "aspect-square relative flex shrink-0 items-center justify-center",
         className
       )}
       style={{ height: resolvedSize }}
@@ -57,7 +57,7 @@ export default function Logo({
       <img
         alt="Logo"
         src={resolvedLogoUrl}
-        className="object-cover object-center w-full h-full"
+        className="h-full w-full object-contain object-center"
       />
     </div>
   ) : (
