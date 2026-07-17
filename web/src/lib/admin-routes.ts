@@ -21,6 +21,7 @@ import {
   SvgMcp,
   SvgOnyxOctagon,
   SvgPaintBrush,
+  SvgPlug,
   SvgProgressBars,
   SvgSearchMenu,
   SvgShield,
@@ -28,6 +29,7 @@ import {
   SvgThumbsUp,
   SvgUploadCloud,
   SvgUser,
+  SvgUserCheck,
   SvgUserKey,
   SvgUserSync,
   SvgUsers,
@@ -163,11 +165,23 @@ export const ADMIN_ROUTES = {
     title: "Code Interpreter",
     sidebarLabel: "Code Interpreter",
   },
-  CRAFT: {
-    path: "/admin/configuration/craft",
+  CRAFT_ACCESS: {
+    path: "/admin/craft/access",
+    icon: SvgUserCheck,
+    title: "Access",
+    sidebarLabel: "Access",
+  },
+  CRAFT_APPS: {
+    path: "/admin/craft/apps",
+    icon: SvgPlug,
+    title: "Apps",
+    sidebarLabel: "Apps",
+  },
+  CRAFT_INSTRUCTIONS: {
+    path: "/admin/craft/instructions",
     icon: SvgDevKit,
-    title: "Craft",
-    sidebarLabel: "Craft",
+    title: "Instructions",
+    sidebarLabel: "Instructions",
   },
   INDEX_SETTINGS: {
     path: "/admin/configuration/index-settings",
@@ -247,6 +261,12 @@ export const ADMIN_ROUTES = {
     title: "SCIM",
     sidebarLabel: "SCIM",
   },
+  OAUTH_TEST: {
+    path: "/admin/oauth-test",
+    icon: SvgUserKey,
+    title: "OAuth Test",
+    sidebarLabel: "OAuth Test",
+  },
   DEBUG: {
     path: "/admin/debug",
     icon: SvgDownload,
@@ -264,6 +284,12 @@ export const ADMIN_ROUTES = {
     icon: SvgLightbulbSimple,
     title: "Memory Governance",
     sidebarLabel: "Memory Governance",
+  },
+  SSO_PROVIDERS: {
+    path: "/admin/sso-providers",
+    icon: SvgUserKey,
+    title: "SSO Providers",
+    sidebarLabel: "SSO Providers",
   },
   // Prefix-only entries used for layout matching — not rendered as sidebar
   // items or page headers.

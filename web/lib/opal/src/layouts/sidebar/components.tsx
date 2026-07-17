@@ -130,7 +130,7 @@ interface SidebarHeaderProps {
    * sidebar is non-foldable) and returns an `IconFunctionComponent` that is
    * rendered at `size={28}` in the topbar.
    */
-  renderAppLogo: (folded: boolean | undefined) => IconFunctionComponent;
+  renderAppLogo: (folded: boolean) => IconFunctionComponent;
   /**
    * When `true` (default), the logo is shown in the folded state with a
    * hover-to-reveal fold button. When `false`, only the fold button is shown
@@ -166,7 +166,7 @@ function SidebarHeader({
     [folded, toggleFolded]
   );
 
-  const Logo = renderAppLogo(foldable ? folded : undefined);
+  const Logo = renderAppLogo(foldable ? folded : false);
   const logoEl = <Logo size={SIDEBAR_LOGO_HEIGHT_PX} />;
 
   return (

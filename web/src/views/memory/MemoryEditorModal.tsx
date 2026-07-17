@@ -23,7 +23,7 @@ import type {
   MemoryItem,
   MemoryRevision,
 } from "@/lib/memory/types";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 
 const CATEGORY_LABELS: Record<MemoryCategory, string> = {
   notes: "Notes",

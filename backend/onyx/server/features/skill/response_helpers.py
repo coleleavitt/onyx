@@ -7,7 +7,8 @@ from onyx.db.models import Skill
 from onyx.db.models import User
 from onyx.db.persona_sharing import get_curated_user_group_ids_for_user
 from onyx.db.persona_sharing import get_user_group_ids_for_user
-from onyx.db.skill import get_skill_user_enabled_states
+from onyx.db.skill import skill_user_states
+from onyx.db.skill import SkillUserState
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.skill.models import SkillPreviewResponse
@@ -77,15 +78,13 @@ def skill_response_for_user(
     user: User,
     db_session: Session,
     *,
+    state: SkillUserState | None = None,
     user_group_ids: set[int] | None = None,
     curated_user_group_ids: set[int] | None = None,
     include_share_details: bool = False,
-    user_enabled: bool | None = None,
 ) -> SkillResponse:
-    if user_enabled is None:
-        user_enabled = get_skill_user_enabled_states(
-            [skill.id], user.id, db_session=db_session
-        ).get(skill.id, True)
+    if state is None:
+        state = skill_user_states(user, [skill.id], db_session)[skill.id]
     if skill.built_in_skill_id is not None:
         definition = BUILT_IN_SKILLS.get(skill.built_in_skill_id)
         if definition is None:
@@ -94,7 +93,8 @@ def skill_response_for_user(
             skill,
             definition,
             db_session,
-            user_enabled=user_enabled,
+            enabled=state.enabled,
+            can_toggle=state.can_toggle,
         )
 
     if user_group_ids is None:
@@ -105,6 +105,8 @@ def skill_response_for_user(
         )
     return SkillResponse.from_custom(
         skill,
+        enabled=state.enabled,
+        can_toggle=state.can_toggle,
         user_permission=user_permission_for_skill(
             skill,
             user,
@@ -112,7 +114,6 @@ def skill_response_for_user(
             curated_user_group_ids,
         ),
         include_share_details=include_share_details,
-        user_enabled=user_enabled,
     )
 
 
@@ -129,40 +130,29 @@ def skills_list_response_for_user(
         if user.role == UserRole.CURATOR
         else set()
     )
-    user_enabled_states = get_skill_user_enabled_states(
-        [skill.id for skill in rows], user.id, db_session=db_session
-    )
+    states = skill_user_states(user, (skill.id for skill in rows), db_session)
 
     for skill in rows:
-        if skill.built_in_skill_id is not None:
-            definition = BUILT_IN_SKILLS.get(skill.built_in_skill_id)
-            if definition is None:
-                logger.warning(
-                    "Skill row %s references unknown built-in %s; hiding from listing",
-                    skill.slug,
-                    skill.built_in_skill_id,
-                )
-                continue
-            builtins.append(
-                SkillResponse.from_builtin(
-                    skill,
-                    definition,
-                    db_session,
-                    user_enabled=user_enabled_states.get(skill.id, True),
-                )
+        if (
+            skill.built_in_skill_id is not None
+            and skill.built_in_skill_id not in BUILT_IN_SKILLS
+        ):
+            logger.warning(
+                "Skill row %s references unknown built-in %s; hiding from listing",
+                skill.slug,
+                skill.built_in_skill_id,
             )
             continue
 
-        customs.append(
-            skill_response_for_user(
-                skill,
-                user,
-                db_session,
-                user_group_ids=user_group_ids,
-                curated_user_group_ids=curated_user_group_ids,
-                user_enabled=user_enabled_states.get(skill.id, True),
-            )
+        response = skill_response_for_user(
+            skill,
+            user,
+            db_session,
+            state=states[skill.id],
+            user_group_ids=user_group_ids,
+            curated_user_group_ids=curated_user_group_ids,
         )
+        (builtins if skill.built_in_skill_id is not None else customs).append(response)
 
     return SkillsList(builtins=builtins, customs=customs)
 

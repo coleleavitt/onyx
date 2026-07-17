@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import { Button, Text } from "@opal/components";
 import { IllustrationContent } from "@opal/layouts";

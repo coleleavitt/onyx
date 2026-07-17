@@ -7,7 +7,7 @@ import { spacePath } from "@/lib/projects/slug";
 import type { Project } from "@/lib/projects/types";
 import { deleteProject, setProjectPinned } from "@/lib/projects/svc";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import SpaceCard from "@/sections/cards/SpaceCard";
 import CreateProjectModal from "@/sections/modals/CreateProjectModal";
 import EditSpaceDetailsModal from "@/sections/modals/EditSpaceDetailsModal";

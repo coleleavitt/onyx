@@ -48,6 +48,12 @@ export {
   type LinkButtonProps,
 } from "@opal/components/buttons/link-button/components";
 
+/* TextButton */
+export {
+  TextButton,
+  type TextButtonProps,
+} from "@opal/components/buttons/text-button/components";
+
 /* Text */
 export {
   Text,
@@ -74,6 +80,14 @@ export {
   Divider,
   type DividerProps,
 } from "@opal/components/divider/components";
+
+/* IconContainer */
+export {
+  IconContainer,
+  type IconContainerProps,
+  type IconContainerSize,
+  type IconContainerType,
+} from "@opal/components/icon-container/components";
 
 /* Card */
 export { Card, type CardProps } from "@opal/components/cards/card/components";
@@ -102,6 +116,12 @@ export {
   type PaginationProps,
   type PaginationSize,
 } from "@opal/components/pagination/components";
+
+/* Calendar */
+export {
+  Calendar,
+  type CalendarProps,
+} from "@opal/components/calendar/components";
 
 /* Checkbox */
 export {
@@ -133,12 +153,46 @@ export {
   type InputTypeInProps,
 } from "@opal/components/inputs/input-type-in/components";
 
+/* InputDatePicker */
+export {
+  InputDatePicker,
+  type InputDatePickerProps,
+} from "@opal/components/inputs/input-date-picker/components";
+
+/* InputSelect */
+export {
+  InputSelect,
+  type InputSelectRootProps,
+  type InputSelectTriggerProps,
+  type InputSelectItemProps,
+  type InputSelectSearchProps,
+} from "@opal/components/inputs/input-select/components";
+
 /* InputTags */
 export {
   InputTags,
   type InputTagsProps,
   type TagItem,
 } from "@opal/components/inputs/input-tags/components";
+
+/* PasswordInputTypeIn */
+export {
+  PasswordInputTypeIn,
+  type PasswordInputTypeInProps,
+} from "@opal/components/inputs/password-input-type-in/components";
+
+/* InputTextArea */
+export {
+  InputTextArea,
+  type InputTextAreaProps,
+} from "@opal/components/inputs/input-text-area/components";
+
+/* InputTime */
+export {
+  InputTime,
+  type InputTimeProps,
+  type TimeValue,
+} from "@opal/components/inputs/input-time/components";
 
 /* Spacer */
 export { Spacer, type SpacerProps } from "@opal/components/spacer/components";

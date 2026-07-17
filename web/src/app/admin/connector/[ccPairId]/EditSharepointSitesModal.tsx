@@ -10,7 +10,7 @@ import { Credential } from "@/lib/connectors/credentials";
 import { updateConnector } from "@/lib/connector";
 import { AccessType } from "@/lib/types";
 import Modal from "@/refresh-components/Modal";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 
 interface EditSharepointSitesModalProps {
   connector: Connector<SharepointConfig>;

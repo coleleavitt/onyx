@@ -29,7 +29,7 @@ import {
   type MemoryGovernancePolicy,
 } from "@/lib/memory-governance";
 import { SWR_KEYS } from "@/lib/swr-keys";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 
 const route = ADMIN_ROUTES.MEMORY_GOVERNANCE;
 

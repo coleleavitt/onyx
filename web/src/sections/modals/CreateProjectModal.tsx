@@ -4,14 +4,13 @@ import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import { Button } from "@opal/components";
 import { useProjectsContext } from "@/providers/ProjectsContext";
-import { InputVertical } from "@opal/layouts";
+import { InputVertical, toast } from "@opal/layouts";
 import { useAppRouter } from "@/hooks/appNavigation";
 import { useModal } from "@/refresh-components/contexts/ModalContext";
 import { SvgFolderPlus } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTypeInField from "@/refresh-components/form/InputTypeInField";
 import InputTextAreaField from "@/refresh-components/form/InputTextAreaField";
-import { toast } from "@/hooks/useToast";
 
 interface CreateProjectModalProps {
   initialProjectName?: string;

@@ -13,13 +13,20 @@ from onyx.server.features.build.artifact_library.api import (
     router as artifact_library_router,
 )
 from onyx.server.features.build.debug import router as debug_router
+from onyx.server.features.build.external_apps.api import (
+    admin_router as external_apps_admin_router,
+)
 from onyx.server.features.build.external_apps.api import router as external_apps_router
 from onyx.server.features.build.external_apps.oauth import (
     router as external_apps_oauth_router,
 )
 from onyx.server.features.build.interactive_turns.api import router as turns_router
+from onyx.server.features.build.models import BaseInstructionsResponse
 from onyx.server.features.build.rate_limit import get_user_rate_limit_status
 from onyx.server.features.build.rate_limit import RateLimitResponse
+from onyx.server.features.build.sandbox.util.agent_instructions import (
+    AGENT_INSTRUCTIONS_TEMPLATE_PATH,
+)
 from onyx.server.features.build.scheduled_tasks.api import (
     router as scheduled_tasks_router,
 )
@@ -49,6 +56,29 @@ def require_onyx_craft_enabled(
 router = APIRouter(prefix="/build", dependencies=[Depends(require_onyx_craft_enabled)])
 
 router.include_router(artifact_library_router, tags=["build"])
+
+# Admin-only Craft endpoints. Deliberately NOT behind the craft-enabled-for-user
+# gate: an admin configuring Craft may not have Craft enabled for themselves.
+admin_router = APIRouter(
+    prefix="/build/admin",
+    dependencies=[Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS))],
+)
+admin_router.include_router(external_apps_admin_router, tags=["build"])
+
+
+@admin_router.get("/base-instructions")
+def get_base_instructions(
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+) -> BaseInstructionsResponse:
+    """The base AGENTS.md template, so admins can see what their workspace
+    instructions are appended to. Dynamic sections appear as placeholders."""
+    if not AGENT_INSTRUCTIONS_TEMPLATE_PATH.exists():
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Base instructions not found")
+    return BaseInstructionsResponse(
+        content=AGENT_INSTRUCTIONS_TEMPLATE_PATH.read_text()
+    )
+
+
 router.include_router(sessions_router, tags=["build"])
 router.include_router(messages_router, tags=["build"])
 router.include_router(turns_router, tags=["build"])

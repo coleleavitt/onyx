@@ -3,53 +3,153 @@
 import { useMemo, useRef, useState } from "react";
 import type { Route } from "next";
 import { useRouter } from "next/navigation";
-import { Button, InputTypeIn, MessageCard, Tabs, Text } from "@opal/components";
-import { IllustrationContent, SettingsLayouts } from "@opal/layouts";
+import {
+  Button,
+  InputTypeIn,
+  MessageCard,
+  Popover,
+  Tabs,
+  Text,
+} from "@opal/components";
+import { IllustrationContent, SettingsLayouts, toast } from "@opal/layouts";
 import SvgNoResult from "@opal/illustrations/no-result";
-import { SvgBlocks, SvgPlus, SvgSimpleLoader } from "@opal/icons";
+import {
+  SvgBlocks,
+  SvgEdit,
+  SvgPlus,
+  SvgSimpleLoader,
+  SvgUploadCloud,
+} from "@opal/icons";
 import useOnMount from "@/hooks/useOnMount";
 import useUserSkills from "@/hooks/useUserSkills";
-import { useUser } from "@/providers/UserProvider";
 import SkillCard, {
   type CustomSkillCardItem,
   type SkillCardItem,
 } from "@/sections/cards/SkillCard";
-import CreatePersonalSkillModal from "@/views/SkillsPage/CreatePersonalSkillModal";
-import UploadSkillModal from "@/sections/modals/skills/UploadSkillModal";
+import CreateSkillModal from "@/sections/modals/skills/CreateSkillModal";
 import SkillPreviewModal from "@/sections/modals/SkillPreviewModal";
 import type { BuiltinSkill, CustomSkill } from "@/lib/skills/types";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
-import { updateSkillUserSettings } from "@/lib/skills/api";
-import { toast } from "@/hooks/useToast";
+import LineItem from "@/refresh-components/buttons/LineItem";
+import { setSkillEnabled } from "@/lib/skills/api";
 
 type SkillScope = "all" | "mine" | "shared" | "builtin";
+
+interface CreateSkillMenuProps {
+  onStartFromScratch: () => void;
+  onUpload: () => void;
+}
+
+function CreateSkillMenu({ onStartFromScratch, onUpload }: CreateSkillMenuProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <Button icon={SvgPlus}>Create skill</Button>
+      </Popover.Trigger>
+      <Popover.Content align="end" sideOffset={4} width="xl">
+        <Popover.Menu>
+          <LineItem
+            icon={SvgEdit}
+            description="Write the instructions and add supporting files in Onyx."
+            wrapDescription
+            onClick={() => {
+              setOpen(false);
+              onStartFromScratch();
+            }}
+          >
+            Start from scratch
+          </LineItem>
+          <LineItem
+            icon={SvgUploadCloud}
+            description="Import a SKILL.md file, ZIP file, or skill folder."
+            wrapDescription
+            onClick={() => {
+              setOpen(false);
+              onUpload();
+            }}
+          >
+            Upload a skill
+          </LineItem>
+        </Popover.Menu>
+      </Popover.Content>
+    </Popover>
+  );
+}
 
 export default function SkillsPage() {
   const router = useRouter();
   const { data, error, isLoading, refresh } = useUserSkills();
-  const { isAdmin, isCurator } = useUser();
   const [searchQuery, setSearchQuery] = useState("");
   const [scope, setScope] = useState<SkillScope>("all");
   const [category, setCategory] = useState("All");
-  const [busySkillId, setBusySkillId] = useState<string | null>(null);
-  const [personalCreateOpen, setPersonalCreateOpen] = useState(false);
-  const [orgUploadOpen, setOrgUploadOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<SkillCardItem | null>(
     null
   );
+  const [pendingSkillIds, setPendingSkillIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [optimisticEnabledById, setOptimisticEnabledById] = useState<
+    Map<string, boolean>
+  >(new Map());
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useOnMount(() => searchInputRef.current?.focus());
 
-  const canManageOrgSkills = isAdmin || isCurator;
-
-  function handleCreateClick() {
-    if (canManageOrgSkills) setOrgUploadOpen(true);
-    else setPersonalCreateOpen(true);
+  function handleStartFromScratch() {
+    router.push("/craft/v1/skills/new" as Route);
   }
 
   function handleEdit(item: CustomSkillCardItem) {
     router.push(`/craft/v1/skills/edit/${item.id}` as Route);
+  }
+
+  async function handleEnabledChange(item: SkillCardItem, enabled: boolean) {
+    setPendingSkillIds((current) => new Set(current).add(item.id));
+    setOptimisticEnabledById((current) =>
+      new Map(current).set(item.id, enabled)
+    );
+    try {
+      const updatedSkill = await setSkillEnabled(item.id, enabled);
+      await refresh(
+        (current) => {
+          if (!current) return current;
+          const key =
+            updatedSkill.source === "builtin" ? "builtins" : "customs";
+          return {
+            ...current,
+            [key]: current[key].map((skill) =>
+              skill.id === updatedSkill.id ? updatedSkill : skill
+            ),
+          };
+        },
+        { revalidate: false }
+      );
+      void refresh().catch(() => {
+        toast.error(
+          `${item.name} was updated, but the skill list could not be refreshed.`
+        );
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : `Failed to ${enabled ? "enable" : "disable"} ${item.name}`
+      );
+    } finally {
+      setOptimisticEnabledById((current) => {
+        const next = new Map(current);
+        next.delete(item.id);
+        return next;
+      });
+      setPendingSkillIds((current) => {
+        const next = new Set(current);
+        next.delete(item.id);
+        return next;
+      });
+    }
   }
 
   const items = useMemo<SkillCardItem[]>(() => {
@@ -66,14 +166,13 @@ export default function SkillsPage() {
         category: skill.category,
         user_enabled: skill.user_enabled,
         source: "builtin",
+        enabled: optimisticEnabledById.get(skill.id) ?? skill.enabled,
+        can_toggle: skill.can_toggle,
         is_available: skill.is_available,
         unavailable_reason: skill.unavailable_reason,
       }));
     const customItems: SkillCardItem[] = data.customs
-      .filter(
-        (skill): skill is CustomSkill =>
-          skill.source === "custom" && skill.enabled !== null
-      )
+      .filter((skill): skill is CustomSkill => skill.source === "custom")
       .map((skill) => ({
         id: skill.id,
         name: skill.name,
@@ -84,12 +183,13 @@ export default function SkillsPage() {
         skill,
         author_email: skill.author_email,
         is_personal: skill.is_personal && skill.user_permission === "OWNER",
-        enabled: skill.enabled,
+        enabled: optimisticEnabledById.get(skill.id) ?? skill.enabled,
+        can_toggle: skill.can_toggle,
       }));
     return [...builtinItems, ...customItems].sort((left, right) =>
       left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
     );
-  }, [data]);
+  }, [data, optimisticEnabledById]);
 
   const categories = useMemo(
     () => [
@@ -128,23 +228,6 @@ export default function SkillsPage() {
         "This skill is currently unavailable.")
       : null;
 
-  async function handleToggleEnabled(item: SkillCardItem, enabled: boolean) {
-    setBusySkillId(item.id);
-    try {
-      await updateSkillUserSettings(item.id, enabled);
-      await refresh();
-      toast.success(enabled ? "Skill enabled." : "Skill disabled.");
-    } catch (toggleError) {
-      toast.error(
-        toggleError instanceof Error
-          ? toggleError.message
-          : "Skill preference update failed."
-      );
-    } finally {
-      setBusySkillId(null);
-    }
-  }
-
   return (
     <SettingsLayouts.Root width="full" data-testid="SkillsPage/container">
       <SettingsLayouts.Header
@@ -154,17 +237,19 @@ export default function SkillsPage() {
         density="compact"
         rightChildren={
           <div className="hidden sm:block">
-            <Button icon={SvgPlus} onClick={handleCreateClick}>
-              Create skill
-            </Button>
+            <CreateSkillMenu
+              onStartFromScratch={handleStartFromScratch}
+              onUpload={() => setCreateOpen(true)}
+            />
           </div>
         }
       >
         <div className="flex flex-col gap-2">
           <div className="sm:hidden">
-            <Button icon={SvgPlus} onClick={handleCreateClick}>
-              Create skill
-            </Button>
+            <CreateSkillMenu
+              onStartFromScratch={handleStartFromScratch}
+              onUpload={() => setCreateOpen(true)}
+            />
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="w-full shrink-0 sm:w-[22rem]">
@@ -253,10 +338,8 @@ export default function SkillsPage() {
                   item={item}
                   onEdit={handleEdit}
                   onClick={setPreviewTarget}
-                  onToggleEnabled={(target, enabled) =>
-                    void handleToggleEnabled(target, enabled)
-                  }
-                  enableToggleDisabled={busySkillId === item.id}
+                  onEnabledChange={handleEnabledChange}
+                  enablementPending={pendingSkillIds.has(item.id)}
                 />
               ))}
             </div>
@@ -264,16 +347,11 @@ export default function SkillsPage() {
         )}
       </SettingsLayouts.Body>
 
-      <CreatePersonalSkillModal
-        open={personalCreateOpen}
-        onClose={() => setPersonalCreateOpen(false)}
-        onCreated={refresh}
-      />
-      <UploadSkillModal
-        open={orgUploadOpen}
-        onClose={() => setOrgUploadOpen(false)}
-        onUploaded={(created) => {
-          void refresh();
+      <CreateSkillModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(created) => {
+          refresh();
           router.push(`/craft/v1/skills/edit/${created.id}` as Route);
         }}
       />

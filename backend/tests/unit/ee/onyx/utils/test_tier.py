@@ -1,4 +1,6 @@
-"""Unit tests for complete-feature tier resolution."""
+"""Unit tests for `ee.onyx.utils.tier`: complete-feature tier resolution
+and the tier-requirement guards.
+"""
 
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -65,3 +67,43 @@ class TestRequireBusinessTierForSyncAccess:
         mock_get_tier.return_value = tier
 
         require_business_tier_for_sync_access(AccessType.SYNC)
+
+
+class TestRequireBusinessTierForMultiSSO:
+    """Below BUSINESS raises FEATURE_NOT_AVAILABLE. Enforcement-off passes
+    without a tier read."""
+
+    @patch("ee.onyx.utils.tier.LICENSE_ENFORCEMENT_ENABLED", True)
+    @patch("ee.onyx.utils.tier.get_tier")
+    def test_below_business_raises(self, mock_get_tier: MagicMock) -> None:
+        from ee.onyx.utils.tier import require_business_tier_for_multi_sso
+
+        mock_get_tier.return_value = Tier.COMMUNITY
+        with pytest.raises(OnyxError) as exc_info:
+            require_business_tier_for_multi_sso()
+        assert exc_info.value.error_code == OnyxErrorCode.FEATURE_NOT_AVAILABLE
+
+    @pytest.mark.parametrize(
+        "tier",
+        [Tier.BUSINESS, Tier.ENTERPRISE],
+        ids=["business", "enterprise"],
+    )
+    @patch("ee.onyx.utils.tier.LICENSE_ENFORCEMENT_ENABLED", True)
+    @patch("ee.onyx.utils.tier.get_tier")
+    def test_business_or_above_passes(
+        self, mock_get_tier: MagicMock, tier: Tier
+    ) -> None:
+        from ee.onyx.utils.tier import require_business_tier_for_multi_sso
+
+        mock_get_tier.return_value = tier
+        require_business_tier_for_multi_sso()
+
+    @patch("ee.onyx.utils.tier.LICENSE_ENFORCEMENT_ENABLED", False)
+    @patch("ee.onyx.utils.tier.get_tier")
+    def test_enforcement_disabled_passes_without_tier_read(
+        self, mock_get_tier: MagicMock
+    ) -> None:
+        from ee.onyx.utils.tier import require_business_tier_for_multi_sso
+
+        require_business_tier_for_multi_sso()
+        mock_get_tier.assert_not_called()

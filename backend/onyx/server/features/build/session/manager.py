@@ -38,7 +38,7 @@ from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import get_default_file_store
 from onyx.server.features.build.configs import MAX_TOTAL_UPLOAD_SIZE_BYTES
 from onyx.server.features.build.configs import MAX_UPLOAD_FILES_PER_SESSION
-from onyx.server.features.build.configs import OPENCODE_PROMPT_TIMEOUT_SECONDS
+from onyx.server.features.build.configs import PROMPT_SLOT_KEEP_ALIVE_MAX_SECONDS
 from onyx.server.features.build.db.build_session import allocate_nextjs_port
 from onyx.server.features.build.db.build_session import create_build_session__no_commit
 from onyx.server.features.build.db.build_session import delete_build_session__no_commit
@@ -95,6 +95,8 @@ HIDDEN_PATTERNS = {
     "opencode.json",
     ".env",
     ".gitignore",
+    "nextjs.log",
+    "nextjs.pid",
 }
 
 
@@ -307,8 +309,8 @@ class SessionManager:
             llm_provider_type: Provider type from user's cookie (e.g., "anthropic", "openai")
             llm_model_name: Model name from user's cookie (e.g., "claude-opus-4-5")
             origin: Provenance of the session. INTERACTIVE (default) sessions
-                appear in the Craft sidebar; SCHEDULED sessions (created by
-                the scheduled-tasks executor) are excluded.
+                appear in the Craft sidebar; SCHEDULED (scheduled-tasks
+                executor) and SLACK (Slack bot) sessions are excluded.
 
         Returns:
             The created BuildSession model
@@ -329,11 +331,11 @@ class SessionManager:
 
         # Allocate port for this session (per-session port allocation).
         # Both LOCAL and KUBERNETES backends use the same port allocation
-        # strategy. Skipped for SCHEDULED sessions: scheduled-task fires
-        # are headless, never attach a preview, and pile up so fast they'd
-        # exhaust the [3010, 3100) range on a busy tenant.
+        # strategy. Skipped for non-interactive origins (SCHEDULED, SLACK):
+        # those sessions are headless, never attach a preview, and pile up
+        # fast enough to exhaust the [3010, 3100) range on a busy tenant.
         nextjs_port: int | None
-        if origin == SessionOrigin.SCHEDULED or headless:
+        if origin != SessionOrigin.INTERACTIVE or headless:
             nextjs_port = None
         else:
             nextjs_port = allocate_nextjs_port(self._db_session)
@@ -627,10 +629,18 @@ class SessionManager:
                 target=slot.keep_alive,
                 name=f"delete-slot-renewal-{session_id}",
                 daemon=True,
-                args=(slot_renewal_stop, OPENCODE_PROMPT_TIMEOUT_SECONDS),
+                args=(slot_renewal_stop, PROMPT_SLOT_KEEP_ALIVE_MAX_SECONDS),
             )
 
+            def ensure_prompt_slot_owned() -> None:
+                if slot.lost:
+                    raise OnyxError(
+                        OnyxErrorCode.CONFLICT,
+                        "Session cleanup lost exclusive access. Try again.",
+                    )
+
             if sandbox and sandbox.status.is_active():
+                ensure_prompt_slot_owned()
                 if session.opencode_session_id:
                     try:
                         deleted_from_opencode = (
@@ -656,6 +666,8 @@ class SessionManager:
                             e,
                         )
 
+                ensure_prompt_slot_owned()
+
                 # Clean up session workspace (but don't terminate sandbox)
                 try:
                     self._sandbox_manager.cleanup_session_workspace(
@@ -674,11 +686,14 @@ class SessionManager:
                         "Failed to cleanup session workspace %s: %s", session_id, e
                     )
 
+                ensure_prompt_slot_owned()
+
             # Delete snapshot files from FileStore before removing DB records
             snapshots = get_snapshots_for_session(self._db_session, session_id)
             if snapshots:
                 snapshot_manager = SnapshotManager(get_default_file_store())
                 for snapshot in snapshots:
+                    ensure_prompt_slot_owned()
                     try:
                         snapshot_manager.delete_snapshot(snapshot.storage_path)
                     except Exception as e:
@@ -689,6 +704,7 @@ class SessionManager:
                         )
 
             # Delete session (uses flush, caller commits)
+            ensure_prompt_slot_owned()
             return delete_build_session__no_commit(
                 session_id, user_id, self._db_session
             )
@@ -838,6 +854,7 @@ class SessionManager:
         user_message_content: str,
         should_interrupt: Callable[[], bool] | None = None,
         should_abort_on_teardown: Callable[[], bool] | None = None,
+        turn_timeout_seconds: float | None = None,
     ) -> Generator[Any, None, None]:
         build_session = _streaming.load_turn_session(
             self._db_session, self._sandbox_manager, sandbox_id, session_id
@@ -855,6 +872,7 @@ class SessionManager:
             agent_model=build_session.agent_model,
             should_interrupt=should_interrupt,
             should_abort_on_teardown=should_abort_on_teardown,
+            turn_timeout_seconds=turn_timeout_seconds,
         )
 
     def merge_events_with_announces(

@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { useSWRConfig } from "swr";
 import useSWRInfinite from "swr/infinite";
 import { errorHandlingFetcher } from "@/lib/fetcher";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
 import ConfirmationModalLayout from "@/refresh-components/layouts/ConfirmationModalLayout";
 import Modal from "@/refresh-components/Modal";

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@opal/components";
-import { SettingsLayouts } from "@opal/layouts";
+import { SettingsLayouts, toast } from "@opal/layouts";
 import { Form, Formik } from "formik";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR, { mutate } from "swr";
@@ -14,7 +14,6 @@ import {
 import BrandProfileSettings, {
   DEFAULT_BRAND_SELECTION,
 } from "@/app/ee/admin/theme/BrandProfileSettings";
-import { toast } from "@/hooks/useToast";
 import { ADMIN_ROUTES } from "@/lib/admin-routes";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import type {
@@ -24,6 +23,8 @@ import type {
   EnterpriseSettings,
 } from "@/lib/settings/types";
 import { SWR_KEYS } from "@/lib/swr-keys";
+import { AdminBanner } from "@/lib/banner/interfaces";
+import { invalidateNotificationCaches } from "@/lib/notifications/api";
 
 const route = ADMIN_ROUTES.THEME;
 const DEFAULT_ASSET_KEY = "__default__";
@@ -37,6 +38,8 @@ const CHAR_LIMITS = {
   custom_popup_content: 500,
   consent_screen_prompt: 200,
   login_subtitle: 100,
+  system_announcement_header: 100,
+  system_announcement_content: 1000,
 };
 
 const ASSET_FLAG_BY_KIND: Record<
@@ -303,7 +306,48 @@ const validationSchema = Yup.object().shape({
         ),
     }),
   hide_onyx_branding: Yup.boolean().nullable(),
+  system_announcement_enabled: Yup.boolean().nullable(),
+  system_announcement_header: Yup.string()
+    .trim()
+    .max(
+      CHAR_LIMITS.system_announcement_header,
+      `Maximum ${CHAR_LIMITS.system_announcement_header} characters`
+    )
+    .when("system_announcement_enabled", {
+      is: true,
+      then: (schema) => schema.required("Notice Header is required"),
+      otherwise: (schema) => schema.nullable(),
+    }),
+  system_announcement_content: Yup.string()
+    .trim()
+    .max(
+      CHAR_LIMITS.system_announcement_content,
+      `Maximum ${CHAR_LIMITS.system_announcement_content} characters`
+    )
+    .when("system_announcement_enabled", {
+      is: true,
+      then: (schema) => schema.required("Notice Content is required"),
+      otherwise: (schema) => schema.nullable(),
+    }),
+  system_announcement_show_as_popup: Yup.boolean().nullable(),
 });
+
+async function mutateAdminBanner(
+  init: RequestInit,
+  failMessage: string
+): Promise<boolean> {
+  const response = await fetch("/api/admin/banner", init);
+  if (!response.ok) {
+    const errorMsg = (await response.json()).detail;
+    toast.error(`${failMessage} ${errorMsg}`);
+    return false;
+  }
+  await mutate(SWR_KEYS.adminBanner);
+  // The banner reaches users as a synthesized notification, so the mounted
+  // banner queue and bell must refetch to show the change without a reload.
+  await invalidateNotificationCaches();
+  return true;
+}
 
 export default function ThemePage() {
   const { data: storedSettings, mutate: mutateAdminSettings } =
@@ -312,6 +356,16 @@ export default function ThemePage() {
       errorHandlingFetcher,
       { revalidateOnFocus: false }
     );
+  // The banner seeds Formik initialValues once, so the form renders only after
+  // this fetch settles (a failed fetch counts as "no banner"). Background
+  // revalidation stays off, and only our own post-save mutate refreshes it.
+  const { data: adminBanner, error: adminBannerError } =
+    useSWR<AdminBanner | null>(SWR_KEYS.adminBanner, errorHandlingFetcher, {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+    });
+  const bannerLoaded = adminBanner !== undefined || Boolean(adminBannerError);
+  const currentBanner = adminBanner ?? null;
   const [draftSettings, setDraftSettings] = useState<EnterpriseSettings | null>(
     null
   );
@@ -348,10 +402,19 @@ export default function ThemePage() {
     selectedBrandId
   );
 
+  if (!bannerLoaded) return null;
+
   return (
     <Formik
       enableReinitialize
-      initialValues={getInitialValues(activeAppearance)}
+      initialValues={{
+        ...getInitialValues(activeAppearance),
+        system_announcement_enabled: !!currentBanner,
+        system_announcement_header: currentBanner?.title || "",
+        system_announcement_content: currentBanner?.content || "",
+        system_announcement_show_as_popup:
+          currentBanner?.show_as_popup || false,
+      }}
       validationSchema={validationSchema}
       validateOnChange={false}
       onSubmit={async (values, formikHelpers) => {
@@ -375,6 +438,43 @@ export default function ThemePage() {
           setAssetDrafts({});
           setAssetVersion((version) => version + 1);
           setConfigurationDirty(false);
+
+          // Only touch the banner after the settings save succeeds, and only
+          // when its own fields changed, so an unrelated edit does not
+          // re-publish it.
+          const trimmedHeader = values.system_announcement_header.trim();
+          const trimmedContent =
+            values.system_announcement_content.trim() || null;
+          const bannerChanged =
+            values.system_announcement_enabled !== !!currentBanner ||
+            trimmedHeader !== (currentBanner?.title ?? "") ||
+            trimmedContent !== (currentBanner?.content ?? null) ||
+            values.system_announcement_show_as_popup !==
+              (currentBanner?.show_as_popup ?? false);
+
+          let bannerOk = true;
+          if (bannerChanged) {
+            if (values.system_announcement_enabled) {
+              bannerOk = await mutateAdminBanner(
+                {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    title: trimmedHeader,
+                    content: trimmedContent,
+                    show_as_popup: values.system_announcement_show_as_popup,
+                  }),
+                },
+                "Failed to save announcement."
+              );
+            } else if (currentBanner) {
+              bannerOk = await mutateAdminBanner(
+                { method: "DELETE" },
+                "Failed to clear announcement."
+              );
+            }
+          }
+          if (!bannerOk) return;
           formikHelpers.resetForm({ values });
           await Promise.all([
             mutateAdminSettings(),

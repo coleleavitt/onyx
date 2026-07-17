@@ -8,7 +8,7 @@ import { SvgNetworkGraph } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTextArea from "@/refresh-components/inputs/InputTextArea";
 import { getBrainSettings, updateBrainSettings } from "@/lib/memory/api";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 
 const FOCUS_INSTRUCTIONS_MAX_LENGTH = 2000;
 

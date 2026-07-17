@@ -2,7 +2,7 @@
 
 import { Form, Formik } from "formik";
 import * as Yup from "yup";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import type { Project } from "@/lib/projects/types";
 import Modal from "@/refresh-components/Modal";
 import InputTypeInField from "@/refresh-components/form/InputTypeInField";

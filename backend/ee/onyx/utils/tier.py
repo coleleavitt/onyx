@@ -20,6 +20,7 @@ from datetime import timezone
 import requests
 from redis.exceptions import RedisError
 
+from ee.onyx.configs.app_configs import LICENSE_ENFORCEMENT_ENABLED
 from ee.onyx.server.license.models import CustomerTier
 from ee.onyx.server.tenants.billing import fetch_billing_information
 from ee.onyx.server.tenants.models import BillingInformation
@@ -153,4 +154,18 @@ def require_business_tier_for_sync_access(access_type: AccessType) -> None:
         raise OnyxError(
             OnyxErrorCode.FEATURE_NOT_AVAILABLE,
             "Auto-sync access requires the Business or Enterprise plan.",
+        )
+
+
+def require_business_tier_for_multi_sso() -> None:
+    """Gate a second simultaneously enabled SSO provider to Business or
+    above. A single enabled provider works at every tier.
+    LICENSE_ENFORCEMENT_ENABLED=False passes, matching the sync-access
+    guard."""
+    if not LICENSE_ENFORCEMENT_ENABLED:
+        return
+    if not tier_at_least(get_tier(), Tier.BUSINESS):
+        raise OnyxError(
+            OnyxErrorCode.FEATURE_NOT_AVAILABLE,
+            "Multiple enabled SSO providers require the Business or Enterprise plan.",
         )

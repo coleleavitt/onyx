@@ -62,8 +62,14 @@ export const InternalSearchToolRenderer: MessageRenderer<
   children,
 }) => {
   const searchState = constructCurrentSearchState(packets);
-  const { queries, results, sourceFilters, isComplete, errorMessage } =
-    searchState;
+  const {
+    queries,
+    results,
+    sourceFilters,
+    timeFilter,
+    isComplete,
+    errorMessage,
+  } = searchState;
 
   // "Search broke" must read differently from "search found nothing".
   const completedEmptyText = errorMessage ?? "No results found";
@@ -74,8 +80,7 @@ export const InternalSearchToolRenderer: MessageRenderer<
 
   const hasResults = results.length > 0;
 
-  // A source filter overrides the header with the connector(s) it scoped to.
-  const queriesHeader = formatSearchHeader(sourceFilters);
+  const queriesHeader = formatSearchHeader(sourceFilters, timeFilter);
 
   if (queries.length === 0) {
     return children([

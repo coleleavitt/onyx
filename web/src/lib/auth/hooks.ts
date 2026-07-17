@@ -3,15 +3,39 @@
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import useSWR from "swr";
-import { NEXT_PUBLIC_CLOUD_ENABLED } from "@/lib/constants";
 import { SWR_KEYS } from "@/lib/swr-keys";
 import { NO_AUTH_USER_ID } from "@/lib/extension/constants";
-import { AuthType, AuthTypeMetadata } from "@/lib/auth/types";
+import { AuthTypeMetadata } from "@/lib/auth/types";
+import { NEXT_PUBLIC_CLOUD_ENABLED } from "@/lib/constants";
 import { User } from "@/lib/types";
 import { getSecondsUntilExpiration } from "@opal/time";
 import { logout } from "@/lib/users/svc";
 import { useCurrentUser } from "@/lib/users/hooks";
 import { isAuthPath } from "@/lib/auth/paths";
+import { fetchAuthTypeMetadata } from "@/lib/auth/svc";
+
+const REFRESH_INTERVAL = 600000;
+const MIN_REFRESH_GAP_MS = REFRESH_INTERVAL - 60000;
+const VISIBILITY_REFRESH_GAP_MS = 60000;
+
+export function useAuthTypeMetadata(): {
+  authTypeMetadata: AuthTypeMetadata | undefined;
+  isLoading: boolean;
+  error: Error | undefined;
+} {
+  const { data, error, isLoading } = useSWR<AuthTypeMetadata>(
+    SWR_KEYS.authType,
+    fetchAuthTypeMetadata,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+      dedupingInterval: 30_000,
+    }
+  );
+
+  return { authTypeMetadata: data, isLoading, error };
+}
 
 function computeSecondsUntilExpiration(user: User): number | null {
   if (!user.token_expires_at) return null;
@@ -78,81 +102,38 @@ export function useSessionWatcher(): boolean {
   );
 }
 
-// ---------------------------------------------------------------------------
-// useAuthTypeMetadata
-// ---------------------------------------------------------------------------
+export function useIsMultiTenant(): boolean | null {
+  // Delegate to useAuthTypeMetadata so the shared SWR key always holds the
+  // camelCase-mapped shape — a raw fetcher here would poison the cache for
+  // every other consumer of the key.
+  const { authTypeMetadata, isLoading, error } = useAuthTypeMetadata();
 
-interface AuthTypeAPIResponse {
-  auth_type: string;
-  requires_verification: boolean;
-  anonymous_user_enabled: boolean | null;
-  password_min_length: number;
-  has_users: boolean;
-  oauth_enabled: boolean;
+  if (NEXT_PUBLIC_CLOUD_ENABLED) {
+    return true;
+  }
+
+  if (error || isLoading) {
+    return null;
+  }
+
+  return authTypeMetadata?.multiTenant ?? null;
 }
 
-const DEFAULT_AUTH_TYPE_METADATA: AuthTypeMetadata = {
-  authType: NEXT_PUBLIC_CLOUD_ENABLED ? AuthType.CLOUD : AuthType.BASIC,
-  autoRedirect: false,
-  requiresVerification: false,
-  anonymousUserEnabled: null,
-  passwordMinLength: 0,
-  hasUsers: false,
-  oauthEnabled: false,
-};
-
-async function fetchAuthTypeMetadata(url: string): Promise<AuthTypeMetadata> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Failed to fetch auth type metadata");
-  const data: AuthTypeAPIResponse = await res.json();
-  const authType = NEXT_PUBLIC_CLOUD_ENABLED
-    ? AuthType.CLOUD
-    : (data.auth_type as AuthType);
-  return {
-    authType,
-    autoRedirect: authType === AuthType.OIDC || authType === AuthType.SAML,
-    requiresVerification: data.requires_verification,
-    anonymousUserEnabled: data.anonymous_user_enabled,
-    passwordMinLength: data.password_min_length,
-    hasUsers: data.has_users,
-    oauthEnabled: data.oauth_enabled,
-  };
-}
-
-export function useAuthTypeMetadata(): {
-  authTypeMetadata: AuthTypeMetadata;
-  isLoading: boolean;
-  error: Error | undefined;
-} {
-  const { data, error, isLoading } = useSWR<AuthTypeMetadata>(
-    SWR_KEYS.authType,
-    fetchAuthTypeMetadata,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      revalidateIfStale: false,
-      dedupingInterval: 30_000,
-    }
+// Pass-through forwards the logged-in user's OAuth access token, so offer it
+// only when users authenticate with an OAuth-capable method (Google/OIDC).
+// SAML grants no OAuth token, so a SAML-only deployment must not enable it.
+export function useOAuthPassThroughEnabled(): boolean {
+  const { authTypeMetadata } = useAuthTypeMetadata();
+  return (
+    authTypeMetadata?.oauthEnabled === true ||
+    (authTypeMetadata?.ssoProviders ?? []).some(
+      (p) => p.providerType === "OIDC" || p.providerType === "GOOGLE_OAUTH"
+    )
   );
-
-  return {
-    authTypeMetadata: data ?? DEFAULT_AUTH_TYPE_METADATA,
-    isLoading,
-    error,
-  };
 }
-
-// ---------------------------------------------------------------------------
-// useTokenRefresh
-// ---------------------------------------------------------------------------
-
-const REFRESH_INTERVAL = 600000;
-const MIN_REFRESH_GAP_MS = REFRESH_INTERVAL - 60000;
-const VISIBILITY_REFRESH_GAP_MS = 60000;
 
 export function useTokenRefresh(
   user: User | null,
-  authTypeMetadata: AuthTypeMetadata,
   authTypeMetadataLoading: boolean,
   onRefreshFail: () => Promise<void>
 ) {
@@ -160,15 +141,11 @@ export function useTokenRefresh(
   const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
+    // Wait only for the initial metadata load. On persistent error we still
+    // refresh so a transient /auth/type failure cannot silently kill sessions.
     if (authTypeMetadataLoading) return;
 
-    if (
-      !user ||
-      user.id === NO_AUTH_USER_ID ||
-      user.is_anonymous_user ||
-      authTypeMetadata.authType === AuthType.OIDC ||
-      authTypeMetadata.authType === AuthType.SAML
-    ) {
+    if (!user || user.id === NO_AUTH_USER_ID || user.is_anonymous_user) {
       return;
     }
 
@@ -223,5 +200,5 @@ export function useTokenRefresh(
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [user, authTypeMetadata, authTypeMetadataLoading, onRefreshFail]);
+  }, [user, authTypeMetadataLoading, onRefreshFail]);
 }

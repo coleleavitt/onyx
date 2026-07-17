@@ -19,7 +19,7 @@ import {
   WORKFLOW_CATALOG,
   type WorkflowCatalogItem,
 } from "@/lib/workflows/catalog";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import WorkflowCard from "@/sections/cards/WorkflowCard";
 
 type CatalogScope = "browse" | "pinned";

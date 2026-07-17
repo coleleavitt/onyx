@@ -28,7 +28,7 @@ import {
 import Modal from "@/refresh-components/Modal";
 import useUserPersonalization from "@/hooks/useUserPersonalization";
 import { useUser } from "@/providers/UserProvider";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import { getMemoryCapabilities } from "@/lib/memory/capabilities";
 import { useMemoryLibrary } from "@/lib/memory/hooks";
 import type { MemoryCategory, MemoryItem } from "@/lib/memory/types";

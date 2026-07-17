@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import { ADMIN_ROUTES } from "@/lib/admin-routes";
 import { listSkillReviews, resolveSkillReview } from "@/lib/skills/api";
 import type { SkillReviewSubmission } from "@/lib/skills/types";

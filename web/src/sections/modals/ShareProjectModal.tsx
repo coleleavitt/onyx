@@ -5,7 +5,7 @@ import useShareableGroups, {
   type MinimalUserGroupSnapshot,
 } from "@/hooks/useShareableGroups";
 import useShareableUsers from "@/hooks/useShareableUsers";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import {
   getProjectSharing,
   resolveProjectAccessRequest,

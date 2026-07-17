@@ -18,6 +18,8 @@ interface SkillCardItemBase {
   description: string;
   category?: string;
   user_enabled?: boolean;
+  enabled: boolean;
+  can_toggle: boolean;
 }
 
 export interface BuiltinSkillCardItem extends SkillCardItemBase {
@@ -32,8 +34,6 @@ export interface CustomSkillCardItem extends SkillCardItemBase {
   author_email?: string | null;
   /** True when the skill is a personal skill owned by the current user. */
   is_personal?: boolean;
-  /** Disabled skills render greyed out; owners can re-enable via the toggle. */
-  enabled?: boolean;
 }
 
 export type SkillCardItem = BuiltinSkillCardItem | CustomSkillCardItem;
@@ -42,16 +42,16 @@ export interface SkillCardProps {
   item: SkillCardItem;
   onClick?: (item: SkillCardItem) => void;
   onEdit?: (item: CustomSkillCardItem) => void;
-  onToggleEnabled?: (item: SkillCardItem, enabled: boolean) => void;
-  enableToggleDisabled?: boolean;
+  onEnabledChange?: (item: SkillCardItem, enabled: boolean) => void;
+  enablementPending?: boolean;
 }
 
 export default function SkillCard({
   item,
   onClick,
   onEdit,
-  onToggleEnabled,
-  enableToggleDisabled,
+  onEnabledChange,
+  enablementPending = false,
 }: SkillCardProps) {
   const { appName } = useSettings();
 
@@ -66,15 +66,14 @@ export default function SkillCard({
       ? item.category || "Built-in capability"
       : authorTitle;
   const FooterIcon = item.source === "builtin" ? SvgBlocks : SvgUser;
-  const isDisabled =
-    item.user_enabled === false ||
-    (item.source === "custom" && item.enabled === false);
+  const isDisabled = !item.enabled || item.user_enabled === false;
+  const isInvalid = item.source === "custom" && item.skill.is_valid === false;
   const isBuiltinUnavailable = item.source === "builtin" && !item.is_available;
-  const isOrganizationDisabled =
-    item.source === "custom" && item.enabled === false;
-  const tooltip = isBuiltinUnavailable
-    ? "Skill is currently unavailable. Click to view details."
-    : undefined;
+  const tooltip = isInvalid
+    ? "This skill is invalid. Delete it and create a new skill."
+    : isBuiltinUnavailable
+      ? "Skill is currently unavailable. Click to view details."
+      : undefined;
   const canEdit =
     item.source === "custom" &&
     (item.skill.user_permission === "OWNER" ||
@@ -87,11 +86,19 @@ export default function SkillCard({
     }
   };
 
+  const handleEnabledChange = (enabled: boolean) => {
+    onEnabledChange?.(item, enabled);
+  };
+
   return (
     <Tooltip tooltip={tooltip} side="top">
       <Interactive.Simple onClick={handleClick} group="group/SkillCard">
         <Card
-          variant={isDisabled || isBuiltinUnavailable ? "disabled" : "primary"}
+          variant={
+            isDisabled || isInvalid || isBuiltinUnavailable
+              ? "disabled"
+              : "primary"
+          }
           padding={0}
           gap={0}
           height="full"
@@ -100,7 +107,11 @@ export default function SkillCard({
             <CardItemLayout
               icon={SvgBlocks}
               title={item.name}
-              description={item.description}
+              description={
+                isInvalid
+                  ? "Delete this invalid skill and create a new one."
+                  : item.description
+              }
               rightChildren={
                 item.source === "custom" && canEdit ? (
                   <div className="opacity-0 transition-opacity group-hover/SkillCard:opacity-100 group-focus-within/SkillCard:opacity-100">
@@ -128,36 +139,22 @@ export default function SkillCard({
               />
             </div>
             <div className="p-0.5 pr-1.5 flex items-center gap-1">
-              <Tooltip
-                tooltip={
-                  isOrganizationDisabled
-                    ? "Disabled by your organization"
-                    : undefined
-                }
-                side="top"
-              >
+              {item.can_toggle && (
                 <div
                   className="mr-1 flex items-center"
                   onClick={(event) => event.stopPropagation()}
                   onPointerDown={(event) => event.stopPropagation()}
                 >
                   <Switch
-                    checked={
-                      !isOrganizationDisabled &&
-                      !isBuiltinUnavailable &&
-                      item.user_enabled !== false
-                    }
+                    checked={item.enabled}
+                    onCheckedChange={handleEnabledChange}
                     disabled={
-                      enableToggleDisabled ||
-                      isBuiltinUnavailable ||
-                      isOrganizationDisabled
+                      enablementPending || isInvalid || isBuiltinUnavailable
                     }
-                    onCheckedChange={(checked) =>
-                      onToggleEnabled?.(item, checked)
-                    }
+                    aria-label={`${item.enabled ? "Disable" : "Enable"} ${item.name}`}
                   />
                 </div>
-              </Tooltip>
+              )}
               {item.source === "builtin" ? (
                 item.is_available ? (
                   <Tag title="Built-in" color="blue" />
@@ -167,6 +164,8 @@ export default function SkillCard({
                     color="amber"
                   />
                 )
+              ) : isInvalid ? (
+                <Tag title="Invalid" color="amber" />
               ) : item.is_personal ? (
                 <Tag title="Personal" color="purple" />
               ) : (

@@ -3,7 +3,6 @@
 import { redirect, useRouter, useSearchParams } from "next/navigation";
 import { personaIncludesRetrieval } from "@/app/app/services/lib";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast, useToastFromQuery } from "@/hooks/useToast";
 import { SEARCH_PARAM_NAMES } from "@/app/app/services/searchParams";
 import { Section } from "@/layouts/general-layouts";
 import { useFederatedConnectors, useFilters, useLlmManager } from "@/lib/hooks";
@@ -66,7 +65,12 @@ import { OnboardingStep } from "@/interfaces/onboarding";
 import { useShowOnboarding } from "@/hooks/useShowOnboarding";
 import { SvgChevronDown, SvgFileText, SvgSidebar } from "@opal/icons";
 import { Button, Spacer, Tabs } from "@opal/components";
-import { IllustrationContent, RootLayout } from "@opal/layouts";
+import {
+  IllustrationContent,
+  RootLayout,
+  toast,
+  useToastFromQuery,
+} from "@opal/layouts";
 import { SvgNotFound, SvgNoAccess } from "@opal/illustrations";
 import useAppFocus from "@/hooks/useAppFocus";
 import useScreenSize from "@/hooks/useScreenSize";
@@ -832,7 +836,9 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                 style={gridStyle}
               >
                 {/* ── Top row: ChatUI / WelcomeMessage / ProjectUI ── */}
-                <div className="row-start-1 min-h-0 overflow-hidden flex flex-col items-center px-2 sm:px-4">
+                {/* No horizontal padding: the scroll container reaches the edge so
+                    its scrollbar sits flush; non-chat siblings add their own px. */}
+                <div className="row-start-1 min-h-0 overflow-hidden flex flex-col items-center">
                   {/* ChatUI */}
                   <Fade
                     show={
@@ -850,7 +856,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                       autoScroll={autoScrollEnabled}
                       isStreaming={isStreaming}
                       onScrollButtonVisibilityChange={setShowScrollButton}
-                      flushContent={fullWidthActive}
+                      fullWidth={fullWidthActive}
                     >
                       <ChatUI
                         liveAgent={liveAgent!}
@@ -874,7 +880,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                   {/* Session fetch error (404 / 403) */}
                   <Fade
                     show={appFocus.isChat() && sessionFetchError !== null}
-                    className="h-full w-full flex flex-col items-center justify-center"
+                    className="h-full w-full flex flex-col items-center justify-center px-2 sm:px-4"
                   >
                     {sessionFetchError && (
                       <Section
@@ -919,7 +925,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                         <ProjectAccessGate />
                       </div>
                     ) : isMobile ? (
-                      <div className="w-full max-h-[50vh] overflow-y-auto overscroll-y-none">
+                      <div className="w-full max-h-[50vh] overflow-y-auto overscroll-y-none px-2 sm:px-4">
                         <ProjectContextPanel
                           projectTokenCount={projectContextTokenCount}
                           availableContextTokens={availableContextTokens}
@@ -934,7 +940,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                       (appFocus.isNewSession() || appFocus.isAgent()) &&
                       (state.phase === "idle" || state.phase === "classifying")
                     }
-                    className="w-full flex-1 flex flex-col items-center justify-end"
+                    className="w-full flex-1 flex flex-col items-center justify-end px-2 sm:px-4"
                   >
                     <Section
                       flexDirection="row"

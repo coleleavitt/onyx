@@ -1,9 +1,14 @@
+import io
+import zipfile
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import File
+from fastapi import Form
 from fastapi import UploadFile
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
@@ -18,14 +23,15 @@ from onyx.db.models import User
 from onyx.db.skill import affected_user_ids_for_skill
 from onyx.db.skill import create_skill__no_commit
 from onyx.db.skill import delete_skill
+from onyx.db.skill import enable_skill_for_user_if_unset__no_commit
 from onyx.db.skill import fetch_skill
 from onyx.db.skill import list_skills
 from onyx.db.skill import replace_skill_bundle
 from onyx.db.skill import replace_skill_shares
-from onyx.db.skill import set_skill_user_enabled__no_commit
+from onyx.db.skill import set_skill_enabled_for_user
+from onyx.db.skill import set_skill_public_permission
 from onyx.db.skill import SkillAccessPolicy
 from onyx.db.skill import transfer_skill_ownership
-from onyx.db.skill import update_skill_fields
 from onyx.db.skill_review import list_skill_review_submissions
 from onyx.db.skill_review import resolve_skill_review_submission
 from onyx.db.skill_review import submit_skill_for_review
@@ -34,7 +40,10 @@ from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import get_default_file_store
 from onyx.server.features.skill.models import ResolveSkillReviewRequest
+from onyx.server.features.skill.models import SkillBundleInspectResponse
+from onyx.server.features.skill.models import SkillCreateRequest
 from onyx.server.features.skill.models import SkillEditableDetailResponse
+from onyx.server.features.skill.models import SkillEnableRequest
 from onyx.server.features.skill.models import SkillPackageDiffResponse
 from onyx.server.features.skill.models import SkillPackageFileUpdate
 from onyx.server.features.skill.models import SkillPackageResponse
@@ -50,22 +59,25 @@ from onyx.server.features.skill.models import TransferSkillOwnershipRequest
 from onyx.server.features.skill.response_helpers import skill_preview_response
 from onyx.server.features.skill.response_helpers import skill_response_for_user
 from onyx.server.features.skill.response_helpers import skills_list_response_for_user
-from onyx.skills.built_in import BUILT_IN_SKILLS
-from onyx.skills.built_in import EXTERNAL_APP_BUILT_IN_SKILL_IDS
+from onyx.skills.bundle import build_single_file_bundle
+from onyx.skills.bundle import build_skill_md
 from onyx.skills.bundle import compute_bundle_sha256
 from onyx.skills.bundle import diff_custom_bundles
 from onyx.skills.bundle import inspect_custom_bundle
+from onyx.skills.bundle import inspect_skill_package
+from onyx.skills.bundle import normalize_custom_bundle
 from onyx.skills.bundle import parse_skill_md_metadata
 from onyx.skills.bundle import read_bundle_file
 from onyx.skills.bundle import read_custom_bundle_instructions
 from onyx.skills.bundle import rewrite_custom_bundle_skill_md
 from onyx.skills.bundle import rewrite_custom_bundle_text_file
-from onyx.skills.bundle import slug_from_filename
+from onyx.skills.bundle import SKILL_MD_NAME
+from onyx.skills.bundle import update_custom_bundle_files
 from onyx.skills.content import read_custom_skill_bundle_bytes
-from onyx.skills.content import read_custom_skill_bundle_instructions
 from onyx.skills.ingest import delete_bundle_blob
 from onyx.skills.ingest import ingested_skill_bundle
 from onyx.skills.ingest import save_skill_bundle_bytes
+from onyx.skills.metadata import parse_skill_document
 from onyx.skills.push import push_skill_to_affected_sandboxes
 from onyx.skills.push import push_skills_for_users
 
@@ -86,6 +98,54 @@ def _ensure_can_edit_org_visibility(skill: Skill, user: User) -> None:
 def _ensure_admin(user: User) -> None:
     if user.role != UserRole.ADMIN:
         raise OnyxError(OnyxErrorCode.ADMIN_ONLY)
+
+
+def _editable_skill_response(
+    skill: Skill,
+    user: User,
+    db_session: Session,
+) -> SkillEditableDetailResponse:
+    bundle_bytes = read_custom_skill_bundle_bytes(skill)
+    response = skill_response_for_user(
+        skill,
+        user,
+        db_session,
+        include_share_details=True,
+    )
+    bundle_contents = inspect_custom_bundle(bundle_bytes)
+    return SkillEditableDetailResponse(
+        **response.model_dump(),
+        instructions_markdown=bundle_contents.instructions_markdown,
+        files=bundle_contents.files,
+    )
+
+
+def _replace_skill_bundle_from_editor(
+    skill: Skill,
+    bundle_bytes: bytes,
+    user: User,
+    db_session: Session,
+) -> SkillEditableDetailResponse:
+    file_store = get_default_file_store()
+    with ingested_skill_bundle(
+        bundle_bytes,
+        f"{skill.slug}.zip",
+        file_store,
+        expected_name=skill.slug,
+    ) as ingested:
+        old_file_id = replace_skill_bundle(
+            skill=skill,
+            new_bundle_file_id=ingested.bundle_file_id,
+            new_bundle_sha256=ingested.bundle_sha256,
+            new_description=ingested.description,
+            db_session=db_session,
+        )
+        db_session.commit()
+
+    db_session.expire(skill)
+    push_skill_to_affected_sandboxes(skill, db_session)
+    delete_bundle_blob(file_store, old_file_id)
+    return _editable_skill_response(skill, user, db_session)
 
 
 @user_router.get("")
@@ -140,6 +200,24 @@ def resolve_skill_review(
     return SkillReviewSubmissionResponse.from_model(submission)
 
 
+@user_router.put("/{skill_id}/enabled")
+def set_skill_enabled_for_current_user(
+    skill_id: UUID,
+    request: SkillEnableRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillResponse:
+    skill = set_skill_enabled_for_user(
+        skill_id=skill_id,
+        enabled=request.enabled,
+        user=user,
+        db_session=db_session,
+    )
+    db_session.commit()
+    push_skills_for_users({user.id}, db_session)
+    return skill_response_for_user(skill, user, db_session)
+
+
 @user_router.get("/{skill_id}")
 def fetch_skill_for_current_user(
     skill_id: UUID,
@@ -164,18 +242,10 @@ def update_current_user_skill_settings(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> SkillResponse:
-    skill = fetch_skill(
-        skill_id,
-        policy=SkillAccessPolicy.VIEW,
-        user=user,
-        db_session=db_session,
-    )
-    if skill is None:
-        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
-    set_skill_user_enabled__no_commit(
-        skill.id,
-        user.id,
+    skill = set_skill_enabled_for_user(
+        skill_id=skill_id,
         enabled=body.enabled,
+        user=user,
         db_session=db_session,
     )
     db_session.commit()
@@ -206,13 +276,6 @@ def create_custom_skill(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> SkillResponse:
-    slug = slug_from_filename(bundle.filename)
-    reserved_slugs = frozenset(BUILT_IN_SKILLS) | frozenset(
-        EXTERNAL_APP_BUILT_IN_SKILL_IDS.values()
-    )
-    if slug in reserved_slugs:
-        raise OnyxError(OnyxErrorCode.INVALID_INPUT, f"slug '{slug}' is reserved")
-
     file_store = get_default_file_store()
     with ingested_skill_bundle(
         read_bundle_file(bundle.file),
@@ -220,15 +283,15 @@ def create_custom_skill(
         file_store,
     ) as ingested:
         skill = create_skill__no_commit(
-            slug=ingested.slug,
-            name=ingested.name,
+            slug=ingested.canonical_name,
+            name=ingested.canonical_name,
             description=ingested.description,
             bundle_file_id=ingested.bundle_file_id,
             bundle_sha256=ingested.bundle_sha256,
-            is_public=False,
             author_user_id=user.id,
             db_session=db_session,
         )
+        enable_skill_for_user_if_unset__no_commit(skill, user.id, db_session)
         db_session.commit()
 
     push_skill_to_affected_sandboxes(skill, db_session)
@@ -238,6 +301,70 @@ def create_custom_skill(
         db_session,
         include_share_details=True,
     )
+
+
+@user_router.post("/custom/editor")
+def create_custom_skill_from_editor(
+    name: Annotated[str, Form(min_length=1)],
+    description: Annotated[str, Form(min_length=1)],
+    instructions_markdown: Annotated[str, Form(min_length=1)],
+    upload: Annotated[UploadFile | None, File()] = None,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillEditableDetailResponse:
+    try:
+        create_request = SkillCreateRequest(
+            name=name,
+            description=description,
+            instructions_markdown=instructions_markdown,
+        )
+    except ValidationError as exc:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            "Skill name, description, and instructions cannot be empty.",
+        ) from exc
+    bundle_bytes = build_single_file_bundle(
+        SKILL_MD_NAME,
+        build_skill_md(
+            name=create_request.name,
+            description=create_request.description,
+            instructions_markdown=create_request.instructions_markdown,
+        ).encode("utf-8"),
+    )
+    canonical_name = create_request.name
+    if upload is not None:
+        bundle_bytes = update_custom_bundle_files(
+            bundle_bytes,
+            read_bundle_file(upload.file),
+            filename=upload.filename,
+        )
+    bundle_bytes = rewrite_custom_bundle_skill_md(
+        bundle_bytes,
+        canonical_name=canonical_name,
+        description=create_request.description,
+        instructions_markdown=create_request.instructions_markdown,
+    )
+    file_store = get_default_file_store()
+    with ingested_skill_bundle(
+        bundle_bytes,
+        f"{canonical_name}.zip",
+        file_store,
+        expected_name=canonical_name,
+    ) as ingested:
+        skill = create_skill__no_commit(
+            slug=ingested.canonical_name,
+            name=ingested.canonical_name,
+            description=ingested.description,
+            bundle_file_id=ingested.bundle_file_id,
+            bundle_sha256=ingested.bundle_sha256,
+            author_user_id=user.id,
+            db_session=db_session,
+        )
+        enable_skill_for_user_if_unset__no_commit(skill, user.id, db_session)
+        db_session.commit()
+
+    push_skill_to_affected_sandboxes(skill, db_session)
+    return _editable_skill_response(skill, user, db_session)
 
 
 @user_router.get("/custom/{skill_id}/edit")
@@ -255,15 +382,38 @@ def fetch_custom_skill_for_edit(
     if skill is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
 
-    response = skill_response_for_user(
-        skill,
-        user,
-        db_session,
-        include_share_details=True,
-    )
-    return SkillEditableDetailResponse(
-        **response.model_dump(),
-        instructions_markdown=read_custom_skill_bundle_instructions(skill),
+    return _editable_skill_response(skill, user, db_session)
+
+
+@user_router.post("/custom/bundle/inspect")
+def inspect_custom_skill_bundle_upload(
+    upload: UploadFile = File(...),
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),  # noqa: ARG001
+) -> SkillBundleInspectResponse:
+    if not upload.filename:
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "upload is missing a filename")
+
+    upload_bytes = read_bundle_file(upload.file)
+    if upload.filename.lower() == SKILL_MD_NAME.lower():
+        upload_bytes = build_single_file_bundle(SKILL_MD_NAME, upload_bytes)
+    elif not upload.filename.lower().endswith(".zip"):
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            "upload must be SKILL.md or a ZIP containing SKILL.md",
+        )
+
+    normalized = normalize_custom_bundle(upload_bytes)
+    with zipfile.ZipFile(io.BytesIO(normalized.content)) as bundle_zip:
+        document = parse_skill_document(
+            bundle_zip.read(SKILL_MD_NAME),
+            directory_name=normalized.source_directory,
+        )
+    contents = inspect_custom_bundle(normalized.content)
+    return SkillBundleInspectResponse(
+        name=document.metadata.name,
+        description=document.metadata.description,
+        instructions_markdown=contents.instructions_markdown,
+        files=contents.files,
     )
 
 
@@ -282,9 +432,7 @@ def inspect_current_user_skill_package(
     if skill is None or skill.bundle_file_id is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Custom skill not found")
     bundle_bytes = read_custom_skill_bundle_bytes(skill, get_default_file_store())
-    return SkillPackageResponse.from_inspection(
-        inspect_custom_bundle(bundle_bytes, slug=skill.slug)
-    )
+    return SkillPackageResponse.from_inspection(inspect_skill_package(bundle_bytes))
 
 
 @user_router.post("/custom/{skill_id}/package/diff")
@@ -305,7 +453,7 @@ def inspect_current_user_skill_candidate(
     current_bundle = read_custom_skill_bundle_bytes(skill, get_default_file_store())
     candidate_bundle = read_bundle_file(bundle.file)
     return SkillPackageDiffResponse.from_diff(
-        diff_custom_bundles(current_bundle, candidate_bundle, slug=skill.slug)
+        diff_custom_bundles(current_bundle, candidate_bundle)
     )
 
 
@@ -329,11 +477,16 @@ def update_current_user_skill_package_file(
     old_bundle = read_custom_skill_bundle_bytes(skill, file_store)
     new_bundle = rewrite_custom_bundle_text_file(
         old_bundle,
-        slug=skill.slug,
         path=body.path,
         content=body.content,
     )
     name, description = parse_skill_md_metadata(new_bundle)
+    if name != skill.slug:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            f"SKILL.md frontmatter field 'name' must match the skill's "
+            f"canonical name ('{skill.slug}').",
+        )
     new_bundle_file_id = save_skill_bundle_bytes(
         new_bundle,
         display_name=f"{skill.slug}.zip",
@@ -344,7 +497,6 @@ def update_current_user_skill_package_file(
             skill=skill,
             new_bundle_file_id=new_bundle_file_id,
             new_bundle_sha256=compute_bundle_sha256(new_bundle),
-            new_name=name,
             new_description=description,
             db_session=db_session,
         )
@@ -356,9 +508,7 @@ def update_current_user_skill_package_file(
     db_session.expire(skill)
     push_skill_to_affected_sandboxes(skill, db_session)
     delete_bundle_blob(file_store, old_bundle_file_id)
-    return SkillPackageResponse.from_inspection(
-        inspect_custom_bundle(new_bundle, slug=skill.slug)
-    )
+    return SkillPackageResponse.from_inspection(inspect_skill_package(new_bundle))
 
 
 @user_router.post("/custom/{skill_id}/review")
@@ -399,6 +549,7 @@ def replace_current_user_skill_bundle(
         policy=SkillAccessPolicy.EDIT,
         user=user,
         db_session=db_session,
+        lock_for_update=True,
     )
     if skill is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
@@ -408,13 +559,12 @@ def replace_current_user_skill_bundle(
         read_bundle_file(bundle.file),
         bundle.filename,
         file_store,
-        slug=skill.slug,
+        expected_name=skill.slug,
     ) as ingested:
         old_file_id = replace_skill_bundle(
             skill=skill,
             new_bundle_file_id=ingested.bundle_file_id,
             new_bundle_sha256=ingested.bundle_sha256,
-            new_name=ingested.name,
             new_description=ingested.description,
             db_session=db_session,
         )
@@ -431,6 +581,62 @@ def replace_current_user_skill_bundle(
     )
 
 
+@user_router.post("/custom/{skill_id}/files")
+def upload_current_user_skill_files(
+    skill_id: UUID,
+    upload: UploadFile = File(...),
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillEditableDetailResponse:
+    skill = fetch_skill(
+        skill_id,
+        policy=SkillAccessPolicy.EDIT,
+        user=user,
+        db_session=db_session,
+        lock_for_update=True,
+    )
+    if skill is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
+
+    existing_bundle_bytes = read_custom_skill_bundle_bytes(skill)
+    updated_bundle_bytes = update_custom_bundle_files(
+        existing_bundle_bytes,
+        read_bundle_file(upload.file),
+        filename=upload.filename,
+    )
+    return _replace_skill_bundle_from_editor(
+        skill, updated_bundle_bytes, user, db_session
+    )
+
+
+@user_router.delete("/custom/{skill_id}/files")
+def remove_current_user_skill_file(
+    skill_id: UUID,
+    path: str,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SkillEditableDetailResponse:
+    skill = fetch_skill(
+        skill_id,
+        policy=SkillAccessPolicy.EDIT,
+        user=user,
+        db_session=db_session,
+        lock_for_update=True,
+    )
+    if skill is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
+    if not path:
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Skill file path cannot be empty")
+
+    updated_bundle_bytes = update_custom_bundle_files(
+        read_custom_skill_bundle_bytes(skill),
+        remove_path=path,
+    )
+    return _replace_skill_bundle_from_editor(
+        skill, updated_bundle_bytes, user, db_session
+    )
+
+
 @user_router.patch("/custom/{skill_id}")
 def patch_current_user_skill(
     skill_id: UUID,
@@ -443,12 +649,12 @@ def patch_current_user_skill(
         policy=SkillAccessPolicy.EDIT,
         user=user,
         db_session=db_session,
+        lock_for_update=True,
     )
     if skill is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
     if "public_permission" in patch_req.model_fields_set:
         _ensure_can_edit_org_visibility(skill, user)
-
     if not (patch_req.has_details_update or patch_req.has_db_field_update):
         return skill_response_for_user(
             skill,
@@ -457,7 +663,7 @@ def patch_current_user_skill(
             include_share_details=True,
         )
 
-    old_visibility = (skill.public_permission, skill.enabled)
+    old_public_permission = skill.public_permission
     before_affected = affected_user_ids_for_skill(skill, db_session)
     file_store = get_default_file_store() if patch_req.has_details_update else None
     new_bundle_file_id: str | None = None
@@ -466,7 +672,6 @@ def patch_current_user_skill(
     try:
         if file_store is not None:
             old_bundle_bytes = read_custom_skill_bundle_bytes(skill, file_store)
-            name = patch_req.name if patch_req.name is not None else skill.name
             description = (
                 patch_req.description
                 if patch_req.description is not None
@@ -479,8 +684,7 @@ def patch_current_user_skill(
                 )
             new_bundle_bytes = rewrite_custom_bundle_skill_md(
                 old_bundle_bytes,
-                slug=skill.slug,
-                name=name,
+                canonical_name=skill.slug,
                 description=description,
                 instructions_markdown=instructions_markdown,
             )
@@ -493,7 +697,6 @@ def patch_current_user_skill(
                 skill=skill,
                 new_bundle_file_id=new_bundle_file_id,
                 new_bundle_sha256=compute_bundle_sha256(new_bundle_bytes),
-                new_name=name,
                 new_description=description,
                 db_session=db_session,
             )
@@ -504,19 +707,9 @@ def patch_current_user_skill(
                 if "public_permission" in patch_req.model_fields_set
                 else None
             )
-            is_public = (
-                public_permission is not None
-                if "public_permission" in patch_req.model_fields_set
-                else None
-            )
-            enabled = (
-                patch_req.enabled if "enabled" in patch_req.model_fields_set else None
-            )
-            update_skill_fields(
+            set_skill_public_permission(
                 skill=skill,
-                is_public=is_public,
                 public_permission=public_permission,
-                enabled=enabled,
                 db_session=db_session,
             )
 
@@ -527,10 +720,7 @@ def patch_current_user_skill(
         raise
 
     db_session.expire(skill)
-    visibility_changed = old_visibility != (
-        skill.public_permission,
-        skill.enabled,
-    )
+    visibility_changed = old_public_permission != skill.public_permission
     if patch_req.has_details_update or visibility_changed:
         after_affected = affected_user_ids_for_skill(skill, db_session)
         push_skills_for_users(before_affected | after_affected, db_session)
@@ -557,6 +747,7 @@ def share_current_user_skill(
         policy=SkillAccessPolicy.EDIT,
         user=user,
         db_session=db_session,
+        lock_for_update=True,
     )
     if skill is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
@@ -578,9 +769,8 @@ def share_current_user_skill(
 
     before_affected = affected_user_ids_for_skill(skill, db_session)
     if touches_org_visibility:
-        update_skill_fields(
+        set_skill_public_permission(
             skill=skill,
-            is_public=share_req.public_permission is not None,
             public_permission=share_req.public_permission,
             db_session=db_session,
         )
@@ -631,6 +821,7 @@ def transfer_current_user_skill_ownership(
         policy=SkillAccessPolicy.VIEW,
         user=user,
         db_session=db_session,
+        lock_for_update=True,
     )
     if skill is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")
@@ -707,6 +898,7 @@ def delete_current_user_skill(
         policy=SkillAccessPolicy.EDIT,
         user=user,
         db_session=db_session,
+        lock_for_update=True,
     )
     if skill is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Skill not found")

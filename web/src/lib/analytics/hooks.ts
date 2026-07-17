@@ -14,6 +14,7 @@ import { errorHandlingFetcher } from "@/lib/fetcher";
 import { SWR_KEYS } from "@/lib/swr-keys";
 import { useSettings } from "@/lib/settings/hooks";
 import { enterpriseFeaturesAvailable } from "@/lib/settings/featureAvailability";
+import { useUser } from "@/providers/UserProvider";
 
 // ─── Feature Flag Registry ─────────────────────────────────────────────────
 
@@ -36,6 +37,8 @@ export enum PHFeatureFlag {
   CRAFT_ANIMATION_DISABLED = "craft-animation-disabled",
   /** Disables adding or modifying LLM providers on the admin Language Models page. */
   LANGUAGE_MODEL_CONFIGURATION_DISABLED = "language-model-configuration-disabled",
+  /** Disables new account creation on the signup page. */
+  SIGNUP_DISABLED = "signup-disabled",
 }
 
 /**
@@ -49,6 +52,7 @@ export enum PHFeatureFlag {
 const PHFeatureFlagDefaults: Record<PHFeatureFlag, boolean> = {
   [PHFeatureFlag.CRAFT_ANIMATION_DISABLED]: true,
   [PHFeatureFlag.LANGUAGE_MODEL_CONFIGURATION_DISABLED]: false,
+  [PHFeatureFlag.SIGNUP_DISABLED]: false,
 };
 
 // ─── Hooks ─────────────────────────────────────────────────────────────────
@@ -79,16 +83,22 @@ export function usePHFeatureFlag(flag: PHFeatureFlag): boolean {
 /**
  * Fetches the admin-configured custom analytics script string.
  *
- * Self-gated on EE availability. Returns `null` when EE is disabled or no
- * script is configured.
+ * Self-gated on EE availability and on an authenticated session. Returns
+ * `null` when EE is disabled, no user is logged in, or no script is
+ * configured. Gating on a session avoids firing the request on pre-auth page
+ * loads (e.g. the login page), which on multi-tenant deployments arrive with
+ * no tenant context resolved and would otherwise 500.
  */
 export function useCustomAnalyticsScript(): string | null {
   const { isLoading, error, ee_features_enabled } = useSettings();
-  const shouldFetch = enterpriseFeaturesAvailable({
-    isLoading,
-    error,
-    enabled: ee_features_enabled,
-  });
+  const { user } = useUser();
+  const shouldFetch =
+    !!user &&
+    enterpriseFeaturesAvailable({
+      isLoading,
+      error,
+      enabled: ee_features_enabled,
+    });
 
   const { data } = useSWR<string>(
     shouldFetch ? SWR_KEYS.customAnalyticsScript : null,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "@/hooks/useToast";
+import { toast } from "@opal/layouts";
 import Modal from "@/refresh-components/Modal";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
 import {
