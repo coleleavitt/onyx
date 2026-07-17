@@ -23,8 +23,8 @@
 /.testsprite/
 /.testsprite.env
 /.testprite.env
-/testsprite_tests/*.db*
-/testsprite_tests/[0-9a-f]*.sh
+# Local TestSprite harness (smoke scripts, runners, fixtures) — not part of the repo
+/testsprite_tests/
 backend/onyx/agent_search/main/test_data.json
 backend/tests/regression/answer_quality/test_data.json
 backend/tests/regression/search_quality/eval-*
