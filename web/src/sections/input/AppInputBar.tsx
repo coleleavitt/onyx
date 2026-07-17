@@ -373,24 +373,35 @@ const AppInputBar = React.memo(
     const prevChatStateRef = useRef(chatState);
     const prevAwaitingRef = useRef(awaitingPreferredSelection);
     const prevRenderCompleteRef = useRef(latestMessageRenderComplete);
+    const prevFilesBlockedRef = useRef(hasUploadingFiles || hasIndexingFiles);
 
     useEffect(() => {
       // "Ready" requires the backend to be idle AND the previous answer
       // to have finished drawing on screen. Without the render-complete
       // gate, a queued follow-up fires while the smooth-streaming
       // typewriter is still flushing the prior answer.
+      //
+      // It also requires any attached files to have finished uploading and
+      // indexing (the same gate the send button enforces). Draining while a
+      // file is still uploading would auto-send the optimistic `temp_` id and
+      // lose the attachment; gating here keeps the message queued until the
+      // real file id exists, then drains cleanly.
+      const filesBlocked = hasUploadingFiles || hasIndexingFiles;
       const wasReady =
         prevChatStateRef.current === "input" &&
         !prevAwaitingRef.current &&
-        prevRenderCompleteRef.current;
+        prevRenderCompleteRef.current &&
+        !prevFilesBlockedRef.current;
       const isReady =
         chatState === "input" &&
         !awaitingPreferredSelection &&
-        latestMessageRenderComplete;
+        latestMessageRenderComplete &&
+        !filesBlocked;
 
       prevChatStateRef.current = chatState;
       prevAwaitingRef.current = awaitingPreferredSelection;
       prevRenderCompleteRef.current = latestMessageRenderComplete;
+      prevFilesBlockedRef.current = filesBlocked;
 
       if (!wasReady && isReady && queuedMessages.length > 0) {
         const nextMessage = queuedMessages[0]!.text;
@@ -404,6 +415,8 @@ const AppInputBar = React.memo(
       chatState,
       awaitingPreferredSelection,
       latestMessageRenderComplete,
+      hasUploadingFiles,
+      hasIndexingFiles,
       queuedMessages,
       removeCurrentQueuedMessage,
       stopTTS,

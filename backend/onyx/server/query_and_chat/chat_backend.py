@@ -587,6 +587,24 @@ def handle_send_chat_message(
     """
     logger.debug("Received new chat message: %s", chat_message_req.message)
 
+    # Reject file descriptors that reference an unresolved client-side upload.
+    # The web composer inserts optimistic descriptors whose `id`/`user_file_id`
+    # are a client-generated `temp_<uuid>` until the background upload resolves
+    # to a real UserFile. A message sent before then (e.g. a queued follow-up
+    # draining while a file is still uploading) would reference a file that does
+    # not exist; the loader catches the lookup failure and silently substitutes
+    # empty content, so the user sees an attachment chip while the model
+    # receives nothing. Fail loudly so the client waits for the upload instead.
+    for file_descriptor in chat_message_req.file_descriptors:
+        file_id = file_descriptor.get("id") or ""
+        user_file_id = file_descriptor.get("user_file_id") or ""
+        if file_id.startswith("temp_") or user_file_id.startswith("temp_"):
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT,
+                "An attached file is still uploading. Please wait for the "
+                "upload to finish before sending your message.",
+            )
+
     tenant_id = get_current_tenant_id()
     mt_cloud_telemetry(
         tenant_id=tenant_id,

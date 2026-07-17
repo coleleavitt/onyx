@@ -75,8 +75,26 @@ import { SelectedModel } from "@/sections/model-selector/MultiModelSelector";
 import { useAgentPreferences } from "@/lib/agents/hooks";
 import { useForcedTools } from "@/lib/hooks/useForcedTools";
 import { ProjectFile, useProjectsContext } from "@/providers/ProjectsContext";
+import { UserFileStatus } from "@/lib/projects/types";
 import { useAppParams } from "@/hooks/appNavigation";
 import { projectFilesToFileDescriptors } from "@/lib/projects/utils";
+
+/**
+ * A message file is safe to send only once its background upload has resolved
+ * to a real `UserFile`. Until then its descriptor carries a client-generated
+ * `temp_<uuid>` in both `id` and `file_id` (see
+ * ProjectsContext.createOptimisticFile), which the backend cannot resolve — it
+ * logs "Invalid user_file_id" and silently substitutes empty content, so the
+ * user sees an attachment chip while the LLM receives nothing.
+ */
+function hasUnresolvedUpload(files: ProjectFile[]): boolean {
+  return files.some(
+    (file) =>
+      file.status === UserFileStatus.UPLOADING ||
+      Boolean(file.file_id?.startsWith("temp_")) ||
+      Boolean(file.id?.startsWith("temp_"))
+  );
+}
 
 const SYSTEM_MESSAGE_ID = -3;
 
@@ -477,6 +495,17 @@ export default function useChatController({
           toast.error("Please wait for the response to complete");
         }
 
+        return;
+      }
+
+      // Authoritative upload gate. The coarse `uploading` ChatState clears as
+      // soon as beginUpload() returns its optimistic descriptors — well before
+      // the background upload actually resolves — and unguarded callers such as
+      // the queued-message drain reach this point with files still uploading.
+      // Keying off the file records themselves (a real id exists) is the only
+      // reliable gate, so no message ever ships an unresolvable `temp_` id.
+      if (hasUnresolvedUpload(currentMessageFiles)) {
+        toast.error("Please wait for the content to upload");
         return;
       }
 
