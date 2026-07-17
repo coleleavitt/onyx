@@ -102,6 +102,16 @@
         "testsprite_tests/start_onyx_api_live.sh",
         "testsprite_tests/start_onyx_jobs_live.sh"
       ]
+    },
+    {
+      "name": "Memory System",
+      "description": "Per-user long-term memory plus the Brain relation graph: populate memories (manual API, chat memory tool, brain extraction), recall them into chat via recency-based system-prompt injection, and expose the relation/source graph in the UI. Recall must stay recency-based, not semantic.",
+      "files": [
+        "backend/tests/external_dependency_unit/tools/test_memory_recall_and_graph.py",
+        "backend/tests/integration/tests/memory/test_memory_lifecycle.py",
+        "web/tests/e2e/customize/memory_lifecycle.spec.ts",
+        "testsprite_tests/memory_demo_populate.py"
+      ]
     }
   ]
 }

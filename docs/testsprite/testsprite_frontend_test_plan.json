@@ -782,6 +782,98 @@
           "description": "Assert sheet tabs, the Sum of AUM column, and >=2 measured column edges; record video."
         }
       ]
+    },
+    {
+      "id": "TC031",
+      "title": "Memory recall context and brain graph (DB layer)",
+      "description": "Populated memories are recalled recency-ordered into chat context, and the brain relation graph (edges/degree/source citations) is built correctly with ownership guards.",
+      "category": "memory",
+      "priority": "High",
+      "test_id": "047535cd-5d11-47c1-9feb-b12bdcadf78a",
+      "source_file": "backend/tests/external_dependency_unit/tools/test_memory_recall_and_graph.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create memories across notes/concepts/entities/workstreams via create_memory_item."
+        },
+        {
+          "type": "assertion",
+          "description": "get_memories returns them newest-first and as_formatted_list exposes them to the chat layer."
+        },
+        {
+          "type": "action",
+          "description": "Seed memory relations and source citations, then read the brain graph."
+        },
+        {
+          "type": "assertion",
+          "description": "Graph reports correct nodes/edges/degree and sources; self-edges and cross-user edges are rejected."
+        }
+      ]
+    },
+    {
+      "id": "TC032",
+      "title": "Memory populate and recall end to end (integration)",
+      "description": "Manual populate across categories via the /memory API, chat memory-tool persistence, and real-LLM recall of a stored fact in a new chat session.",
+      "category": "memory",
+      "priority": "High",
+      "test_id": "944ae2c2-7470-4348-a9bd-0d111f02e944",
+      "source_file": "backend/tests/integration/tests/memory/test_memory_lifecycle.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create memories across notes/concepts/entities/workstreams via MemoryManager and list them."
+        },
+        {
+          "type": "assertion",
+          "description": "The listing total and per-category counts match what was created."
+        },
+        {
+          "type": "action",
+          "description": "Store a distinctive fact, then ask for it back in a new chat session (gpt-5-mini)."
+        },
+        {
+          "type": "assertion",
+          "description": "The streamed answer recalls the stored fact, and a 'remember this' message persists a new conversation-sourced memory."
+        }
+      ]
+    },
+    {
+      "id": "TC033",
+      "title": "Memory live demo: populate and recall on the running stack",
+      "description": "End-to-end walkthrough against the live deployment: populate memories, recall a stored secret codename in a fresh chat session, show the brain graph, and clean up.",
+      "category": "memory",
+      "priority": "Medium",
+      "test_id": "6ef8253f-23f4-497b-b3fe-f42b3cfa284c",
+      "source_file": "testsprite_tests/memory_demo_populate.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Log in as admin, populate memories across categories, and ask a fresh chat session for a stored secret codename."
+        },
+        {
+          "type": "assertion",
+          "description": "The assistant's answer echoes the stored codename and the demo memories are cleaned up afterward."
+        }
+      ]
+    },
+    {
+      "id": "TC034",
+      "title": "Memory UI lifecycle (Playwright)",
+      "description": "At /app/customize/memory, add a memory, confirm it renders and survives a reload, edit it, and delete it.",
+      "category": "memory",
+      "priority": "High",
+      "test_id": "a4235a99-415e-4dfd-a3de-1a3d158371b3",
+      "source_file": "web/tests/e2e/customize/memory_lifecycle.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Log in as admin, open /app/customize/memory, and add a memory with a title and content."
+        },
+        {
+          "type": "assertion",
+          "description": "The memory card renders, persists across reload, reflects an edit, and disappears after delete."
+        }
+      ]
     }
   ]
 }
