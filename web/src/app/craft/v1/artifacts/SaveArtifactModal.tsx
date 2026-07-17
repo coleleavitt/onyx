@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import useSWR from "swr";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "@/hooks/useToast";
-import { errorHandlingFetcher } from "@/lib/fetcher";
 import Modal from "@/refresh-components/Modal";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
 import {
+  fetchArtifactLibraryPage,
   saveArtifactToLibrary,
   saveArtifactVersion,
 } from "@/app/craft/v1/artifacts/api";
@@ -29,11 +28,47 @@ export default function SaveArtifactModal({
 }: SaveArtifactModalProps) {
   const [name, setName] = useState(suggestedName);
   const [destination, setDestination] = useState("new");
+  const [destinationQuery, setDestinationQuery] = useState("");
+  const [ownedItems, setOwnedItems] = useState<ArtifactLibraryItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingDestinations, setLoadingDestinations] = useState(false);
   const [saving, setSaving] = useState(false);
-  const { data: ownedItems = [] } = useSWR<ArtifactLibraryItem[]>(
-    "/api/build/artifact-library?scope=created",
-    errorHandlingFetcher
+
+  const loadDestinations = useCallback(
+    async (cursor: string | null = null) => {
+      setLoadingDestinations(true);
+      try {
+        const page = await fetchArtifactLibraryPage({
+          scope: "created",
+          query: destinationQuery,
+          limit: 50,
+          cursor,
+        });
+        setOwnedItems((current) =>
+          cursor
+            ? [
+                ...current,
+                ...page.items.filter(
+                  (item) => !current.some((existing) => existing.id === item.id)
+                ),
+              ]
+            : page.items
+        );
+        setNextCursor(page.next_cursor);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load artifacts"
+        );
+      } finally {
+        setLoadingDestinations(false);
+      }
+    },
+    [destinationQuery]
   );
+
+  useEffect(() => {
+    void loadDestinations(null);
+  }, [loadDestinations]);
 
   async function save() {
     setSaving(true);
@@ -77,12 +112,31 @@ export default function SaveArtifactModal({
               <InputSelect value={destination} onValueChange={setDestination}>
                 <InputSelect.Trigger />
                 <InputSelect.Content>
+                  <div className="px-2 py-1">
+                    <InputTypeIn
+                      value={destinationQuery}
+                      onChange={(event) => setDestinationQuery(event.target.value)}
+                      placeholder="Search artifacts"
+                      searchIcon
+                      clearButton
+                    />
+                  </div>
                   <InputSelect.Item value="new">New artifact</InputSelect.Item>
                   {ownedItems.map((item) => (
                     <InputSelect.Item key={item.id} value={item.id}>
                       New version of {item.name}
                     </InputSelect.Item>
                   ))}
+                  {nextCursor ? (
+                    <Button
+                      prominence="tertiary"
+                      size="sm"
+                      disabled={loadingDestinations}
+                      onClick={() => void loadDestinations(nextCursor)}
+                    >
+                      {loadingDestinations ? "Loading..." : "Load more artifacts"}
+                    </Button>
+                  ) : null}
                 </InputSelect.Content>
               </InputSelect>
             </div>

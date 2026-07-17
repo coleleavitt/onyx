@@ -20,6 +20,11 @@
 
 # testing
 /web/test-results/
+/.testsprite/
+/.testsprite.env
+/.testprite.env
+/testsprite_tests/*.db*
+/testsprite_tests/[0-9a-f]*.sh
 backend/onyx/agent_search/main/test_data.json
 backend/tests/regression/answer_quality/test_data.json
 backend/tests/regression/search_quality/eval-*
@@ -76,3 +81,9 @@ plans/
 .claude/scheduled_tasks.lock
 .claude/worktrees/
 !.claude/settings.json
+
+# Local agent session logs & scratch screenshots (repo root, not project files)
+/*.jsonl
+/*-continued-from-a-previous-c.txt
+/search-error-surfaced.png
+/sharepoint-holiday-fixed.png

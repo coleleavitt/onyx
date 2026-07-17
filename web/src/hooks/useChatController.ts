@@ -22,6 +22,7 @@ import {
 } from "@/app/app/services/messageTree";
 import { MinimalAgent } from "@/lib/agents/types";
 import { SEARCH_PARAM_NAMES } from "@/app/app/services/searchParams";
+import { parseSpaceIdFromPath } from "@/lib/projects/slug";
 import { SEARCH_TOOL_ID } from "@/app/app/components/tools/constants";
 import { OnyxDocument } from "@/lib/search/interfaces";
 import { FilterManager, LlmDescriptor, LlmManager } from "@/lib/hooks";
@@ -256,10 +257,13 @@ export default function useChatController({
       true // skipReload
     );
 
-    // Navigate immediately if still on chat page
-    // For NRF pages (/chat/nrf, /chat/nrf/side-panel), don't navigate immediately
-    // Let the streaming complete inline, then the user can continue chatting there
-    const isOnChatPage = pathname === "/app";
+    // Navigate immediately if still on a surface that hosts the composer.
+    // This covers the main chat page (/app) and the pretty Space-detail path
+    // (/app/spaces/{slug}), so submitting from a Space opens the new thread
+    // like Perplexity. NRF pages (/nrf, /nrf/side-panel) intentionally stay
+    // put and let streaming complete inline.
+    const isOnChatPage =
+      pathname === "/app" || pathname.startsWith("/app/spaces");
 
     if (isOnChatPage && !navigatingAway.current) {
       router.push(newUrl as Route, { scroll: false });
@@ -383,7 +387,11 @@ export default function useChatController({
     }: OnSubmitProps) => {
       const isMultiModel =
         !regenerationRequest && (selectedModels?.length ?? 0) >= 2;
-      const projectId = params(SEARCH_PARAM_NAMES.PROJECT_ID);
+      const pathSpaceId = parseSpaceIdFromPath(pathname);
+      const projectId =
+        pathSpaceId !== null
+          ? String(pathSpaceId)
+          : params(SEARCH_PARAM_NAMES.PROJECT_ID);
       {
         const params = new URLSearchParams(searchParams?.toString() || "");
         if (params.has(SEARCH_PARAM_NAMES.PROJECT_ID)) {

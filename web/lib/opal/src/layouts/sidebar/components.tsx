@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 import { Button, Spacer, Text } from "@opal/components";
 import { Disabled, Hoverable } from "@opal/core";
 import { SvgSidebar } from "@opal/icons";
+
 import type { IconFunctionComponent, RichStr } from "@opal/types";
 import { useSidebarState } from "@opal/layouts/root/components";
 import useScreenSize from "@opal/hooks/useScreenSize";

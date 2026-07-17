@@ -7,13 +7,9 @@ import {
   SvgSparkle,
 } from "@opal/icons";
 import { getAppTypeLogo } from "@/app/craft/v1/apps/registry";
+import type { LibraryEntry } from "@/app/craft/types/user-library";
 import type { PickerEntry, PickerSections } from "@/lib/skills/picker";
 import type { PlusMenuItem } from "@/sections/input/PlusMenuButton";
-
-interface LibraryFile {
-  id: string;
-  name: string;
-}
 
 interface EntryMenuHandlers {
   onAttachFiles: () => void;
@@ -21,7 +17,8 @@ interface EntryMenuHandlers {
   // Navigate to the Skills / Apps pages (used by the empty-state prompts).
   onBrowseSkills: () => void;
   onBrowseApps: () => void;
-  libraryFiles?: LibraryFile[];
+  libraryFiles?: LibraryEntry[];
+  onAttachLibraryFile?: (entry: LibraryEntry) => void;
   /** Opens the library management modal. When set, a Library flyout is added. */
   onManageLibrary?: () => void;
 }
@@ -35,6 +32,7 @@ export function buildEntryMenuItems(
     onBrowseSkills,
     onBrowseApps,
     libraryFiles = [],
+    onAttachLibraryFile,
     onManageLibrary,
   }: EntryMenuHandlers
 ): Array<PlusMenuItem | null> {
@@ -103,12 +101,12 @@ export function buildEntryMenuItems(
       icon: SvgFolder,
       label: "Library",
       flyoutItems: [
-        // TODO(craft-library): file rows open the manage modal until per-file attach is wired.
         ...libraryFiles.map((file) => ({
           key: file.id,
           icon: SvgFileText,
           label: file.name,
-          onSelect: onManageLibrary,
+          description: file.path.replace(/^user_library\/?/, "") || undefined,
+          onSelect: () => onAttachLibraryFile?.(file),
         })),
         {
           key: "manage",

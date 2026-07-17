@@ -8,9 +8,15 @@ import { useModal } from "@/refresh-components/contexts/ModalContext";
 import { SvgAddLines } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTextAreaField from "@/refresh-components/form/InputTextAreaField";
+import CharacterCount from "@/refresh-components/CharacterCount";
+
+const MAX_INSTRUCTIONS_LENGTH = 8000;
 
 const validationSchema = Yup.object({
-  instructions: Yup.string(),
+  instructions: Yup.string().max(
+    MAX_INSTRUCTIONS_LENGTH,
+    `Instructions must be ${MAX_INSTRUCTIONS_LENGTH} characters or fewer`
+  ),
 });
 
 export default function AddInstructionModal() {
@@ -19,11 +25,11 @@ export default function AddInstructionModal() {
 
   return (
     <Modal open={modal.isOpen} onOpenChange={modal.toggle}>
-      <Modal.Content width="sm">
+      <Modal.Content width="md">
         <Modal.Header
           icon={SvgAddLines}
-          title="Set Project Instructions"
-          description="Specify the behaviors or tone for the chat sessions in this project."
+          title="Instructions"
+          description="Give the agent instructions for how it should work in this space."
           onClose={() => modal.toggle(false)}
         />
         <Formik
@@ -42,13 +48,24 @@ export default function AddInstructionModal() {
             }
           }}
         >
-          {({ isSubmitting, dirty, isValid }) => (
+          {({ isSubmitting, dirty, isValid, values }) => (
             <Form>
               <Modal.Body>
-                <InputTextAreaField
-                  name="instructions"
-                  placeholder="My goal with is to... be sure to... in your responses."
-                />
+                <div className="flex flex-col gap-1.5">
+                  <InputTextAreaField
+                    name="instructions"
+                    placeholder="e.g. Summarize all tasks in bullet points, keep responses concise..."
+                    rows={6}
+                    maxLength={MAX_INSTRUCTIONS_LENGTH}
+                    autoFocus
+                  />
+                  <div className="self-end">
+                    <CharacterCount
+                      value={values.instructions}
+                      limit={MAX_INSTRUCTIONS_LENGTH}
+                    />
+                  </div>
+                </div>
               </Modal.Body>
               <Modal.Footer>
                 <Button

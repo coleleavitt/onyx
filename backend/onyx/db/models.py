@@ -87,6 +87,7 @@ from onyx.db.enums import MCPServerStatus
 from onyx.db.enums import MCPTransport
 from onyx.db.enums import MemoryCategory
 from onyx.db.enums import MemoryGovernanceAuditAction
+from onyx.db.enums import MemorySourceType
 from onyx.db.enums import OpenSearchDocumentMigrationStatus
 from onyx.db.enums import OpenSearchTenantMigrationStatus
 from onyx.db.enums import PatType
@@ -376,6 +377,19 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
         Boolean, nullable=False, default=True
     )
     user_preferences: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Brain (self-improving memory): per-user settings for the daily run that
+    # organizes memories into a linked context graph from the user's sessions
+    # (and connectors when allowed).
+    brain_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    brain_use_connectors: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    brain_focus_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    brain_last_run_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     chosen_assistants: Mapped[list[int] | None] = mapped_column(
         postgresql.JSONB(), nullable=True, default=None
@@ -566,6 +580,62 @@ class MemoryRevision(Base):
     __table_args__ = (
         Index("ix_memory_revision_memory_created", "memory_id", "created_at"),
     )
+
+
+class MemoryRelation(Base):
+    """Undirected edge between two of a user's memories (the "related pages"
+    graph). Stored once per unordered pair with memory_id_low < memory_id_high
+    so the graph never holds a duplicate reverse edge."""
+
+    __tablename__ = "memory_relation"
+
+    memory_id_low: Mapped[int] = mapped_column(
+        ForeignKey("memory.id", ondelete="CASCADE"), primary_key=True
+    )
+    memory_id_high: Mapped[int] = mapped_column(
+        ForeignKey("memory.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "memory_id_low < memory_id_high",
+            name="memory_relation_ordered",
+        ),
+        Index("ix_memory_relation_high", "memory_id_high"),
+    )
+
+
+class MemorySource(Base):
+    """A citation linking a memory to the source that produced it (a chat
+    session, indexed document, connector, uploaded file, or a manual note)."""
+
+    __tablename__ = "memory_source"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    memory_id: Mapped[int] = mapped_column(
+        ForeignKey("memory.id", ondelete="CASCADE"), nullable=False
+    )
+    source_type: Mapped[MemorySourceType] = mapped_column(
+        Enum(
+            MemorySourceType,
+            native_enum=False,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
+        nullable=False,
+    )
+    # Opaque identifier of the source in its own table (e.g. chat_session UUID,
+    # document id). Null for manual sources.
+    source_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    label: Mapped[str] = mapped_column(String(512), nullable=False)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_memory_source_memory", "memory_id"),)
 
 
 class WorkflowPin(Base):
@@ -5383,7 +5453,8 @@ class UserProject(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[UUID | None] = mapped_column(ForeignKey("user.id"), nullable=False)
     name: Mapped[str] = mapped_column(nullable=False)
-    description: Mapped[str] = mapped_column(nullable=True)
+    description: Mapped[str | None] = mapped_column(nullable=True)
+    emoji: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -5459,6 +5530,42 @@ class ProjectJoinRequest(Base):
             name="uq_project_join_request_project_requester",
         ),
         Index("ix_project_join_request_project_status", "project_id", "status"),
+    )
+
+
+class UserProject__UserState(Base):
+    """Per-user state for a project/space (e.g. pinned in the Spaces list)."""
+
+    __tablename__ = "user_project__user_state"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("user_project.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_user_project__user_state_user_pinned",
+            "user_id",
+            "is_pinned",
+        ),
     )
 
 

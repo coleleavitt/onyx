@@ -37,6 +37,7 @@ from onyx.db.models import User
 from onyx.db.models import User__UserGroup
 from onyx.db.models import UserFile
 from onyx.db.models import UserProject
+from onyx.db.models import UserProject__UserState
 from onyx.db.utils import is_fk_violation
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
@@ -144,6 +145,46 @@ def list_projects_for_user(*, user: User, db_session: Session) -> list[UserProje
     return list(db_session.scalars(stmt).unique())
 
 
+def compute_project_last_activity(project: UserProject) -> datetime.datetime | None:
+    """Most recent non-deleted chat activity for the project, or None.
+
+    Read from the eagerly-loaded chat_sessions relationship so it costs no extra
+    query. UserProject has no updated_at column; the API surfaces this as the
+    project's last-activity time and the client falls back to created_at on None.
+    """
+    return max(
+        (chat.time_updated for chat in project.chat_sessions if not chat.deleted),
+        default=None,
+    )
+
+
+def get_pinned_project_ids(*, user: User, db_session: Session) -> set[int]:
+    if user.id is None:
+        return set()
+    rows = db_session.scalars(
+        select(UserProject__UserState.project_id).where(
+            UserProject__UserState.user_id == user.id,
+            UserProject__UserState.is_pinned.is_(True),
+        )
+    ).all()
+    return set(rows)
+
+
+def set_project_pinned(
+    *, project_id: int, user: User, pinned: bool, db_session: Session
+) -> None:
+    if user.id is None:
+        return
+    state = db_session.get(UserProject__UserState, (project_id, user.id))
+    if state is None:
+        state = UserProject__UserState(
+            project_id=project_id, user_id=user.id, is_pinned=pinned
+        )
+        db_session.add(state)
+    else:
+        state.is_pinned = pinned
+
+
 def fetch_project_for_user(
     project_id: int,
     *,
@@ -164,6 +205,91 @@ def fetch_project_by_id(
 ) -> UserProject | None:
     stmt = _project_base_select().where(UserProject.id == project_id)
     return db_session.scalars(stmt).unique().one_or_none()
+
+
+def project_exists(
+    project_id: int,
+    *,
+    db_session: Session,
+) -> bool:
+    return (
+        db_session.scalar(select(UserProject.id).where(UserProject.id == project_id))
+        is not None
+    )
+
+
+def user_has_project_access(
+    project_id: int,
+    *,
+    user: User,
+    db_session: Session,
+    policy: ProjectAccessPolicy,
+) -> bool:
+    if user.id is None:
+        return project_exists(project_id, db_session=db_session)
+
+    owned = UserProject.user_id == user.id
+    stmt = select(UserProject.id).where(UserProject.id == project_id)
+    if policy == ProjectAccessPolicy.OWN:
+        stmt = stmt.where(owned)
+    elif policy == ProjectAccessPolicy.VIEW:
+        stmt = stmt.where(
+            or_(
+                owned,
+                UserProject.organization_permission.isnot(None),
+                _is_project_shared_with_user(user),
+                _is_project_shared_with_user_group(user),
+            )
+        )
+    elif policy == ProjectAccessPolicy.EDIT:
+        stmt = stmt.where(
+            or_(
+                owned,
+                UserProject.organization_permission == ProjectSharePermission.EDITOR,
+                _is_project_shared_with_user(user, ProjectSharePermission.EDITOR),
+                _is_project_shared_with_user_group(user, ProjectSharePermission.EDITOR),
+            )
+        )
+    else:
+        raise ValueError(f"Unknown project access policy: {policy}")
+
+    return db_session.scalar(stmt.limit(1)) is not None
+
+
+def fetch_pending_project_join_request_for_user(
+    project_id: int,
+    *,
+    requester: User,
+    db_session: Session,
+) -> ProjectJoinRequest | None:
+    if requester.id is None:
+        return None
+    return db_session.scalar(
+        select(ProjectJoinRequest).where(
+            ProjectJoinRequest.project_id == project_id,
+            ProjectJoinRequest.requester_user_id == requester.id,
+            ProjectJoinRequest.status == ProjectJoinRequestStatus.PENDING,
+        )
+    )
+
+
+def fetch_latest_project_join_request_for_user(
+    project_id: int,
+    *,
+    requester: User,
+    db_session: Session,
+) -> ProjectJoinRequest | None:
+    if requester.id is None:
+        return None
+    return db_session.scalar(
+        select(ProjectJoinRequest)
+        .where(
+            ProjectJoinRequest.project_id == project_id,
+            ProjectJoinRequest.requester_user_id == requester.id,
+        )
+        .order_by(ProjectJoinRequest.created_at.desc(), ProjectJoinRequest.id.desc())
+        .limit(1)
+    )
 
 
 def get_project_access_level(
@@ -505,14 +631,11 @@ def check_project_access(
     user = db_session.get(User, user_id)
     if user is None:
         return False
-    return (
-        fetch_project_for_user(
-            project_id,
-            user=user,
-            db_session=db_session,
-            policy=policy,
-        )
-        is not None
+    return user_has_project_access(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=policy,
     )
 
 

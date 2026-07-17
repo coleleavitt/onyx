@@ -163,6 +163,7 @@ export interface InvitedUserSnapshot {
 export interface MinimalUserSnapshot {
   id: string;
   email: string;
+  full_name?: string | null;
 }
 
 export type ValidInputTypes =

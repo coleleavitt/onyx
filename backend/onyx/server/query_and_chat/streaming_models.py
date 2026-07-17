@@ -26,6 +26,7 @@ class StreamingType(Enum):
     SEARCH_TOOL_QUERIES_DELTA = "search_tool_queries_delta"
     SEARCH_TOOL_FILTER_DELTA = "search_tool_filter_delta"
     SEARCH_TOOL_DOCUMENTS_DELTA = "search_tool_documents_delta"
+    SEARCH_TOOL_ERROR = "search_tool_error"
     OPEN_URL_START = "open_url_start"
     OPEN_URL_URLS = "open_url_urls"
     OPEN_URL_DOCUMENTS = "open_url_documents"
@@ -198,6 +199,15 @@ class SearchToolDocumentsDelta(BaseObj):
     # This cannot be the SavedSearchDoc as this is yielded by the SearchTool directly
     # which does not save documents to the DB.
     documents: list[SearchDoc]
+
+
+# Retrieval infrastructure failed (e.g. embedding model server or document index
+# unreachable). Distinguishes "search broke" from "search found nothing" so the
+# UI does not render a misleading "No results found".
+class SearchToolError(BaseObj):
+    type: Literal["search_tool_error"] = StreamingType.SEARCH_TOOL_ERROR.value
+
+    message: str
 
 
 # OpenURL tool packets - 3-stage sequence
@@ -447,6 +457,7 @@ PacketObj = Union[
     SearchToolQueriesDelta,
     SearchToolFilterDelta,
     SearchToolDocumentsDelta,
+    SearchToolError,
     ImageGenerationToolStart,
     ImageGenerationToolHeartbeat,
     ImageGenerationFinal,

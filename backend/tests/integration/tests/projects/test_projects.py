@@ -242,6 +242,114 @@ def test_projects_flow(
     assert result == long_instructions
 
 
+def test_project_metadata_and_request_access_state(
+    basic_user: DATestUser,
+    admin_user: DATestUser,
+) -> None:
+    project = ProjectManager.create(
+        name="  Metadata Project  ",
+        description="  Shared research space  ",
+        user_performing_action=basic_user,
+    )
+    assert project.name == "Metadata Project"
+    assert project.description == "Shared research space"
+
+    renamed = ProjectManager.update(
+        project.id,
+        basic_user,
+        name="Renamed Metadata Project",
+    )
+    assert renamed.name == "Renamed Metadata Project"
+    assert renamed.description == "Shared research space"
+
+    cleared = ProjectManager.update(
+        project.id,
+        basic_user,
+        description="   ",
+        include_description=True,
+    )
+    assert cleared.description is None
+
+    restored = ProjectManager.update(
+        project.id,
+        basic_user,
+        description="Restored context",
+        include_description=True,
+    )
+    assert restored.description == "Restored context"
+
+    with pytest.raises(Exception):
+        ProjectManager.update(project.id, basic_user)
+    with pytest.raises(Exception):
+        ProjectManager.update(project.id, basic_user, name="")
+    with pytest.raises(Exception):
+        ProjectManager.update(
+            project.id,
+            basic_user,
+            description="d" * 256,
+            include_description=True,
+        )
+
+    owner_state = ProjectManager.get_access_state(project.id, basic_user)
+    assert owner_state is not None
+    assert owner_state.has_access
+    assert owner_state.pending_request is None
+
+    requester_state = ProjectManager.get_access_state(project.id, admin_user)
+    assert requester_state is not None
+    assert not requester_state.has_access
+    assert requester_state.pending_request is None
+
+    access_request = ProjectManager.request_access(project.id, admin_user)
+    pending_state = ProjectManager.get_access_state(project.id, admin_user)
+    assert pending_state is not None
+    assert not pending_state.has_access
+    assert pending_state.pending_request is not None
+    assert pending_state.pending_request.id == access_request.id
+
+    assert ProjectManager.cancel_access_request(project.id, admin_user)
+    canceled_state = ProjectManager.get_access_state(project.id, admin_user)
+    assert canceled_state is not None
+    assert not canceled_state.has_access
+    assert canceled_state.access_request is None
+    assert canceled_state.pending_request is None
+
+    second_request = ProjectManager.request_access(project.id, admin_user)
+    ProjectManager.resolve_access_request(
+        project.id,
+        second_request.id,
+        approve=False,
+        user_performing_action=basic_user,
+    )
+    denied_state = ProjectManager.get_access_state(project.id, admin_user)
+    assert denied_state is not None
+    assert not denied_state.has_access
+    assert denied_state.access_request is not None
+    assert denied_state.access_request.id == second_request.id
+    assert denied_state.access_request.status.value == "DENIED"
+    assert denied_state.pending_request is None
+
+    third_request = ProjectManager.request_access(project.id, admin_user)
+    re_requested_state = ProjectManager.get_access_state(project.id, admin_user)
+    assert re_requested_state is not None
+    assert re_requested_state.access_request is not None
+    assert re_requested_state.access_request.id == third_request.id
+    assert re_requested_state.access_request.status.value == "PENDING"
+    assert re_requested_state.pending_request is not None
+    ProjectManager.resolve_access_request(
+        project.id,
+        third_request.id,
+        approve=True,
+        user_performing_action=basic_user,
+    )
+    approved_state = ProjectManager.get_access_state(project.id, admin_user)
+    assert approved_state is not None
+    assert approved_state.has_access
+    assert approved_state.pending_request is None
+
+    assert ProjectManager.get_access_state(999999, admin_user) is None
+
+
 def test_collaborative_project_access(
     basic_user: DATestUser,
     admin_user: DATestUser,

@@ -10,6 +10,7 @@ import { useModal } from "@/refresh-components/contexts/ModalContext";
 import { SvgFolderPlus } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTypeInField from "@/refresh-components/form/InputTypeInField";
+import InputTextAreaField from "@/refresh-components/form/InputTextAreaField";
 import { toast } from "@/hooks/useToast";
 
 interface CreateProjectModalProps {
@@ -26,7 +27,13 @@ export default function CreateProjectModal({
   const route = useAppRouter();
   const label = terminology === "space" ? "Space" : "Project";
   const validationSchema = Yup.object({
-    projectName: Yup.string().trim().required(`${label} name is required`),
+    projectName: Yup.string()
+      .trim()
+      .max(255, `${label} name must be 255 characters or fewer`)
+      .required(`${label} name is required`),
+    description: Yup.string()
+      .trim()
+      .max(255, `${label} description must be 255 characters or fewer`),
   });
 
   return (
@@ -34,20 +41,29 @@ export default function CreateProjectModal({
       <Modal.Content width="sm">
         <Modal.Header
           icon={SvgFolderPlus}
-          title={`Create New ${label}`}
-          description={`${label}s keep related files, chats, collaborators, and instructions together.`}
+          title={`Create a new ${label}`}
           onClose={() => modal.toggle(false)}
         />
         <Formik
-          initialValues={{ projectName: initialProjectName ?? "" }}
+          initialValues={{
+            projectName: initialProjectName ?? "",
+            emoji: "",
+            description: "",
+            instructions: "",
+          }}
           validationSchema={validationSchema}
           validateOnMount
           enableReinitialize
           onSubmit={async (values, { setSubmitting }) => {
             const name = values.projectName.trim();
             try {
-              const newProject = await createProject(name);
-              route({ projectId: newProject.id });
+              const newProject = await createProject({
+                name,
+                emoji: values.emoji.trim() || null,
+                description: values.description.trim() || null,
+                instructions: values.instructions.trim() || null,
+              });
+              route({ projectId: newProject.id, projectName: newProject.name });
               modal.toggle(false);
             } catch {
               toast.error(`Failed to create the ${terminology} ${name}`);
@@ -59,11 +75,46 @@ export default function CreateProjectModal({
           {({ isSubmitting, isValid }) => (
             <Form>
               <Modal.Body>
-                <InputVertical title={`${label} Name`} withLabel="projectName">
-                  <InputTypeInField
-                    name="projectName"
-                    placeholder="What are you working on?"
-                    clearButton
+                <div className="flex items-end gap-2">
+                  <div className="w-16 shrink-0">
+                    <InputVertical title="Icon" withLabel="emoji">
+                      <InputTypeInField
+                        name="emoji"
+                        placeholder="🙂"
+                        maxLength={8}
+                      />
+                    </InputVertical>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <InputVertical title="Title" withLabel="projectName">
+                      <InputTypeInField
+                        name="projectName"
+                        placeholder={`Name this ${label}`}
+                        clearButton
+                      />
+                    </InputVertical>
+                  </div>
+                </div>
+                <InputVertical
+                  title="Description"
+                  suffix="optional"
+                  withLabel="description"
+                >
+                  <InputTextAreaField
+                    name="description"
+                    placeholder={`Describe what this ${label} is for`}
+                    autoResize
+                  />
+                </InputVertical>
+                <InputVertical
+                  title="Instructions"
+                  suffix="optional"
+                  withLabel="instructions"
+                >
+                  <InputTextAreaField
+                    name="instructions"
+                    placeholder={`Custom instructions for the agent in this ${label}`}
+                    autoResize
                   />
                 </InputVertical>
               </Modal.Body>

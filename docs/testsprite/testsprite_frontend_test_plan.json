@@ -1,0 +1,787 @@
+{
+  "meta": {
+    "project": "Onyx Regression Coverage",
+    "prepared_by": "TestSprite",
+    "source_prd": "docs/testsprite/standard_prd.json"
+  },
+  "tests": [
+    {
+      "id": "TC001",
+      "title": "Broken GPT-5.6 family stays hidden from model picker",
+      "description": "Verify broken GPT-5.6 Sol/Terra/Luna models are hidden and GPT-5.5 remains the default visible model.",
+      "category": "model_picker",
+      "priority": "High",
+      "test_id": "e653799d-5057-4fc0-a55c-9f2cfe864dbd",
+      "source_file": "web/tests/e2e/chat/model_visibility_5_6.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Log in as an admin user."
+        },
+        {
+          "type": "action",
+          "description": "Open /admin/configuration/language-models."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the default model is GPT-5.5."
+        },
+        {
+          "type": "action",
+          "description": "Open /app and search GPT-5.6 in the model picker."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify no GPT-5.6 Sol, Terra, or Luna options are shown."
+        }
+      ]
+    },
+    {
+      "id": "TC002",
+      "title": "Live LLM model picker streams real GPT-5.5 response",
+      "description": "Verify a normal user can select GPT-5.5 and receive a real streamed assistant response.",
+      "category": "live_llm",
+      "priority": "High",
+      "test_id": "e3c76c67-7b75-4ec0-8783-220dc79b2e05",
+      "source_file": "web/tests/e2e/chat/live_llm_model_picker.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Log in and open /app."
+        },
+        {
+          "type": "action",
+          "description": "Select GPT-5.5 from the model picker."
+        },
+        {
+          "type": "action",
+          "description": "Send a prompt asking for onyx-live-smoke exactly."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the SSE body contains message_delta packets with onyx-live-smoke."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the rendered assistant response contains onyx-live-smoke and no error banner."
+        }
+      ]
+    },
+    {
+      "id": "TC003",
+      "title": "Multi-model picker sends multiple model overrides",
+      "description": "Verify adding a second model in the picker sends llm_overrides instead of a single llm_override.",
+      "category": "model_picker",
+      "priority": "High",
+      "test_id": "7a2d71db-b0ce-43c6-bd03-09a23999b2a2",
+      "source_file": "web/tests/e2e/chat/multi_model_picker_payload.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create a temporary public provider/model through the frontend API."
+        },
+        {
+          "type": "action",
+          "description": "Open /app and use the model picker add button to add the temporary model."
+        },
+        {
+          "type": "action",
+          "description": "Send one chat message through the UI."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the request payload has two llm_overrides: gpt-5.5 and the temporary model."
+        },
+        {
+          "type": "action",
+          "description": "Delete the temporary provider."
+        }
+      ]
+    },
+    {
+      "id": "TC004",
+      "title": "Authenticated core API endpoints stay healthy through frontend proxy",
+      "description": "Verify core user/admin /api endpoints return valid authenticated responses through localhost:3000.",
+      "category": "api_smoke",
+      "priority": "High",
+      "test_id": "9007a1d4-dfb9-4139-92bf-15857f9f646d",
+      "source_file": "testsprite_tests/onyx_api_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Log in with user credentials and query user-facing /api endpoints."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify /api/me, /api/settings, /api/llm/provider, sessions, personas, and notifications return valid shapes."
+        },
+        {
+          "type": "action",
+          "description": "Log in with admin credentials and query admin /api endpoints."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify admin LLM/security/groups/MCP/tools/enterprise-settings endpoints return valid shapes."
+        },
+        {
+          "type": "action",
+          "description": "Create a disposable chat session, mark it public, verify it appears in session listing, then delete it."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify chat-session create, share-status patch, list, and delete endpoints all succeed through /api."
+        },
+        {
+          "type": "action",
+          "description": "Create a disposable Space/project, fetch it, fetch details/instructions, update instructions, pin it, rename it, then delete it."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify Space/project create, list, detail, instructions, pin, metadata update, and delete endpoints all succeed through /api."
+        },
+        {
+          "type": "action",
+          "description": "Create a disposable assistant/persona, fetch it, share it publicly, update metadata, verify listing, then delete it."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify assistant/persona create, fetch, share, update, list, and delete endpoints all succeed through /api."
+        }
+      ]
+    },
+    {
+      "id": "TC005",
+      "title": "Chat input core text submission behaviors stay working",
+      "description": "Verify basic chat input behaviors do not regress.",
+      "category": "chat_input",
+      "priority": "High",
+      "test_id": "c96fc383-4677-4022-8674-c14192f7b7a4",
+      "source_file": "web/tests/e2e/chat/input_bar_behaviors.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Open /app with mocked chat endpoint."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify Enter and send button submit non-empty messages."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify empty and whitespace-only messages are not sent."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify input clears after send and long messages render."
+        }
+      ]
+    },
+    {
+      "id": "TC006",
+      "title": "Authentication UI navigation smoke stays working",
+      "description": "Verify login redirect, successful login, and invalid-password error behavior.",
+      "category": "auth",
+      "priority": "High",
+      "test_id": "10b05436-4d8e-43ed-bf7f-45e14e4337a2",
+      "source_file": "web/tests/e2e/auth/auth_navigation_smoke.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Open /app while unauthenticated."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify redirect to /auth/login."
+        },
+        {
+          "type": "action",
+          "description": "Log in with valid credentials."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify chat opens and /api/me returns the user."
+        },
+        {
+          "type": "action",
+          "description": "Submit an invalid password."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify Invalid email or password appears and URL stays on login."
+        }
+      ]
+    },
+    {
+      "id": "TC007",
+      "title": "User and admin settings navigation pages render without app errors",
+      "description": "Verify high-value settings/admin pages render their headers and no app/server error text.",
+      "category": "navigation",
+      "priority": "Medium",
+      "test_id": "1dcb9895-6048-4394-a60f-00ac79a449b4",
+      "source_file": "web/tests/e2e/settings/settings_navigation_smoke.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Visit Profile, Chats, and Accounts settings pages."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify each user settings page has the expected visible header."
+        },
+        {
+          "type": "action",
+          "description": "Visit Language Models, Security & Hardening, and Users admin pages."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify each admin page has the expected visible header and no error text."
+        }
+      ]
+    },
+    {
+      "id": "TC008",
+      "title": "Chat search command menu finds sessions and projects",
+      "description": "Verify command-menu previews, filters, project search, and no-result state.",
+      "category": "chat_navigation",
+      "priority": "Medium",
+      "test_id": "237c142c-4302-4fc4-ab8e-cd8398e0520d",
+      "source_file": "web/tests/e2e/chat/chat-search-command-menu.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create temporary chat sessions and projects."
+        },
+        {
+          "type": "action",
+          "description": "Open the chat search command menu."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify preview limits and filter/action entries render."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify project search finds a matching project and no-result search shows an empty state."
+        },
+        {
+          "type": "action",
+          "description": "Delete temporary sessions/projects."
+        }
+      ]
+    },
+    {
+      "id": "TC009",
+      "title": "Default-agent MCP UI switching and persistence",
+      "description": "Verify admin/default-agent MCP tool switching and visible basic-user actions remain stable.",
+      "category": "mcp",
+      "priority": "High",
+      "test_id": "ed786020-7bad-4c27-a0f7-871341abba8d",
+      "source_file": "web/tests/e2e/mcp/default-agent-mcp.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create an API-key MCP server and attach tools to the default agent."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify a basic user sees and toggles MCP tools in chat actions."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify admin tool switch state persists after reload."
+        }
+      ]
+    },
+    {
+      "id": "TC010",
+      "title": "Per-user MCP credential template gates tool availability",
+      "description": "Verify all per-user credential template fields are required before MCP tools become available.",
+      "category": "mcp",
+      "priority": "High",
+      "test_id": "183deb4d-3511-46ba-a637-ad5ecf19e8d0",
+      "source_file": "web/tests/e2e/mcp/mcp_per_user_key.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create a per-user MCP server with api_key and username template fields."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the user credentials modal shows both fields."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify save/update stay disabled until both fields are filled."
+        }
+      ]
+    },
+    {
+      "id": "TC011",
+      "title": "Share chat modal creates and removes share link",
+      "description": "Verify a user can create a public share link for a chat and then make it private again.",
+      "category": "chat_sharing",
+      "priority": "Medium",
+      "test_id": "b5307031-6722-4a13-a714-5219d39b6797",
+      "source_file": "web/tests/e2e/chat/share_chat_smoke.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Log in and open /app."
+        },
+        {
+          "type": "action",
+          "description": "Send a chat message through the UI with a mocked assistant response."
+        },
+        {
+          "type": "action",
+          "description": "Open the share modal and choose organization/public sharing."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify PATCH body sets sharing_status public and the modal shows a /app/shared/ link."
+        },
+        {
+          "type": "action",
+          "description": "Reopen sharing and choose Private."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify PATCH body sets sharing_status private and the modal closes."
+        }
+      ]
+    },
+    {
+      "id": "TC012",
+      "title": "SharePoint source toggle forces internal search payload",
+      "description": "Verify enabling Sharepoint in chat source controls forces SearchTool and sends a Sharepoint source filter for the next prompt.",
+      "category": "internal_search",
+      "priority": "High",
+      "test_id": "429c60b3-9e33-4660-9b0a-d7907507d795",
+      "source_file": "web/tests/e2e/chat/internal_search_sharepoint_smoke.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Log in as admin and ensure SearchTool is enabled on the default assistant."
+        },
+        {
+          "type": "action",
+          "description": "Open the chat action/source controls and enable the Sharepoint source toggle."
+        },
+        {
+          "type": "action",
+          "description": "Send prompt: tell me about my company next holiday."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the chat request payload contains forced_tool_id for SearchTool."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify internal_search_filters.source_type contains sharepoint."
+        }
+      ]
+    },
+    {
+      "id": "TC013",
+      "title": "SharePoint search pipeline layered diagnostic stays healthy",
+      "description": "Checks indexed-sources, keyword retrieval, model server health (:9000), and the full /api/search pipeline in dependency order so a failure names the broken layer.",
+      "category": "internal_search",
+      "priority": "High",
+      "test_id": "c109bb74-1968-430d-a127-9901cb4cb01c",
+      "source_file": "testsprite_tests/sharepoint_search_diagnostic.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Login as admin and assert sharepoint is in indexed sources."
+        },
+        {
+          "type": "action",
+          "description": "Assert admin keyword search returns sharepoint docs for 'holiday'."
+        },
+        {
+          "type": "action",
+          "description": "Assert the model server on :9000 is healthy."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert /api/search with a sharepoint filter returns results."
+        }
+      ]
+    },
+    {
+      "id": "TC014",
+      "title": "Live SharePoint holiday prompt retrieves and cites internal documents",
+      "description": "Real end-user flow with live LLM: toggle Sharepoint source, send the holiday prompt, assert the stream contains sharepoint results, Sources renders, and 'No results found' never appears.",
+      "category": "internal_search",
+      "priority": "High",
+      "test_id": "2ddb0c7a-0c95-4130-9b39-8e25a2326e46",
+      "source_file": "web/tests/e2e/chat/internal_search_sharepoint_live.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Login, enable Sharepoint in the chat source controls."
+        },
+        {
+          "type": "action",
+          "description": "Send the holiday prompt with no mocks."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert stream packets contain sharepoint documents and the UI shows Sources."
+        }
+      ]
+    },
+    {
+      "id": "TC015",
+      "title": "All Onyx dev services stay up (doctor check)",
+      "description": "Supervisor-gap guard: docker infra, model server :9000, API :8080, celery workers (8+), and web proxy :3000; failures name the dead service and the heal command.",
+      "category": "infrastructure",
+      "priority": "High",
+      "test_id": "b8d3a5cc-f7ef-46e7-a776-eddeb1efda7a",
+      "source_file": "testsprite_tests/onyx_services_doctor.sh",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Check each service in dependency order."
+        },
+        {
+          "type": "assertion",
+          "description": "Fail naming the dead service; heal mode restarts tmux-managed services."
+        }
+      ]
+    },
+    {
+      "id": "TC016",
+      "title": "Chat message feedback lifecycle works with live LLM",
+      "description": "Sends a real non-streaming chat message, creates thumbs-up feedback on the assistant message, removes it, deletes the session.",
+      "category": "chat",
+      "priority": "Medium",
+      "test_id": "2532e43c-074d-4ba0-8215-bdd39abe605b",
+      "source_file": "testsprite_tests/chat_feedback_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Send a live chat message with tools disabled."
+        },
+        {
+          "type": "action",
+          "description": "Create and then remove feedback on the assistant message."
+        },
+        {
+          "type": "assertion",
+          "description": "Delete the chat session."
+        }
+      ]
+    },
+    {
+      "id": "TC017",
+      "title": "OAuth MCP reauthentication keeps internal tools usable",
+      "description": "Opt-in: preflights MCP_OAUTH_* env vars and skips cleanly when unconfigured; when configured runs the full IdP login + reauth Playwright flow.",
+      "category": "mcp",
+      "priority": "Medium",
+      "test_id": "2ac295b8-717c-440b-8ea5-49f55742d520",
+      "source_file": "testsprite_tests/run_mcp_oauth_if_configured.sh",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Preflight MCP OAuth env; SKIP when absent."
+        },
+        {
+          "type": "assertion",
+          "description": "Run mcp_oauth_flow.spec.ts when configured."
+        }
+      ]
+    },
+    {
+      "id": "TC018",
+      "title": "Admin LLM provider CRUD leaves default model and hidden models untouched",
+      "description": "Creates, renames, lists, and deletes a throwaway LLM provider; asserts default_text stays gpt-5.5 and gpt-5.6-* stay hidden before and after.",
+      "category": "admin",
+      "priority": "High",
+      "test_id": "ae4244f2-ae64-4522-add9-0d12b3035130",
+      "source_file": "testsprite_tests/llm_provider_admin_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create a provider with a fake key (never /test or /default)."
+        },
+        {
+          "type": "action",
+          "description": "Rename, list, verify basics list, delete in finally."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert protected default/hidden model state is unchanged."
+        }
+      ]
+    },
+    {
+      "id": "TC019",
+      "title": "Custom OpenAPI tool validate, register, update, and delete lifecycle",
+      "description": "Validates a minimal OpenAPI 3 definition, registers it as a custom tool, lists/gets/updates it, deletes it in finally.",
+      "category": "admin",
+      "priority": "Medium",
+      "test_id": "4765c54e-3938-4fc5-a37f-0914f007e713",
+      "source_file": "testsprite_tests/custom_tool_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Validate then create a custom tool."
+        },
+        {
+          "type": "action",
+          "description": "List, get, and update it."
+        },
+        {
+          "type": "assertion",
+          "description": "Delete in finally and assert it is gone."
+        }
+      ]
+    },
+    {
+      "id": "TC020",
+      "title": "Document sets and input prompts CRUD round-trips cleanly",
+      "description": "Creates a document set against the zero-doc Ingestion API cc-pair, renames and deletes it (async-aware); input prompt create/list/get/patch/delete.",
+      "category": "admin",
+      "priority": "Medium",
+      "test_id": "eeff30f3-88b3-4b0f-92f4-dc15ba456efa",
+      "source_file": "testsprite_tests/docset_input_prompt_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Discover cc-pairs and pick the zero-doc pair."
+        },
+        {
+          "type": "action",
+          "description": "Document set create/list/patch/delete with bounded sync waits."
+        },
+        {
+          "type": "assertion",
+          "description": "Input prompt full CRUD with cleanup."
+        }
+      ]
+    },
+    {
+      "id": "TC021",
+      "title": "Craft user library upload, tree, directory, and delete lifecycle",
+      "description": "Uploads a file into the Craft user library, asserts tree membership, creates a directory, deletes both in finally.",
+      "category": "craft",
+      "priority": "Medium",
+      "test_id": "e2edcb1c-c7e1-4a79-92c9-bbdf666094cf",
+      "source_file": "testsprite_tests/user_library_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Upload a small file via /api/build/user-library."
+        },
+        {
+          "type": "action",
+          "description": "Assert tree membership by document_id; create a directory."
+        },
+        {
+          "type": "assertion",
+          "description": "Delete both and assert removal."
+        }
+      ]
+    },
+    {
+      "id": "TC022",
+      "title": "Admin user listing and own-preference round-trips stay healthy",
+      "description": "Paginated user listing with email filter, user counts, /api/me/permissions; pinned-assistants round-trip and same-value default-model write on the calling account only.",
+      "category": "admin",
+      "priority": "Medium",
+      "test_id": "b2d6b0d7-fc30-4705-9334-cce42727635a",
+      "source_file": "testsprite_tests/user_management_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "List accepted users filtered by admin email."
+        },
+        {
+          "type": "action",
+          "description": "Assert permissions shape."
+        },
+        {
+          "type": "assertion",
+          "description": "Round-trip own pinned assistants; restore in finally."
+        }
+      ]
+    },
+    {
+      "id": "TC023",
+      "title": "XLSX attachment answers data questions with live LLM",
+      "description": "Uploads the Foundations 2025 Production xlsx fixture, waits for processing, asks for Stewart Willis's 2025 amount, asserts $40,216,752.33 in the live answer with no missing-tool apology.",
+      "category": "file_upload",
+      "priority": "High",
+      "test_id": "1aa4e866-4bbf-4999-a1f9-b8edaf9395d9",
+      "source_file": "testsprite_tests/xlsx_chat_qa_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Upload the xlsx fixture and wait for COMPLETED with chunks."
+        },
+        {
+          "type": "action",
+          "description": "Ask the Stewart Willis question with the file attached."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert the exact amount is in the answer; cleanup session and file."
+        }
+      ]
+    },
+    {
+      "id": "TC024",
+      "title": "Uploaded file formats finish processing (csv txt md json)",
+      "description": "Uploads small csv/txt/md/json files and asserts each reaches COMPLETED with chunks within 180s, naming the dead component on failure; deletes them after.",
+      "category": "file_upload",
+      "priority": "High",
+      "test_id": "3788c558-31d0-434d-80e9-ddcc5761cb6a",
+      "source_file": "testsprite_tests/file_formats_processing_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Upload four small files of different formats."
+        },
+        {
+          "type": "action",
+          "description": "Poll statuses until all COMPLETED."
+        },
+        {
+          "type": "assertion",
+          "description": "Delete all uploaded files."
+        }
+      ]
+    },
+    {
+      "id": "TC025",
+      "title": "Unreadable attachment is surfaced to the user instead of silent flailing",
+      "description": "A chat referencing an attachment that never finished processing must tell the user (still processing / failed, re-upload) instead of apologizing about missing tools or guessing.",
+      "category": "file_upload",
+      "priority": "High",
+      "test_id": "33e1253f-28f4-4012-bee2-773c07a503f4",
+      "source_file": "testsprite_tests/failed_attachment_chat_smoke.py",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Upload the xlsx fixture and ask about it immediately while PROCESSING."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert the answer says the file is still being processed and contains no unreadable data."
+        }
+      ]
+    },
+    {
+      "id": "TC026",
+      "title": "Chat sidebar lifecycle: create, rename, and delete a chat like a user",
+      "description": "Live-LLM UI flow: new chat appears in Recents with an auto-title, rename via sidebar, delete via sidebar.",
+      "category": "chat",
+      "priority": "High",
+      "test_id": "42f8e270-3120-4a6b-9e8d-6644c9f3eabc",
+      "source_file": "web/tests/e2e/chat/chat_session_sidebar_lifecycle.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Send a live prompt in a new chat."
+        },
+        {
+          "type": "action",
+          "description": "Rename the Recents entry to a unique name and assert it."
+        },
+        {
+          "type": "assertion",
+          "description": "Delete from the sidebar and assert removal."
+        }
+      ]
+    },
+    {
+      "id": "TC027",
+      "title": "Stop generation mid-stream then regenerate a fresh answer",
+      "description": "User stops a streaming answer, UI returns to sendable state, regenerate produces a fresh completed answer.",
+      "category": "chat",
+      "priority": "High",
+      "test_id": "ea40526b-2ca8-4cf4-b414-afa67e4f3d99",
+      "source_file": "web/tests/e2e/chat/stop_and_regenerate.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Send a long-streaming prompt and click stop mid-stream."
+        },
+        {
+          "type": "action",
+          "description": "Assert the input is sendable again, then regenerate."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert a fresh completed answer arrives."
+        }
+      ]
+    },
+    {
+      "id": "TC028",
+      "title": "Agent created through the UI drives live answers with its system prompt",
+      "description": "Create an agent in the editor UI with a distinctive system prompt, chat with it, and assert the live answer obeys the prompt.",
+      "category": "agents",
+      "priority": "High",
+      "test_id": "a3e333da-0d84-472d-8564-4204b8988b31",
+      "source_file": "web/tests/e2e/agents/agent_create_ui.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create an agent via /app/agents/create with a PINEAPPLE system prompt."
+        },
+        {
+          "type": "action",
+          "description": "Start a chat with the agent and send a greeting."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert the answer contains PINEAPPLE; delete agent and chat."
+        }
+      ]
+    },
+    {
+      "id": "TC029",
+      "title": "File attached via paperclip UI is answered with the exact figure",
+      "description": "The end-user xlsx flow: paperclip upload, processing chip clears, live answer contains the exact spreadsheet figure.",
+      "category": "file_upload",
+      "priority": "High",
+      "test_id": "50729223-0c2a-43f3-9c15-1027a68926d1",
+      "source_file": "web/tests/e2e/chat/file_attach_ui.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Attach the fixture via paperclip and wait for processing to clear."
+        },
+        {
+          "type": "action",
+          "description": "Ask the Stewart Willis question."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert the answer contains 40,216,752.33 and no missing-tool apology."
+        }
+      ]
+    },
+    {
+      "id": "TC030",
+      "title": "XLSX inline preview renders a readable multi-column grid",
+      "description": "Visual QA with video: the inline spreadsheet preview shows sheet tabs and real data columns; regression for the single-column collapse caused by sizing the grid from a one-cell title row.",
+      "category": "file_upload",
+      "priority": "Medium",
+      "test_id": "ec23b2ee-42ae-48c9-ac15-e308ecb75ca3",
+      "source_file": "web/tests/e2e/chat/xlsx_preview_visual.spec.ts",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Attach the fixture and send a message so the inline preview renders."
+        },
+        {
+          "type": "assertion",
+          "description": "Assert sheet tabs, the Sum of AUM column, and >=2 measured column edges; record video."
+        }
+      ]
+    }
+  ]
+}

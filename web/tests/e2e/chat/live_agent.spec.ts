@@ -6,6 +6,7 @@ import {
   verifyAgentIsChosen,
   verifyDefaultAgentIsChosen,
 } from "@tests/e2e/utils/chatActions";
+import { openAgentsPageFromSidebar } from "@tests/e2e/utils/agentUtils";
 
 test("Chat workflow", async ({ page }) => {
   // Clear cookies and log in as a random user
@@ -31,7 +32,7 @@ test("Chat workflow", async ({ page }) => {
   await verifyDefaultAgentIsChosen(page);
 
   // Test creation of a new assistant
-  await page.getByTestId("AppSidebar/more-agents").click();
+  await openAgentsPageFromSidebar(page);
   await page.getByLabel("AgentsPage/new-agent-button").click();
   await page.locator('input[name="name"]').click();
   await page.locator('input[name="name"]').fill("Test Assistant");

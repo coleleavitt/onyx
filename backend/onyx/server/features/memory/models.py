@@ -7,8 +7,10 @@ from pydantic import Field
 from pydantic import model_validator
 
 from onyx.db.enums import MemoryCategory
+from onyx.db.enums import MemorySourceType
 from onyx.db.models import Memory
 from onyx.db.models import MemoryRevision
+from onyx.db.models import MemorySource
 
 
 class MemorySnapshot(BaseModel):
@@ -79,3 +81,43 @@ class MemoryRevisionSnapshot(BaseModel):
             source=revision.source,
             created_at=revision.created_at,
         )
+
+
+class MemorySourceSnapshot(BaseModel):
+    id: int
+    source_type: MemorySourceType
+    source_id: str | None
+    label: str
+    url: str | None
+    created_at: datetime.datetime
+
+    @classmethod
+    def from_model(cls, source: MemorySource) -> "MemorySourceSnapshot":
+        return cls(
+            id=source.id,
+            source_type=source.source_type,
+            source_id=source.source_id,
+            label=source.label,
+            url=source.url,
+            created_at=source.created_at,
+        )
+
+
+class RelatedMemory(BaseModel):
+    id: int
+    title: str
+    category: MemoryCategory
+
+
+class RelatedMemoriesResponse(BaseModel):
+    # Related pages grouped by their category (entities / concepts / workstreams
+    # / notes), mirroring the reference "Related pages" section.
+    groups: dict[MemoryCategory, list[RelatedMemory]]
+
+
+class BrainSettingsUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    brain_enabled: bool
+    brain_use_connectors: bool
+    brain_focus_instructions: str | None = Field(default=None, max_length=2000)

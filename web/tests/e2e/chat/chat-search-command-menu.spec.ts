@@ -302,14 +302,14 @@ test.describe("Chat Search Command Menu", () => {
       .locator(`[data-command-item="project-${projectIds[0]}"]`)
       .click();
 
-    await page.waitForURL(/projectId=/);
-    expect(page.url()).toContain(`projectId=${projectIds[0]}`);
+    await page.waitForURL(/\/app\/spaces\//);
+    expect(page.url()).toContain(`/app/spaces/${projectIds[0]}`);
   });
 
   test('"New Project" opens create project modal', async ({ page }) => {
     const dialog = await openCommandMenu(page);
     await dialog.locator('[data-command-item="new-project"]').click();
-    await expect(page.getByText("Create New Project")).toBeVisible();
+    await expect(page.getByText("Create a new Project")).toBeVisible();
   });
 
   // -- Menu state --

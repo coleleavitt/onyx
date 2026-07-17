@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from typing import Any
+from typing import NamedTuple
 from typing import cast
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -8,16 +10,25 @@ from unittest.mock import patch
 from onyx.configs.constants import DocumentSource
 from onyx.configs.constants import MessageType
 from onyx.context.search.models import BaseFilters
+import pytest
+
 from onyx.server.query_and_chat.placement import Placement
+from onyx.server.query_and_chat.streaming_models import SearchToolError
 from onyx.server.query_and_chat.streaming_models import SearchToolFilterDelta
 from onyx.tools.models import ChatMinimalTextMessage
 from onyx.tools.models import SearchToolOverrideKwargs
+from onyx.tools.models import ToolCallException
 from onyx.tools.tool_implementations.search.search_tool import SearchTool
 
 MODULE = "onyx.tools.tool_implementations.search.search_tool"
 
 # What decide_search_scope returns: the scope to apply now (or None for everything).
 ScopeDecision = list[DocumentSource] | None
+
+
+class SearchRunResult(NamedTuple):
+    search_pipeline: MagicMock
+    tool_response: Any
 
 
 def _make_tool(user_selected_filters: BaseFilters | None = None) -> SearchTool:
@@ -42,14 +53,20 @@ def _run(
     decision: ScopeDecision = None,
     decide_mock: MagicMock | None = None,
     skip_query_expansion: bool = False,
-) -> MagicMock:
+    search_pipeline_mock: MagicMock | None = None,
+) -> SearchRunResult:
     """Run tool.run() with all DB/LLM deps mocked; returns the search_pipeline mock.
 
     decide_search_scope is replaced by `decide_mock` when given (so its call args
     can be inspected), otherwise by a stub returning `decision`. search_pipeline
-    returns no chunks, so run() takes the empty-results early return.
+    returns no chunks (so run() takes the empty-results early return) unless
+    `search_pipeline_mock` overrides it.
     """
-    mock_search_pipeline = MagicMock(return_value=[])
+    mock_search_pipeline = (
+        search_pipeline_mock
+        if search_pipeline_mock is not None
+        else MagicMock(return_value=[])
+    )
     decide = (
         decide_mock if decide_mock is not None else MagicMock(return_value=decision)
     )
@@ -71,7 +88,7 @@ def _run(
     ):
         mock_session_ctx.return_value.__enter__ = MagicMock(return_value=MagicMock())
         mock_session_ctx.return_value.__exit__ = MagicMock(return_value=False)
-        tool.run(
+        tool_response = tool.run(
             placement=Placement(turn_index=0, tab_index=0),
             override_kwargs=SearchToolOverrideKwargs(
                 starting_citation_num=1,
@@ -86,7 +103,7 @@ def _run(
             ),
             queries=["ticket"],
         )
-    return mock_search_pipeline
+    return SearchRunResult(mock_search_pipeline, tool_response)
 
 
 def _filters_passed_to_search(mock_search_pipeline: MagicMock) -> list[Any]:
@@ -121,7 +138,7 @@ def test_decided_scope_is_passed_to_search() -> None:
             DocumentSource.CONFLUENCE,
             DocumentSource.GITHUB,
         ],
-    )
+    ).search_pipeline
 
     filters = _filters_passed_to_search(mock_search_pipeline)
     assert filters, "search_pipeline was never called"
@@ -157,7 +174,7 @@ def test_no_decided_scope_leaves_search_unscoped() -> None:
         tool,
         decision=None,
         connected_sources=[DocumentSource.SLACK, DocumentSource.CONFLUENCE],
-    )
+    ).search_pipeline
 
     filters = _filters_passed_to_search(mock_search_pipeline)
     assert filters, "search_pipeline was never called"
@@ -185,7 +202,7 @@ def test_persona_restriction_is_refined_by_the_decision() -> None:
             DocumentSource.GITHUB,
             DocumentSource.SLACK,
         ],
-    )
+    ).search_pipeline
 
     filters = _filters_passed_to_search(mock_search_pipeline)
     assert filters, "search_pipeline was never called"
@@ -207,13 +224,64 @@ def test_persona_restriction_applies_when_decision_does_not_route() -> None:
             DocumentSource.GITHUB,
             DocumentSource.SLACK,
         ],
-    )
+    ).search_pipeline
 
     filters = _filters_passed_to_search(mock_search_pipeline)
     assert filters, "search_pipeline was never called"
     for applied in filters:
         assert applied is not None
         assert applied.source_type == restriction
+
+
+def test_empty_results_warn_against_company_specific_guessing() -> None:
+    """A no-hit internal search must not invite generic/public fallback answers."""
+    tool = _make_tool(BaseFilters(source_type=[DocumentSource.SHAREPOINT]))
+    response = _run(
+        tool,
+        decision=[DocumentSource.SHAREPOINT],
+        connected_sources=[DocumentSource.SHAREPOINT],
+    ).tool_response
+
+    payload = json.loads(response.llm_facing_response)
+    assert payload["results"] == []
+    note = payload["note"]
+    assert "found no matching internal documents" in note
+    assert "Do not say the tool failed" in note
+    assert "do not answer from public knowledge or generic assumptions" in note
+    assert "sharepoint" in note
+
+
+def test_retrieval_infrastructure_failure_surfaces_error_not_empty_results() -> None:
+    """Model server / index outages must not masquerade as 'No results found'.
+
+    Regression for the 2026-07-16 outage: embedding server down -> retrieval
+    raised, but the UI rendered the empty state and the LLM guessed a generic
+    answer to a company-specific question.
+    """
+    tool = _make_tool(BaseFilters(source_type=[DocumentSource.SHAREPOINT]))
+    failing_pipeline = MagicMock(
+        side_effect=ConnectionError("model server unreachable")
+    )
+
+    with pytest.raises(ToolCallException) as exc_info:
+        _run(
+            tool,
+            decision=[DocumentSource.SHAREPOINT],
+            connected_sources=[DocumentSource.SHAREPOINT],
+            search_pipeline_mock=failing_pipeline,
+        )
+
+    llm_message = exc_info.value.llm_facing_message
+    assert "search infrastructure error" in llm_message
+    assert "Do not answer" in llm_message
+
+    error_packets = [
+        call.args[0].obj
+        for call in cast(MagicMock, tool.emitter).emit.call_args_list
+        if isinstance(call.args[0].obj, SearchToolError)
+    ]
+    assert len(error_packets) == 1
+    assert "temporarily unavailable" in error_packets[0].message
 
 
 def test_cached_expansion_is_reused_on_a_new_filter_not_a_repeat() -> None:
@@ -232,7 +300,7 @@ def test_cached_expansion_is_reused_on_a_new_filter_not_a_repeat() -> None:
         decision=[DocumentSource.ASANA],
         connected_sources=connected,
         skip_query_expansion=True,
-    )
+    ).search_pipeline
     assert "rephrased query" in _queries_sent(new_filter), (
         "cached expansion should be reused when searching a new source"
     )
@@ -243,7 +311,7 @@ def test_cached_expansion_is_reused_on_a_new_filter_not_a_repeat() -> None:
         decision=[DocumentSource.ASANA],
         connected_sources=connected,
         skip_query_expansion=True,
-    )
+    ).search_pipeline
     assert "rephrased query" not in _queries_sent(repeat), (
         "a same-source repeat should not re-apply the cached expansion"
     )

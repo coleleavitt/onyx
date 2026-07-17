@@ -111,18 +111,15 @@ def _base_select() -> Select[tuple[ArtifactLibraryItem]]:
     )
 
 
-def list_artifact_library_items(
+def _filtered_library_select(
     *,
     user: User,
-    db_session: Session,
-    scope: ArtifactLibraryScope = ArtifactLibraryScope.ALL,
-    query: str | None = None,
-    artifact_type: ArtifactType | None = None,
-    pinned: bool | None = None,
-    published: bool | None = None,
-    limit: int = 100,
-    offset: int = 0,
-) -> list[ArtifactLibraryItem]:
+    scope: ArtifactLibraryScope,
+    query: str | None,
+    artifact_type: ArtifactType | None,
+    pinned: bool | None,
+    published: bool | None,
+) -> tuple[Select[tuple[ArtifactLibraryItem]], ColumnElement[bool]]:
     owned = ArtifactLibraryItem.owner_user_id == _user_id(user)
     shared = _shared_with_user(user)
     pinned_by_user = _is_pinned_by_user(user)
@@ -149,12 +146,97 @@ def list_artifact_library_items(
             if published
             else ArtifactLibraryItem.published_at.is_(None)
         )
+    return stmt, pinned_by_user
 
-    stmt = (
-        stmt.order_by(pinned_by_user.desc(), ArtifactLibraryItem.updated_at.desc())
-        .offset(offset)
-        .limit(limit)
+
+def _library_order(
+    stmt: Select[tuple[ArtifactLibraryItem]], pinned_by_user: ColumnElement[bool]
+) -> Select[tuple[ArtifactLibraryItem]]:
+    return stmt.order_by(
+        pinned_by_user.desc(),
+        ArtifactLibraryItem.updated_at.desc(),
+        ArtifactLibraryItem.id.desc(),
     )
+
+
+def _library_cursor_predicate(
+    *,
+    pinned_by_user: ColumnElement[bool],
+    cursor_pinned: bool,
+    cursor_updated_at: datetime.datetime,
+    cursor_id: UUID,
+) -> ColumnElement[bool]:
+    same_pinned_older = and_(
+        pinned_by_user if cursor_pinned else ~pinned_by_user,
+        or_(
+            ArtifactLibraryItem.updated_at < cursor_updated_at,
+            and_(
+                ArtifactLibraryItem.updated_at == cursor_updated_at,
+                ArtifactLibraryItem.id < cursor_id,
+            ),
+        ),
+    )
+    if cursor_pinned:
+        return or_(~pinned_by_user, same_pinned_older)
+    return same_pinned_older
+
+
+def list_artifact_library_items(
+    *,
+    user: User,
+    db_session: Session,
+    scope: ArtifactLibraryScope = ArtifactLibraryScope.ALL,
+    query: str | None = None,
+    artifact_type: ArtifactType | None = None,
+    pinned: bool | None = None,
+    published: bool | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[ArtifactLibraryItem]:
+    stmt, pinned_by_user = _filtered_library_select(
+        user=user,
+        scope=scope,
+        query=query,
+        artifact_type=artifact_type,
+        pinned=pinned,
+        published=published,
+    )
+    stmt = _library_order(stmt, pinned_by_user).offset(offset).limit(limit)
+    return list(db_session.scalars(stmt).unique())
+
+
+def list_artifact_library_items_after(
+    *,
+    user: User,
+    db_session: Session,
+    scope: ArtifactLibraryScope = ArtifactLibraryScope.ALL,
+    query: str | None = None,
+    artifact_type: ArtifactType | None = None,
+    pinned: bool | None = None,
+    published: bool | None = None,
+    cursor_pinned: bool | None = None,
+    cursor_updated_at: datetime.datetime | None = None,
+    cursor_id: UUID | None = None,
+    limit: int = 100,
+) -> list[ArtifactLibraryItem]:
+    stmt, pinned_by_user = _filtered_library_select(
+        user=user,
+        scope=scope,
+        query=query,
+        artifact_type=artifact_type,
+        pinned=pinned,
+        published=published,
+    )
+    if cursor_pinned is not None and cursor_updated_at is not None and cursor_id is not None:
+        stmt = stmt.where(
+            _library_cursor_predicate(
+                pinned_by_user=pinned_by_user,
+                cursor_pinned=cursor_pinned,
+                cursor_updated_at=cursor_updated_at,
+                cursor_id=cursor_id,
+            )
+        )
+    stmt = _library_order(stmt, pinned_by_user).limit(limit)
     return list(db_session.scalars(stmt).unique())
 
 

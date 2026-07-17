@@ -857,6 +857,7 @@ export async function postApprovalSessionGrant(
 import {
   LibraryEntry,
   CreateDirectoryRequest,
+  SessionUploadResponse,
   UploadResponse,
 } from "@/app/craft/types/user-library";
 
@@ -964,4 +965,25 @@ export async function deleteLibraryFile(documentId: string): Promise<void> {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || `Failed to delete file: ${res.status}`);
   }
+}
+
+export async function attachLibraryFile(
+  documentId: string,
+  sessionId: string
+): Promise<SessionUploadResponse> {
+  const res = await fetch(
+    `${USER_LIBRARY_BASE}/files/${encodeURIComponent(documentId)}/attach`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId }),
+    }
+  );
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to attach file: ${res.status}`);
+  }
+
+  return res.json();
 }

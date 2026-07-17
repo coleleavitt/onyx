@@ -1,14 +1,19 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
+import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import FilePickerPopover from "@/refresh-components/popovers/FilePickerPopover";
 import { UserFileStatus, type ProjectFile } from "@/lib/projects/types";
 import { MinimalOnyxDocument } from "@/lib/search/interfaces";
 import { Button, Divider, LineItemButton, Text } from "@opal/components";
+import { timeAgo } from "@opal/time";
 import { Content, ContentAction } from "@opal/layouts";
 import AddInstructionModal from "@/sections/modals/AddInstructionModal";
+import ViewInstructionsModal from "@/sections/modals/ViewInstructionsModal";
+import EditSpaceDetailsModal from "@/sections/modals/EditSpaceDetailsModal";
 import ShareProjectModal from "@/sections/modals/ShareProjectModal";
 import UserFilesModal from "@/sections/modals/UserFilesModal";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
@@ -16,12 +21,15 @@ import { FileCard } from "@/sections/cards/FileCard";
 import { hasNonImageFiles } from "@/lib/utils";
 import { cn } from "@opal/utils";
 import {
-  SvgAddLines,
+  SvgCalendar,
+  SvgEdit,
+  SvgFileText,
   SvgFiles,
   SvgFolderOpen,
   SvgPlusCircle,
   SvgSimpleLoader,
   SvgShare,
+  SvgUser,
 } from "@opal/icons";
 
 export interface ProjectContextPanelProps {
@@ -30,14 +38,42 @@ export interface ProjectContextPanelProps {
   setPresentingDocument?: (document: MinimalOnyxDocument) => void;
 }
 
+interface SectionPlaceholderProps {
+  children: string;
+  dragActive?: boolean;
+}
+
+function SectionPlaceholder({
+  children,
+  dragActive = false,
+}: SectionPlaceholderProps) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-12 items-center rounded-12 border border-dashed px-3 py-2.5",
+        dragActive
+          ? "border-action-link-05 bg-action-link-01 text-action-link-05"
+          : "border-border-01 text-text-03"
+      )}
+    >
+      <Text as="p" font="secondary-body" color="inherit">
+        {children}
+      </Text>
+    </div>
+  );
+}
+
 export default function ProjectContextPanel({
   projectTokenCount = 0,
   availableContextTokens = 128_000,
   setPresentingDocument,
 }: ProjectContextPanelProps) {
+  const router = useRouter();
   const addInstructionModal = useCreateModal();
+  const editDetailsModal = useCreateModal();
   const projectFilesModal = useCreateModal();
   const shareProjectModal = useCreateModal();
+  const [viewInstructionsOpen, setViewInstructionsOpen] = useState(false);
   // Convert ProjectFile to MinimalOnyxDocument format for viewing
   const handleOnView = useCallback(
     (file: ProjectFile) => {
@@ -61,7 +97,6 @@ export default function ProjectContextPanel({
     isLoadingProjectDetails,
     beginUpload,
     projects,
-    renameProject,
     fetchProjects,
     refreshCurrentProjectDetails,
   } = useProjectsContext();
@@ -72,6 +107,8 @@ export default function ProjectContextPanel({
   const canEdit =
     currentProject !== null && currentProject.user_permission !== "VIEWER";
   const isOwner = currentProject?.user_permission === "OWNER";
+  const instructionsText =
+    currentProjectDetails?.project?.instructions?.trim() ?? "";
   const handleUploadFiles = useCallback(
     async (files: File[]) => {
       if (!files || files.length === 0) return;
@@ -129,11 +166,22 @@ export default function ProjectContextPanel({
           void refreshCurrentProjectDetails();
         }}
       />
+      <EditSpaceDetailsModal
+        project={currentProject}
+        open={editDetailsModal.isOpen}
+        onClose={() => editDetailsModal.toggle(false)}
+      />
+
+      <ViewInstructionsModal
+        open={viewInstructionsOpen}
+        instructions={instructionsText}
+        onClose={() => setViewInstructionsOpen(false)}
+      />
 
       <projectFilesModal.Provider>
         <UserFilesModal
-          title="Project Files"
-          description="Sessions in this project can access the files here."
+          title="Space Files"
+          description="Sessions in this space can access the files here."
           recentFiles={[...allCurrentProjectFiles]}
           onView={handleOnView}
           handleUploadChange={handleUploadChange}
@@ -148,62 +196,120 @@ export default function ProjectContextPanel({
         />
       </projectFilesModal.Provider>
 
-      <div className="w-(--app-page-main-content-width) mx-auto flex flex-col gap-6 pb-6">
+      <div className="w-full flex flex-col gap-6 pb-6">
         <div className="flex w-full items-start justify-between gap-3">
           <Content
             icon={SvgFolderOpen}
             title={projectName}
-            editable={canEdit}
-            onTitleChange={
-              canEdit
-                ? async (newName) => {
-                    if (currentProjectId) {
-                      await renameProject(currentProjectId, newName);
-                    }
-                  }
-                : undefined
+            description={
+              currentProject?.description ||
+              "Describe your project, goals, subject, etc…"
             }
           />
-          {isOwner && (
-            <Button
-              icon={SvgShare}
-              interaction={shareProjectModal.isOpen ? "active" : undefined}
-              onClick={() => shareProjectModal.toggle(true)}
-              prominence="secondary"
-            >
-              Share
-            </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {canEdit && (
+              <Button
+                icon={SvgEdit}
+                interaction={editDetailsModal.isOpen ? "active" : undefined}
+                onClick={() => editDetailsModal.toggle(true)}
+                prominence="secondary"
+              >
+                Edit details
+              </Button>
+            )}
+            {isOwner && (
+              <Button
+                icon={SvgShare}
+                interaction={shareProjectModal.isOpen ? "active" : undefined}
+                onClick={() => shareProjectModal.toggle(true)}
+                prominence="secondary"
+              >
+                Share
+              </Button>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 text-text-03">
+          {currentProject?.owner?.email && (
+            <div className="flex items-center gap-1">
+              <SvgUser className="h-3.5 w-3.5 stroke-current" />
+              <Text font="secondary-body" color="inherit">
+                {`Owner: ${currentProject.owner.email}`}
+              </Text>
+            </div>
+          )}
+          {currentProject?.created_at && (
+            <div className="flex items-center gap-1">
+              <SvgCalendar className="h-3.5 w-3.5 stroke-current" />
+              <Text font="secondary-body" color="inherit">
+                {`Created ${timeAgo(currentProject.created_at) ?? new Date(currentProject.created_at).toLocaleDateString()}`}
+              </Text>
+            </div>
+          )}
+          {currentProject && (
+            <Text font="secondary-body" color="inherit">
+              {`Access: ${currentProject.user_permission.toLowerCase()}`}
+            </Text>
           )}
         </div>
 
         <Divider paddingParallel="fit" paddingPerpendicular="fit" />
 
-        <ContentAction
-          sizePreset="main-ui"
-          variant="section"
-          title="Instructions"
-          description={
-            isLoadingProjectDetails && !currentProjectDetails
-              ? undefined
-              : currentProjectDetails?.project?.instructions ||
-                "Add instructions to tailor the response in this project."
-          }
-          descriptionMaxLines={2}
-          padding="fit"
-          center
-          rightChildren={
-            canEdit ? (
-              <Button
-                prominence="tertiary"
-                icon={SvgAddLines}
-                onClick={() => addInstructionModal.toggle(true)}
-                interaction={addInstructionModal.isOpen ? "active" : undefined}
-              >
-                Set Instructions
-              </Button>
-            ) : undefined
-          }
-        />
+        <div className="flex flex-col gap-2">
+          <Content
+            sizePreset="main-ui"
+            variant="section"
+            title="Instructions"
+            description="Give the agent instructions for how it should work in this space."
+          />
+          {isLoadingProjectDetails && !currentProjectDetails ? (
+            <SvgSimpleLoader />
+          ) : (
+            <div className="overflow-hidden rounded-12 border border-border-01 bg-background-tint-02">
+              {instructionsText ? (
+                <>
+                  <div className="whitespace-pre-wrap break-words px-3 py-2.5">
+                    <Text
+                      as="p"
+                      font="secondary-body"
+                      color="text-04"
+                      maxLines={5}
+                    >
+                      {instructionsText}
+                    </Text>
+                  </div>
+                  <div className="border-t border-border-01">
+                    <LineItemButton
+                      sizePreset="main-ui"
+                      width="full"
+                      icon={canEdit ? SvgEdit : SvgFileText}
+                      title={canEdit ? "Edit instructions" : "View all"}
+                      onClick={() =>
+                        canEdit
+                          ? addInstructionModal.toggle(true)
+                          : setViewInstructionsOpen(true)
+                      }
+                    />
+                  </div>
+                </>
+              ) : canEdit ? (
+                <LineItemButton
+                  sizePreset="main-ui"
+                  width="full"
+                  icon={SvgPlusCircle}
+                  title="Add instructions..."
+                  onClick={() => addInstructionModal.toggle(true)}
+                />
+              ) : (
+                <div className="px-3 py-2.5">
+                  <Text as="p" font="secondary-body" color="text-02">
+                    No instructions yet
+                  </Text>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div
           className="flex flex-col gap-2 pb-2"
@@ -213,7 +319,7 @@ export default function ProjectContextPanel({
             sizePreset="main-ui"
             variant="section"
             title="Files"
-            description="Chats in this project can access these files."
+            description="Chats in this space can access these files."
             padding="fit"
             center
             rightChildren={
@@ -317,23 +423,65 @@ export default function ProjectContextPanel({
               )}
             </>
           ) : (
-            <div
-              className={cn(
-                "h-12 rounded-xl border border-dashed flex items-center pl-2",
-                isDragActive
-                  ? "bg-action-link-01 border-action-link-05 text-action-link-05"
-                  : "border-border-01 text-text-02"
-              )}
-            >
-              <Text as="p" font="secondary-body" color="inherit">
-                {isDragActive
-                  ? "Drop files here to add to this project"
-                  : canEdit
-                    ? "Add documents, texts, or images to use in the project. Drag & drop supported."
-                    : "No files have been added to this project."}
-              </Text>
-            </div>
+            <SectionPlaceholder dragActive={isDragActive}>
+              {isDragActive
+                ? "Drop files here to add to this space"
+                : canEdit
+                  ? "Add documents, texts, or images to use in the space. Drag & drop supported."
+                  : "No files have been added to this space."}
+            </SectionPlaceholder>
           )}
+        </div>
+
+        {/* Skills — shell only; opens the global Skills hub. No per-space
+            skill association is persisted yet (backend follow-up). */}
+        <div className="flex flex-col gap-2">
+          <ContentAction
+            sizePreset="main-ui"
+            variant="section"
+            title="Skills"
+            description="Give this space access to skills."
+            padding="fit"
+            rightChildren={
+              canEdit ? (
+                <Button
+                  icon={SvgPlusCircle}
+                  prominence="tertiary"
+                  onClick={() => router.push("/app/customize/skills" as Route)}
+                >
+                  Add Skills
+                </Button>
+              ) : undefined
+            }
+          />
+          <SectionPlaceholder>
+            No skills added to this space yet.
+          </SectionPlaceholder>
+        </div>
+
+        {/* Links — shell only; add flow is a coming-soon placeholder
+            (backend follow-up). */}
+        <div className="flex flex-col gap-2">
+          <ContentAction
+            sizePreset="main-ui"
+            variant="section"
+            title="Links"
+            description="Add web links this space can reference."
+            padding="fit"
+            rightChildren={
+              canEdit ? (
+                <Button
+                  icon={SvgPlusCircle}
+                  prominence="tertiary"
+                  disabled
+                  tooltip="Coming soon"
+                >
+                  Add Link
+                </Button>
+              ) : undefined
+            }
+          />
+          <SectionPlaceholder>Link support is coming soon.</SectionPlaceholder>
         </div>
       </div>
     </>

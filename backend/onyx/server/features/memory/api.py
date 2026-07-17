@@ -6,6 +6,12 @@ from fastapi import Query
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
+from onyx.db.brain import BrainSettings
+from onyx.db.brain import get_memory_graph
+from onyx.db.brain import get_memory_sources
+from onyx.db.brain import get_related_memories
+from onyx.db.brain import MemoryGraph
+from onyx.db.brain import update_brain_settings
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import MemoryCategory
 from onyx.db.enums import Permission
@@ -21,11 +27,15 @@ from onyx.db.models import Memory
 from onyx.db.models import User
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
+from onyx.server.features.memory.models import BrainSettingsUpdateRequest
 from onyx.server.features.memory.models import MemoryCreateRequest
 from onyx.server.features.memory.models import MemoryListResponse
 from onyx.server.features.memory.models import MemoryRevisionSnapshot
 from onyx.server.features.memory.models import MemorySnapshot
+from onyx.server.features.memory.models import MemorySourceSnapshot
 from onyx.server.features.memory.models import MemoryUpdateRequest
+from onyx.server.features.memory.models import RelatedMemoriesResponse
+from onyx.server.features.memory.models import RelatedMemory
 
 router = APIRouter(prefix="/memory")
 
@@ -97,6 +107,39 @@ def create_current_user_memory(
             "Memory creation is disabled for this organization",
         )
     return MemorySnapshot.from_model(memory)
+
+
+@router.get("/graph")
+def get_current_user_memory_graph(
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> MemoryGraph:
+    return get_memory_graph(db_session, _user_id(user))
+
+
+@router.get("/brain/settings")
+def get_current_user_brain_settings(
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+) -> BrainSettings:
+    return BrainSettings.from_user(user)
+
+
+@router.put("/brain/settings")
+def update_current_user_brain_settings(
+    request: BrainSettingsUpdateRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> BrainSettings:
+    settings = update_brain_settings(
+        db_session,
+        _user_id(user),
+        brain_enabled=request.brain_enabled,
+        brain_use_connectors=request.brain_use_connectors,
+        brain_focus_instructions=request.brain_focus_instructions,
+    )
+    if settings is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "User not found")
+    return settings
 
 
 @router.get("/{memory_id}")
@@ -184,3 +227,38 @@ def restore_current_user_memory_revision(
             "Memory updates are disabled for this organization",
         )
     return MemorySnapshot.from_model(restored)
+
+
+@router.get("/{memory_id}/related")
+def get_current_user_memory_related(
+    memory_id: int,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> RelatedMemoriesResponse:
+    _memory_or_404(memory_id, user=user, db_session=db_session)
+    related = get_related_memories(db_session, _user_id(user), memory_id)
+    groups: dict[MemoryCategory, list[RelatedMemory]] = {
+        category: [] for category in MemoryCategory
+    }
+    for memory in related:
+        groups[memory.category].append(
+            RelatedMemory(
+                id=memory.id,
+                title=memory.title or "Untitled memory",
+                category=memory.category,
+            )
+        )
+    return RelatedMemoriesResponse(groups=groups)
+
+
+@router.get("/{memory_id}/sources")
+def get_current_user_memory_sources(
+    memory_id: int,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[MemorySourceSnapshot]:
+    _memory_or_404(memory_id, user=user, db_session=db_session)
+    return [
+        MemorySourceSnapshot.from_model(source)
+        for source in get_memory_sources(db_session, memory_id)
+    ]

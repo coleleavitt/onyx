@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
+from enum import Enum
 from typing import cast
 from uuid import UUID
 
@@ -1095,6 +1096,46 @@ def verify_user_logged_in(
 """APIs to adjust user preferences"""
 
 
+class LegacyMemoryListChange(str, Enum):
+    NO_CHANGE = "no_change"
+    DELETION_ONLY = "deletion_only"
+    CREATE_OR_UPDATE = "create_or_update"
+
+
+def classify_legacy_memory_list_change(
+    requested_memories: list[MemoryItem] | None,
+    existing_memories: list[MemoryItem],
+) -> LegacyMemoryListChange:
+    """Classify a legacy full-snapshot memory update for policy enforcement."""
+    if requested_memories is None:
+        return LegacyMemoryListChange.NO_CHANGE
+
+    existing_memory_by_id = {
+        memory.id: memory.content
+        for memory in existing_memories
+        if memory.id is not None
+    }
+    requested_memory_ids: set[int] = set()
+
+    for memory in requested_memories:
+        if memory.id is None or memory.id in requested_memory_ids:
+            return LegacyMemoryListChange.CREATE_OR_UPDATE
+        requested_memory_ids.add(memory.id)
+        if existing_memory_by_id.get(memory.id) != memory.content:
+            return LegacyMemoryListChange.CREATE_OR_UPDATE
+
+    if requested_memory_ids == set(existing_memory_by_id):
+        return LegacyMemoryListChange.NO_CHANGE
+    return LegacyMemoryListChange.DELETION_ONLY
+
+
+def has_disabled_to_enabled_transition(
+    requested_value: bool | None,
+    current_value: bool,
+) -> bool:
+    return requested_value is True and not current_value
+
+
 @router.patch("/temperature-override-enabled")
 def update_user_temperature_override_enabled_api(
     temperature_override_enabled: bool,
@@ -1194,28 +1235,26 @@ def update_user_personalization_api(
         MemoryItem(id=memory.id, content=memory.memory_text)
         for memory in existing_memory_rows
     ]
-    existing_memory_by_id = {
-        memory.id: memory.content
-        for memory in existing_memories
-        if memory.id is not None
-    }
-    requested_memories_are_deletions_only = request.memories is None or all(
-        memory.id is not None and existing_memory_by_id.get(memory.id) == memory.content
-        for memory in request.memories
+    memory_list_change = classify_legacy_memory_list_change(
+        request.memories,
+        existing_memories,
     )
-    if request.use_memories is True and not policy.memories_enabled:
+    if has_disabled_to_enabled_transition(request.use_memories, user.use_memories) and (
+        not policy.memories_enabled
+    ):
         raise OnyxError(
             OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
             "Personal memory is disabled by your organization.",
         )
-    if request.enable_memory_tool is True and (
-        not policy.memories_enabled or not policy.memory_creation_enabled
-    ):
+    if has_disabled_to_enabled_transition(
+        request.enable_memory_tool,
+        user.enable_memory_tool,
+    ) and (not policy.memories_enabled or not policy.memory_creation_enabled):
         raise OnyxError(
             OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
             "Creating memories is disabled by your organization.",
         )
-    if not requested_memories_are_deletions_only and (
+    if memory_list_change == LegacyMemoryListChange.CREATE_OR_UPDATE and (
         not policy.memories_enabled or not policy.memory_creation_enabled
     ):
         raise OnyxError(

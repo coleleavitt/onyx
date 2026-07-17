@@ -1,83 +1,131 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { Route } from "next";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProjects } from "@/lib/projects/hooks";
+import { spacePath } from "@/lib/projects/slug";
 import type { Project } from "@/lib/projects/types";
+import { deleteProject, setProjectPinned } from "@/lib/projects/svc";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
+import { toast } from "@/hooks/useToast";
+import SpaceCard from "@/sections/cards/SpaceCard";
 import CreateProjectModal from "@/sections/modals/CreateProjectModal";
+import EditSpaceDetailsModal from "@/sections/modals/EditSpaceDetailsModal";
 import ShareProjectModal from "@/sections/modals/ShareProjectModal";
-import { Button, InputTypeIn, Tabs, Tag, Text } from "@opal/components";
+import ConfirmationModalLayout from "@/refresh-components/layouts/ConfirmationModalLayout";
+import { Button, InputTypeIn, Text } from "@opal/components";
 import { IllustrationContent, SettingsLayouts } from "@opal/layouts";
+import { cn } from "@opal/utils";
 import SvgNoResult from "@opal/illustrations/no-result";
 import {
+  SvgChevronRight,
   SvgFolder,
   SvgFolderPlus,
-  SvgOrganization,
-  SvgShare,
   SvgSimpleLoader,
-  SvgUsers,
+  SvgTrash,
 } from "@opal/icons";
 
-type SpaceScope = "all" | "created" | "shared";
-
-function accessLabel(project: Project): string {
-  if (project.user_permission === "OWNER") return "Owner";
-  if (project.user_permission === "EDITOR") return "Editor";
-  return "Viewer";
-}
+const SECTION_EXPANDED_KEY = "onyx:spaces:section-expanded";
 
 export default function SpacesPage() {
   const router = useRouter();
   const createSpaceModal = useCreateModal();
   const { projects, isLoading, error, refreshProjects } = useProjects();
-  const [scope, setScope] = useState<SpaceScope>("all");
   const [query, setQuery] = useState("");
   const [sharingProject, setSharingProject] = useState<Project | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(SECTION_EXPANDED_KEY);
+      if (stored) setCollapsed(JSON.parse(stored) as Record<string, boolean>);
+    } catch {
+      // ignore malformed persisted state
+    }
+  }, []);
+
+  function toggleCollapsed(key: string) {
+    setCollapsed((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      window.localStorage.setItem(SECTION_EXPANDED_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+
+  async function togglePin(project: Project) {
+    try {
+      await setProjectPinned(project.id, !project.is_pinned);
+      await refreshProjects();
+    } catch (pinError) {
+      toast.error(
+        pinError instanceof Error ? pinError.message : "Failed to update pin."
+      );
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deletingProject) return;
+    setDeleting(true);
+    try {
+      await deleteProject(deletingProject.id);
+      await refreshProjects();
+      toast.success("Space deleted.");
+      setDeletingProject(null);
+    } catch (deleteError) {
+      toast.error(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Failed to delete space."
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   const visibleProjects = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return projects.filter((project) => {
-      const matchesScope =
-        scope === "all" ||
-        (scope === "created" && project.user_permission === "OWNER") ||
-        (scope === "shared" && project.user_permission !== "OWNER");
-      const matchesQuery =
-        !normalizedQuery ||
+    if (!normalizedQuery) return projects;
+    return projects.filter(
+      (project) =>
         project.name.toLowerCase().includes(normalizedQuery) ||
-        (project.description ?? "").toLowerCase().includes(normalizedQuery);
-      return matchesScope && matchesQuery;
-    });
-  }, [projects, query, scope]);
+        (project.description ?? "").toLowerCase().includes(normalizedQuery)
+    );
+  }, [projects, query]);
+
+  const spaceGroups = useMemo(() => {
+    const pinned = visibleProjects.filter((project) => project.is_pinned);
+    const rest = visibleProjects.filter((project) => !project.is_pinned);
+    const owned = rest.filter((project) => project.user_permission === "OWNER");
+    const shared = rest.filter(
+      (project) => project.user_permission !== "OWNER"
+    );
+    const groups: { key: string; title: string; items: Project[] }[] = [];
+    if (pinned.length > 0) {
+      groups.push({ key: "pinned", title: "Pinned", items: pinned });
+    }
+    if (owned.length > 0) {
+      groups.push({ key: "owned", title: "Your Spaces", items: owned });
+    }
+    if (shared.length > 0) {
+      groups.push({ key: "shared", title: "Shared with you", items: shared });
+    }
+    return groups;
+  }, [visibleProjects]);
 
   return (
     <SettingsLayouts.Root width="lg">
-      <SettingsLayouts.Header
-        icon={SvgFolder}
-        title="Spaces"
-        description="Shared workspaces for conversations, files, instructions, and collaborators."
-        rightChildren={
-          <Button
-            icon={SvgFolderPlus}
-            onClick={() => createSpaceModal.toggle(true)}
-          >
-            New space
-          </Button>
-        }
-      >
-        <div className="flex w-full flex-col gap-2">
-          <Tabs
-            value={scope}
-            onValueChange={(value) => setScope(value as SpaceScope)}
-          >
-            <Tabs.List>
-              <Tabs.Trigger value="all">All</Tabs.Trigger>
-              <Tabs.Trigger value="created">Created</Tabs.Trigger>
-              <Tabs.Trigger value="shared">Shared</Tabs.Trigger>
-            </Tabs.List>
-          </Tabs>
-          <div className="min-w-0 flex-1">
+      <div className="sticky top-0 z-settings-header flex items-center justify-between gap-3 bg-background-tint-01 px-4 pb-2 pt-4">
+        <div className="flex items-center gap-2">
+          <SvgFolder className="h-4 w-4 stroke-text-03" />
+          <Text as="h1" font="heading-h3" color="text-05" nowrap>
+            Spaces
+          </Text>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-48 sm:w-64">
             <InputTypeIn
               clearButton
               placeholder="Search spaces"
@@ -86,9 +134,15 @@ export default function SpacesPage() {
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
+          <Button
+            icon={SvgFolderPlus}
+            onClick={() => createSpaceModal.toggle(true)}
+          >
+            New space
+          </Button>
         </div>
-      </SettingsLayouts.Header>
-      <SettingsLayouts.Body>
+      </div>
+      <SettingsLayouts.Body density="compact">
         {isLoading ? (
           <div className="flex w-full items-center justify-center gap-2 py-16">
             <SvgSimpleLoader className="h-5 w-5" />
@@ -111,65 +165,50 @@ export default function SpacesPage() {
             }
           />
         ) : (
-          <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {visibleProjects.map((project) => (
-              <article
-                key={project.id}
-                className="flex min-h-52 flex-col rounded-08 border border-border-01 bg-background-01 p-4 transition-colors hover:bg-background-tint-01"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-08 bg-background-tint-02">
-                    <SvgFolder className="h-5 w-5 stroke-text-03" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {project.organization_permission ? (
-                      <SvgOrganization
-                        aria-label={`Organization can ${project.organization_permission.toLowerCase()}`}
-                        className="h-4 w-4 stroke-text-03"
-                      />
-                    ) : null}
-                    {project.user_permission === "OWNER" ? (
-                      <Button
-                        icon={SvgShare}
-                        prominence="tertiary"
-                        size="xs"
-                        tooltip="Share space"
-                        onClick={() => setSharingProject(project)}
-                      />
-                    ) : null}
-                  </div>
-                </div>
-                <div className="mt-5 min-w-0 flex-1">
-                  <Text font="heading-h3" color="text-05" maxLines={2}>
-                    {project.name}
-                  </Text>
-                  <Text font="secondary-body" color="text-03" maxLines={3}>
-                    {project.description ||
-                      "Keep conversations, files, and instructions together."}
-                  </Text>
-                </div>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <Tag color="gray" title={accessLabel(project)} />
-                    <div className="flex items-center gap-1">
-                      <SvgUsers className="h-3.5 w-3.5 stroke-text-03" />
-                      <Text font="secondary-body" color="text-03">
-                        {`${project.chat_sessions.length} chat${project.chat_sessions.length === 1 ? "" : "s"}`}
-                      </Text>
-                    </div>
-                  </div>
-                  <Button
-                    prominence="secondary"
-                    size="sm"
-                    onClick={() =>
-                      router.push(`/app?projectId=${project.id}` as Route)
-                    }
+          <div className="flex w-full flex-col gap-4">
+            {spaceGroups.map((group) => {
+              const isCollapsed = collapsed[group.key] === true;
+              return (
+                <section key={group.key} className="flex w-full flex-col gap-1">
+                  <button
+                    type="button"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => toggleCollapsed(group.key)}
+                    className="sticky top-0 z-10 flex w-full items-center gap-2 rounded-08 bg-background-neutral-00 px-3 py-1.5 text-left transition-colors hover:bg-background-tint-01"
                   >
-                    Open
-                  </Button>
-                </div>
-              </article>
-            ))}
+                    <SvgChevronRight
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0 stroke-text-03 transition-transform duration-150",
+                        !isCollapsed && "rotate-90"
+                      )}
+                    />
+                    <Text color="text-03" font="secondary-action">
+                      {group.title}
+                    </Text>
+                    <Text color="text-02" font="secondary-body">
+                      {String(group.items.length)}
+                    </Text>
+                  </button>
+                  {!isCollapsed ? (
+                    <div className="flex w-full flex-col">
+                      {group.items.map((project) => (
+                        <SpaceCard
+                          key={project.id}
+                          project={project}
+                          onOpen={(space) =>
+                            router.push(spacePath(space.id, space.name))
+                          }
+                          onShare={setSharingProject}
+                          onRename={setEditingProject}
+                          onDelete={setDeletingProject}
+                          onTogglePin={(space) => void togglePin(space)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
           </div>
         )}
       </SettingsLayouts.Body>
@@ -183,6 +222,31 @@ export default function SpacesPage() {
         onClose={() => setSharingProject(null)}
         onSaved={() => void refreshProjects()}
       />
+      <EditSpaceDetailsModal
+        project={editingProject}
+        open={editingProject !== null}
+        onClose={() => {
+          setEditingProject(null);
+          void refreshProjects();
+        }}
+      />
+      {deletingProject ? (
+        <ConfirmationModalLayout
+          icon={SvgTrash}
+          title={`Delete ${deletingProject.name}?`}
+          description="This permanently removes the space. Chats and files are unlinked, not deleted."
+          onClose={() => setDeletingProject(null)}
+          submit={
+            <Button
+              variant="danger"
+              disabled={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting ? "Deleting..." : "Delete space"}
+            </Button>
+          }
+        />
+      ) : null}
     </SettingsLayouts.Root>
   );
 }

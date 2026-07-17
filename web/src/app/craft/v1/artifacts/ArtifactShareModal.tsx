@@ -10,7 +10,7 @@ import { toast } from "@/hooks/useToast";
 import Modal from "@/refresh-components/Modal";
 import { AddPeoplePicker } from "@/sections/modals/AddPeoplePicker";
 import { ShareAccessRow } from "@/sections/modals/ShareAccessRow";
-import { Button, Divider, Text } from "@opal/components";
+import { Button, Checkbox, Divider, Text } from "@opal/components";
 import { SvgShare, SvgUser, SvgUsers, SvgX } from "@opal/icons";
 import { updateArtifactLibraryShares } from "@/app/craft/v1/artifacts/api";
 import type { ArtifactLibraryItem } from "@/app/craft/v1/artifacts/types";
@@ -43,6 +43,7 @@ export default function ArtifactShareModal({
   const [stagedGroups, setStagedGroups] = useState<MinimalUserGroupSnapshot[]>(
     []
   );
+  const [published, setPublished] = useState(item.published_at !== null);
   const [saving, setSaving] = useState(false);
 
   const existingUserIds = useMemo(
@@ -57,11 +58,11 @@ export default function ArtifactShareModal({
   async function save() {
     setSaving(true);
     try {
-      const next = await updateArtifactLibraryShares(
-        item.id,
-        [...selectedUsers, ...stagedUsers].map((user) => user.id),
-        [...selectedGroups, ...stagedGroups].map((group) => group.id)
-      );
+      const next = await updateArtifactLibraryShares(item.id, {
+        userIds: [...selectedUsers, ...stagedUsers].map((user) => user.id),
+        groupIds: [...selectedGroups, ...stagedGroups].map((group) => group.id),
+        published,
+      });
       toast.success("Artifact sharing updated.");
       onSaved(next);
       onClose();
@@ -112,6 +113,21 @@ export default function ArtifactShareModal({
               users={users}
             />
             <Divider />
+            <div className="flex items-center justify-between gap-3 rounded-08 border border-border-01 p-3">
+              <div className="flex min-w-0 flex-col gap-1">
+                <Text color="text-05" font="main-ui-action">
+                  Publish to organization
+                </Text>
+                <Text color="text-03" font="secondary-body">
+                  Anyone in the organization can find and open this artifact.
+                </Text>
+              </div>
+              <Checkbox
+                aria-label="Publish artifact to organization"
+                checked={published}
+                onCheckedChange={setPublished}
+              />
+            </div>
             <ShareAccessRow
               avatarInitial={item.owner.email.charAt(0).toUpperCase()}
               icon={SvgUser}

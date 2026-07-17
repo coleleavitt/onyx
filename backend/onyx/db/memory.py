@@ -331,7 +331,8 @@ def update_memory_at_index(
     new_text: str,
     db_session: Session | None = None,
 ) -> int | None:
-    """Update the memory at the given 0-based index (ordered by id ASC, matching get_memories()).
+    """Update the memory at the given 0-based index (ordered by updated_at DESC
+    then id DESC, matching get_memories()).
 
     Returns the id of the updated Memory row, or None if the index is out of range.
     """
@@ -340,7 +341,9 @@ def update_memory_at_index(
             return None
 
         memory_rows = db_session.scalars(
-            select(Memory).where(Memory.user_id == user_id).order_by(Memory.id.asc())
+            select(Memory)
+            .where(Memory.user_id == user_id)
+            .order_by(Memory.updated_at.desc(), Memory.id.desc())
         ).all()
 
         if index < 0 or index >= len(memory_rows):

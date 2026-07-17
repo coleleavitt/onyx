@@ -76,6 +76,7 @@ from onyx.db.chat import reserve_multi_model_message_ids
 from onyx.db.document_set import filter_document_set_names_by_user_access
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
 from onyx.db.enums import HookPoint
+from onyx.db.enums import UserFileStatus
 from onyx.db.memory import get_memories
 from onyx.db.models import ChatMessage
 from onyx.db.models import Persona
@@ -89,6 +90,7 @@ from onyx.error_handling.exceptions import log_onyx_error
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_processing.extract_file_text import extract_file_text
 from onyx.file_store.models import ChatFileType
+from onyx.file_store.models import FileDescriptor
 from onyx.file_store.models import InMemoryChatFile
 from onyx.file_store.utils import get_default_file_store
 from onyx.file_store.utils import load_in_memory_chat_files
@@ -138,6 +140,62 @@ from shared_configs.contextvars import get_current_tenant_id
 logger = setup_logger()
 ERROR_TYPE_CANCELLED = "cancelled"
 APPROX_CHARS_PER_TOKEN = 4
+
+
+_STILL_PROCESSING_STATUSES = {
+    UserFileStatus.PROCESSING,
+    UserFileStatus.INDEXING,
+}
+
+
+def _build_unreadable_attachment_context(
+    file_descriptors: list[FileDescriptor],
+    db_session: Session,
+) -> str | None:
+    """LLM-facing note for attachments whose content is unavailable.
+
+    A user file that never finished processing has no chunks, so neither
+    direct injection nor internal search can surface its content. Without
+    this note the model flails (searches, then apologizes about missing
+    tools) instead of telling the user the attachment is broken.
+    """
+    user_file_ids: set[UUID] = set()
+    for file_descriptor in file_descriptors:
+        raw_id = file_descriptor.get("user_file_id")
+        if not raw_id:
+            continue
+        try:
+            user_file_ids.add(UUID(raw_id))
+        except (TypeError, ValueError):
+            continue
+    if not user_file_ids:
+        return None
+
+    unreadable_files = (
+        db_session.query(UserFile)
+        .filter(UserFile.id.in_(user_file_ids))
+        .filter(UserFile.status != UserFileStatus.COMPLETED)
+        .all()
+    )
+    if not unreadable_files:
+        return None
+
+    lines = []
+    for user_file in unreadable_files:
+        if user_file.status in _STILL_PROCESSING_STATUSES:
+            state = "is still being processed — its content is not available yet"
+        else:
+            state = "failed processing — its content is not available"
+        lines.append(f'- "{user_file.name}" {state}')
+    return (
+        "IMPORTANT: the following attached files are NOT readable right now; "
+        "their contents are unavailable to you and to internal search:\n"
+        + "\n".join(lines)
+        + "\nTell the user which attachments are affected. For a file that "
+        "failed processing, suggest removing and re-uploading it. Do not "
+        "answer questions about these files' contents from general knowledge "
+        "or assumptions."
+    )
 
 
 def _collect_available_file_ids(
@@ -930,11 +988,34 @@ def build_chat_turn(
         tool.in_code_tool_id == FILE_READER_TOOL_ID for tool in persona.tools
     )
 
+    # Attachments that never finished processing have no readable content;
+    # tell the LLM explicitly so it informs the user instead of guessing.
+    unreadable_attachment_context = _build_unreadable_attachment_context(
+        file_descriptors=[
+            *new_msg_req.file_descriptors,
+            *[
+                file
+                for message in chat_history
+                for file in (message.files or [])
+            ],
+        ],
+        db_session=db_session,
+    )
+    effective_additional_context = (
+        additional_context or new_msg_req.additional_context
+    )
+    if unreadable_attachment_context:
+        effective_additional_context = (
+            f"{effective_additional_context}\n\n{unreadable_attachment_context}"
+            if effective_additional_context
+            else unreadable_attachment_context
+        )
+
     chat_history_result = convert_chat_history(
         chat_history=chat_history,
         files=files,
         context_image_files=extracted_context_files.image_files,
-        additional_context=additional_context or new_msg_req.additional_context,
+        additional_context=effective_additional_context,
         token_counter=token_counter,
         tool_id_to_name_map=tool_id_to_name_map,
     )

@@ -62,7 +62,11 @@ export const InternalSearchToolRenderer: MessageRenderer<
   children,
 }) => {
   const searchState = constructCurrentSearchState(packets);
-  const { queries, results, sourceFilters, isComplete } = searchState;
+  const { queries, results, sourceFilters, isComplete, errorMessage } =
+    searchState;
+
+  // "Search broke" must read differently from "search found nothing".
+  const completedEmptyText = errorMessage ?? "No results found";
 
   const isCompact = renderType === RenderType.COMPACT;
   const isHighlight = renderType === RenderType.HIGHLIGHT;
@@ -116,7 +120,7 @@ export const InternalSearchToolRenderer: MessageRenderer<
                   <BlinkingBar />
                 ) : (
                   <Text as="p" text04 mainUiMuted>
-                    No results found
+                    {completedEmptyText}
                   </Text>
                 )
               }
@@ -179,7 +183,7 @@ export const InternalSearchToolRenderer: MessageRenderer<
                 <BlinkingBar />
               ) : (
                 <Text as="p" text04 mainUiMuted>
-                  No results found
+                  {completedEmptyText}
                 </Text>
               )
             }
@@ -236,7 +240,7 @@ export const InternalSearchToolRenderer: MessageRenderer<
                     <BlinkingBar />
                   ) : (
                     <Text as="p" text03 mainUiMuted>
-                      No results found
+                      {completedEmptyText}
                     </Text>
                   )
                 }

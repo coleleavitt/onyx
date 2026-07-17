@@ -7,6 +7,7 @@
  */
 
 import { type Page, type Locator, expect } from "@playwright/test";
+import { openAgentsPageFromSidebar } from "@tests/e2e/utils/agentUtils";
 
 export class AgentEditorPage {
   readonly page: Page;
@@ -35,8 +36,7 @@ export class AgentEditorPage {
 
   /** Navigate from the chat sidebar (the path a basic user takes). */
   async openFromSidebar(): Promise<void> {
-    await this.page.getByTestId("AppSidebar/more-agents").click();
-    await this.page.waitForURL("**/app/agents");
+    await openAgentsPageFromSidebar(this.page);
     await this.page.getByLabel("AgentsPage/new-agent-button").click();
     await this.page.waitForURL("**/app/agents/create");
     await expect(this.nameInput).toBeVisible();

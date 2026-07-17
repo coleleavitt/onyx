@@ -2,6 +2,7 @@
 
 import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
+import { useSettings } from "@/lib/settings/hooks";
 import { Tabs, Text } from "@opal/components";
 import { useSidebarState } from "@opal/layouts";
 import { cn } from "@opal/utils";
@@ -21,12 +22,15 @@ export default function CustomizeLayout({ children }: CustomizeLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { folded } = useSidebarState();
-  const active =
-    CUSTOMIZE_TABS.find((tab) => pathname.startsWith(tab.path)) ??
-    CUSTOMIZE_TABS[0];
+  const settings = useSettings();
+  const tabs =
+    settings.onyx_craft_enabled === true
+      ? CUSTOMIZE_TABS
+      : CUSTOMIZE_TABS.filter((tab) => tab.path !== "/app/customize/workflows");
+  const active = tabs.find((tab) => pathname.startsWith(tab.path)) ?? tabs[0];
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-background-tint-01">
+    <div className="flex h-full min-h-0 w-full flex-col">
       <nav
         className={cn(
           "shrink-0 border-b border-border-01 bg-background-tint-01 px-4 py-2 sm:px-6",
@@ -42,7 +46,7 @@ export default function CustomizeLayout({ children }: CustomizeLayoutProps) {
                 onValueChange={(value) => router.push(value as Route)}
               >
                 <Tabs.List>
-                  {CUSTOMIZE_TABS.map((tab) => (
+                  {tabs.map((tab) => (
                     <Tabs.Trigger key={tab.path} value={tab.path}>
                       {tab.label}
                     </Tabs.Trigger>
@@ -61,7 +65,7 @@ export default function CustomizeLayout({ children }: CustomizeLayoutProps) {
                   </Text>
                 </InputSelect.Trigger>
                 <InputSelect.Content>
-                  {CUSTOMIZE_TABS.map((tab) => (
+                  {tabs.map((tab) => (
                     <InputSelect.Item key={tab.path} value={tab.path}>
                       {tab.label}
                     </InputSelect.Item>
@@ -72,7 +76,7 @@ export default function CustomizeLayout({ children }: CustomizeLayoutProps) {
           </div>
         </div>
       </nav>
-      <div className="flex min-h-0 flex-1 justify-center overflow-hidden bg-background-tint-01">
+      <div className="flex min-h-0 flex-1 justify-center overflow-hidden">
         <div className="h-full w-full max-w-[80rem]">{children}</div>
       </div>
     </div>

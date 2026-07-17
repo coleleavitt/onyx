@@ -3,6 +3,7 @@ from enum import Enum
 from uuid import UUID
 
 from pydantic import BaseModel
+from pydantic import ConfigDict
 from pydantic import Field
 
 from onyx.db.enums import ArtifactType
@@ -65,6 +66,7 @@ class ArtifactLibraryItemSnapshot(BaseModel):
         if not item.versions:
             raise ValueError("Artifact library item has no versions")
         latest = max(item.versions, key=lambda version: version.version_number)
+        is_owner = item.owner_user_id == requesting_user_id
         return cls(
             id=item.id,
             name=item.name,
@@ -77,7 +79,7 @@ class ArtifactLibraryItemSnapshot(BaseModel):
             created_at=item.created_at,
             updated_at=item.updated_at,
             owner=MinimalUserSnapshot(id=item.owner.id, email=item.owner.email),
-            is_owner=item.owner_user_id == requesting_user_id,
+            is_owner=is_owner,
             latest_version=ArtifactLibraryVersionSnapshot.from_model(latest),
             versions=[
                 ArtifactLibraryVersionSnapshot.from_model(version)
@@ -96,14 +98,18 @@ class ArtifactLibraryItemSnapshot(BaseModel):
                     )
                 )
                 for share in item.user_shares
-            ],
+            ]
+            if is_owner
+            else [],
             group_shares=[
                 ArtifactLibraryGroupShareSnapshot(
                     group_id=share.user_group.id,
                     group_name=share.user_group.name,
                 )
                 for share in item.group_shares
-            ],
+            ]
+            if is_owner
+            else [],
         )
 
 
@@ -111,6 +117,24 @@ class ArtifactLibraryImportRequest(BaseModel):
     session_id: UUID
     path: str = Field(min_length=1, max_length=2048)
     name: str | None = Field(default=None, max_length=255)
+
+
+class ArtifactLibraryPageSnapshot(BaseModel):
+    items: list[ArtifactLibraryItemSnapshot]
+    next_cursor: str | None = None
+
+
+class ArtifactLibraryCursorPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: str
+    query: str | None = None
+    artifact_type: str | None = None
+    pinned: bool | None = None
+    published: bool | None = None
+    cursor_pinned: bool
+    cursor_updated_at: datetime
+    cursor_id: UUID
 
 
 class ArtifactLibraryUpdateRequest(BaseModel):
@@ -125,6 +149,7 @@ class ArtifactLibraryPinRequest(BaseModel):
 class ArtifactLibraryShareRequest(BaseModel):
     user_ids: list[UUID] = Field(default_factory=list, max_length=100)
     group_ids: list[int] = Field(default_factory=list, max_length=100)
+    published: bool | None = None
 
 
 class ArtifactLibraryBulkAction(str, Enum):

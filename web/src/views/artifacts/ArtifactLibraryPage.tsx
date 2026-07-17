@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { useSWRConfig } from "swr";
+import useSWRInfinite from "swr/infinite";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import { toast } from "@/hooks/useToast";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
 import ConfirmationModalLayout from "@/refresh-components/layouts/ConfirmationModalLayout";
+import Modal from "@/refresh-components/Modal";
 import ArtifactPreviewModal from "@/app/craft/v1/artifacts/ArtifactPreviewModal";
 import ArtifactShareModal from "@/app/craft/v1/artifacts/ArtifactShareModal";
 import ArtifactVersionsModal from "@/app/craft/v1/artifacts/ArtifactVersionsModal";
@@ -18,11 +20,13 @@ import {
   removeSharedArtifact,
   PINNED_ARTIFACTS_URL,
   setArtifactLibraryPin,
+  updateArtifactLibraryItem,
 } from "@/app/craft/v1/artifacts/api";
 import { groupArtifactLibraryItems } from "@/app/craft/v1/artifacts/grouping";
 import type {
   ArtifactLibraryBulkAction,
   ArtifactLibraryItem,
+  ArtifactLibraryPage,
   ArtifactLibraryScope,
   ArtifactLibraryType,
 } from "@/app/craft/v1/artifacts/types";
@@ -38,10 +42,13 @@ import { IllustrationContent, SettingsLayouts } from "@opal/layouts";
 import SvgNoResult from "@opal/illustrations/no-result";
 import type { IconFunctionComponent } from "@opal/types";
 import {
+  SvgChevronDown,
+  SvgChevronRight,
   SvgCode,
   SvgDashboard,
   SvgDocFile,
   SvgDownload,
+  SvgEdit,
   SvgFile,
   SvgFileText,
   SvgFiles,
@@ -114,6 +121,7 @@ interface ArtifactItemViewProps {
   onPin: () => void;
   onHistory: () => void;
   onShare: () => void;
+  onRename: () => void;
   onRemoveShared: () => void;
 }
 
@@ -126,6 +134,7 @@ function ArtifactItemView({
   onPin,
   onHistory,
   onShare,
+  onRename,
   onRemoveShared,
 }: ArtifactItemViewProps) {
   const Icon = TYPE_ICONS[item.type];
@@ -149,13 +158,22 @@ function ArtifactItemView({
         onClick={onHistory}
       />
       {item.is_owner ? (
-        <Button
-          icon={SvgShare}
-          prominence="tertiary"
-          size="xs"
-          tooltip="Share"
-          onClick={onShare}
-        />
+        <>
+          <Button
+            icon={SvgEdit}
+            prominence="tertiary"
+            size="xs"
+            tooltip="Rename"
+            onClick={onRename}
+          />
+          <Button
+            icon={SvgShare}
+            prominence="tertiary"
+            size="xs"
+            tooltip="Share"
+            onClick={onShare}
+          />
+        </>
       ) : (
         <Button
           icon={SvgX}
@@ -241,13 +259,31 @@ function ArtifactItemView({
       }}
       className="group flex min-h-48 cursor-pointer flex-col rounded-08 border border-border-01 bg-background-01 p-4 outline-none transition-colors hover:bg-background-tint-01 focus-visible:bg-background-tint-01"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-08 bg-background-tint-02">
-          <Icon className="h-5 w-5 stroke-text-03" />
+      <div className="relative aspect-video w-full overflow-hidden rounded-08 bg-background-tint-02">
+        {item.type === "image" ? (
+          <img
+            className="h-full w-full object-cover"
+            alt={item.name}
+            src={artifactVersionDownloadUrl(
+              item.id,
+              item.latest_version.version_number
+            )}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Icon className="h-8 w-8 stroke-text-03" />
+          </div>
+        )}
+        {item.type === "image" ? (
+          <div className="absolute left-2 top-2 rounded-08 bg-background-01 p-1">
+            <Icon className="h-4 w-4 stroke-text-03" />
+          </div>
+        ) : null}
+        <div className="absolute right-2 top-2 rounded-08 bg-background-01 p-1">
+          {selection}
         </div>
-        {selection}
       </div>
-      <div className="mt-5 min-w-0 flex-1">
+      <div className="mt-4 min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <Text font="main-ui-body" color="text-05" maxLines={2}>
             {item.name}
@@ -294,8 +330,25 @@ export default function ArtifactLibraryPage() {
   const [versionsItem, setVersionsItem] = useState<ArtifactLibraryItem | null>(
     null
   );
+  const [renamingItem, setRenamingItem] = useState<ArtifactLibraryItem | null>(
+    null
+  );
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    new Set()
+  );
+
+  function toggleGroupCollapsed(key: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
   useEffect(() => {
     const stored = window.localStorage.getItem(VIEW_MODE_KEY);
@@ -307,21 +360,38 @@ export default function ArtifactLibraryPage() {
     window.localStorage.setItem(VIEW_MODE_KEY, nextMode);
   }
 
-  const url = useMemo(() => {
-    const params = new URLSearchParams({ scope });
-    if (query.trim()) params.set("query", query.trim());
-    if (typeFilter !== "all") params.set("artifact_type", typeFilter);
-    params.set("limit", "200");
-    return `/api/build/artifact-library?${params.toString()}`;
-  }, [query, scope, typeFilter]);
+  const getPageKey = useCallback(
+    (pageIndex: number, previousPage: ArtifactLibraryPage | null) => {
+      if (previousPage && !previousPage.next_cursor) return null;
+      const params = new URLSearchParams({ scope, limit: "50" });
+      if (query.trim()) params.set("query", query.trim());
+      if (typeFilter !== "all") params.set("artifact_type", typeFilter);
+      if (pageIndex > 0 && previousPage?.next_cursor) {
+        params.set("cursor", previousPage.next_cursor);
+      }
+      return `/api/build/artifact-library/page?${params.toString()}`;
+    },
+    [query, scope, typeFilter]
+  );
   const {
-    data = [],
+    data: pages,
     error,
     isLoading,
+    isValidating,
     mutate,
-  } = useSWR<ArtifactLibraryItem[]>(url, errorHandlingFetcher, {
+    setSize,
+    size,
+  } = useSWRInfinite<ArtifactLibraryPage>(getPageKey, errorHandlingFetcher, {
     keepPreviousData: true,
   });
+  const data = useMemo(() => {
+    const byId = new Map<string, ArtifactLibraryItem>();
+    for (const item of pages?.flatMap((page) => page.items) ?? []) {
+      byId.set(item.id, item);
+    }
+    return Array.from(byId.values());
+  }, [pages]);
+  const hasMore = pages?.at(-1)?.next_cursor !== null && pages !== undefined;
   const listedPreviewItem = data.find((item) => item.id === selectedArtifactId);
   const { data: fetchedPreviewItem, mutate: mutatePreviewItem } =
     useSWR<ArtifactLibraryItem>(
@@ -340,6 +410,21 @@ export default function ArtifactLibraryPage() {
   const sharedSelected = selectedItems.filter((item) => !item.is_owner);
   const allVisibleSelected =
     data.length > 0 && selectedIds.size === data.length;
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    void setSize(1);
+  }, [query, scope, setSize, typeFilter]);
+
+  useEffect(() => {
+    const visibleIds = new Set(data.map((item) => item.id));
+    setSelectedIds((current) => {
+      const next = new Set(
+        Array.from(current).filter((itemId) => visibleIds.has(itemId))
+      );
+      return next.size === current.size ? current : next;
+    });
+  }, [data]);
 
   function updatePreviewQuery(itemId: string | null) {
     const next = new URLSearchParams(searchParams.toString());
@@ -367,6 +452,32 @@ export default function ArtifactLibraryPage() {
       mutatePreviewItem(),
       mutateGlobal(PINNED_ARTIFACTS_URL),
     ]);
+  }
+
+  function openRename(item: ArtifactLibraryItem) {
+    setRenamingItem(item);
+    setRenameValue(item.name);
+  }
+
+  async function saveRename() {
+    if (!renamingItem) return;
+    setRenaming(true);
+    try {
+      await updateArtifactLibraryItem(renamingItem.id, {
+        name: renameValue.trim(),
+      });
+      setRenamingItem(null);
+      await refreshLibrary();
+      toast.success("Artifact renamed.");
+    } catch (renameError) {
+      toast.error(
+        renameError instanceof Error
+          ? renameError.message
+          : "Failed to rename artifact"
+      );
+    } finally {
+      setRenaming(false);
+    }
   }
 
   async function togglePin(item: ArtifactLibraryItem) {
@@ -485,8 +596,8 @@ export default function ArtifactLibraryPage() {
               >
                 <Tabs.List>
                   <Tabs.Trigger value="all">All</Tabs.Trigger>
-                  <Tabs.Trigger value="created">Created</Tabs.Trigger>
-                  <Tabs.Trigger value="shared">Shared</Tabs.Trigger>
+                  <Tabs.Trigger value="created">Created by you</Tabs.Trigger>
+                  <Tabs.Trigger value="shared">Shared with you</Tabs.Trigger>
                 </Tabs.List>
               </Tabs>
             </div>
@@ -590,14 +701,34 @@ export default function ArtifactLibraryPage() {
               >
                 Download
               </Button>
-              {ownedSelected.length > 0 ? (
+              {ownedSelected.some((item) => item.published_at === null) ? (
                 <Button
                   icon={SvgGlobe}
                   prominence="tertiary"
-                  onClick={() => void runBulk("publish", ownedSelected)}
+                  onClick={() =>
+                    void runBulk(
+                      "publish",
+                      ownedSelected.filter((item) => item.published_at === null)
+                    )
+                  }
                   disabled={bulkBusy}
                 >
                   Publish
+                </Button>
+              ) : null}
+              {ownedSelected.some((item) => item.published_at !== null) ? (
+                <Button
+                  icon={SvgX}
+                  prominence="tertiary"
+                  onClick={() =>
+                    void runBulk(
+                      "unpublish",
+                      ownedSelected.filter((item) => item.published_at !== null)
+                    )
+                  }
+                  disabled={bulkBusy}
+                >
+                  Unpublish
                 </Button>
               ) : null}
               {sharedSelected.length > 0 ? (
@@ -644,40 +775,69 @@ export default function ArtifactLibraryPage() {
           />
         ) : (
           <div className="flex w-full flex-col gap-8 pb-8">
-            {groups.map((group) => (
-              <section key={group.key} className="flex w-full flex-col gap-3">
-                <div className="flex items-baseline gap-2">
-                  <Text font="heading-h3" color="text-05">
-                    {group.title}
-                  </Text>
-                  <Text font="secondary-body" color="text-03">
-                    {String(group.items.length)}
-                  </Text>
-                </div>
-                <div
-                  className={
-                    viewMode === "grid"
-                      ? "grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
-                      : "w-full overflow-hidden rounded-08 border border-border-01"
-                  }
+            {groups.map((group) => {
+              const isCollapsed = collapsedGroups.has(group.key);
+              return (
+                <section key={group.key} className="flex w-full flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroupCollapsed(group.key)}
+                    className="flex items-center gap-2 self-start rounded-08 px-1 py-0.5 transition-colors hover:bg-background-tint-01"
+                    aria-expanded={!isCollapsed}
+                  >
+                    {isCollapsed ? (
+                      <SvgChevronRight className="h-4 w-4 stroke-text-03" />
+                    ) : (
+                      <SvgChevronDown className="h-4 w-4 stroke-text-03" />
+                    )}
+                    <Text font="heading-h3" color="text-05">
+                      {group.title}
+                    </Text>
+                    <Text font="secondary-body" color="text-03">
+                      {String(group.items.length)}
+                    </Text>
+                  </button>
+                  {isCollapsed ? null : (
+                    <div
+                      className={
+                        viewMode === "grid"
+                          ? "grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
+                          : "w-full overflow-hidden rounded-08 border border-border-01"
+                      }
+                    >
+                      {group.items.map((item) => (
+                        <ArtifactItemView
+                          key={item.id}
+                          item={item}
+                          selected={selectedIds.has(item.id)}
+                          viewMode={viewMode}
+                          onOpen={() => updatePreviewQuery(item.id)}
+                          onSelect={(checked) =>
+                            toggleSelection(item.id, checked)
+                          }
+                          onPin={() => void togglePin(item)}
+                          onHistory={() => setVersionsItem(item)}
+                          onShare={() => setSharingItem(item)}
+                          onRename={() => openRename(item)}
+                          onRemoveShared={() => void removeShared(item)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              );
+            })}
+            {hasMore ? (
+              <div className="flex w-full justify-center">
+                <Button
+                  prominence="secondary"
+                  disabled={isValidating}
+                  onClick={() => void setSize(size + 1)}
                 >
-                  {group.items.map((item) => (
-                    <ArtifactItemView
-                      key={item.id}
-                      item={item}
-                      selected={selectedIds.has(item.id)}
-                      viewMode={viewMode}
-                      onOpen={() => updatePreviewQuery(item.id)}
-                      onSelect={(checked) => toggleSelection(item.id, checked)}
-                      onPin={() => void togglePin(item)}
-                      onHistory={() => setVersionsItem(item)}
-                      onShare={() => setSharingItem(item)}
-                      onRemoveShared={() => void removeShared(item)}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+                  {isValidating ? "Loading..." : "Load more"}
+                </Button>
+              </div>
+            ) : null}
           </div>
         )}
       </SettingsLayouts.Body>
@@ -694,6 +854,10 @@ export default function ArtifactLibraryPage() {
             updatePreviewQuery(null);
             setSharingItem(previewItem);
           }}
+          onRename={
+            previewItem.is_owner ? () => openRename(previewItem) : undefined
+          }
+          onPin={() => void togglePin(previewItem)}
         />
       ) : null}
       {sharingItem ? (
@@ -711,6 +875,46 @@ export default function ArtifactLibraryPage() {
           item={versionsItem}
           onClose={() => setVersionsItem(null)}
         />
+      ) : null}
+      {renamingItem ? (
+        <Modal open onOpenChange={(open) => !open && setRenamingItem(null)}>
+          <Modal.Content width="sm">
+            <Modal.Header
+              icon={SvgEdit}
+              title="Rename artifact"
+              description="Update the library name shown in lists, previews, and sharing dialogs."
+              onClose={() => setRenamingItem(null)}
+            />
+            <Modal.Body>
+              <div className="flex flex-col gap-2">
+                <Text color="text-04" font="main-ui-action">
+                  Name
+                </Text>
+                <InputTypeIn
+                  value={renameValue}
+                  onChange={(event) => setRenameValue(event.target.value)}
+                  placeholder="Artifact name"
+                  clearButton
+                />
+              </div>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button
+                prominence="secondary"
+                onClick={() => setRenamingItem(null)}
+                disabled={renaming}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void saveRename()}
+                disabled={renaming || !renameValue.trim()}
+              >
+                {renaming ? "Saving..." : "Save"}
+              </Button>
+            </Modal.Footer>
+          </Modal.Content>
+        </Modal>
       ) : null}
       {confirmDelete ? (
         <ConfirmationModalLayout

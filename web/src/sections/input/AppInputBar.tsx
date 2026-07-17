@@ -93,6 +93,8 @@ export interface AppInputBarProps {
   isMultiModelActive?: boolean;
   disabled: boolean;
   awaitingPreferredSelection?: boolean;
+  /** Overrides the default idle placeholder (e.g. "Start a chat in {space}"). */
+  placeholder?: string;
   ref?: React.Ref<AppInputBarHandle>;
   // Side panel tab reading
   tabReadingEnabled?: boolean;
@@ -119,6 +121,7 @@ const AppInputBar = React.memo(
     setPresentingDocument,
     disabled,
     awaitingPreferredSelection = false,
+    placeholder,
     ref,
     tabReadingEnabled,
     currentTabUrl,
@@ -957,7 +960,9 @@ const AppInputBar = React.memo(
                       }}
                       aria-multiline={true}
                       aria-disabled={disabled}
-                      aria-placeholder="How can I help you today?"
+                      aria-placeholder={
+                        placeholder ?? "How can I help you today?"
+                      }
                       data-placeholder={
                         queuedMessages.length > 0 && !message
                           ? "Press up to edit queued messages"
@@ -967,7 +972,7 @@ const AppInputBar = React.memo(
                               ? "Onyx is speaking..."
                               : isSearchMode
                                 ? "Search connected sources"
-                                : "How can I help you today?"
+                                : (placeholder ?? "How can I help you today?")
                       }
                       data-empty={!message ? "" : undefined}
                       onKeyDown={(event) => {

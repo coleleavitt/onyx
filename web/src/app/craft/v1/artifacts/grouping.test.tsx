@@ -32,37 +32,35 @@ function artifact(
   };
 }
 
+const monthTitle = (iso: string) =>
+  new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" }).format(
+    new Date(iso)
+  );
+
 describe("groupArtifactLibraryItems", () => {
-  it("places pinned items once and groups remaining items by recency", () => {
-    const groups = groupArtifactLibraryItems(
-      [
-        artifact("older-pinned", "2026-06-01T12:00:00Z", true),
-        artifact("today", "2026-07-10T09:00:00Z"),
-        artifact("week", "2026-07-06T09:00:00Z"),
-        artifact("earlier", "2026-06-20T09:00:00Z"),
-      ],
-      new Date("2026-07-10T15:00:00Z")
-    );
+  it("places pinned items first, then groups remaining items by month", () => {
+    const groups = groupArtifactLibraryItems([
+      artifact("older-pinned", "2026-05-01T12:00:00Z", true),
+      artifact("july-a", "2026-07-10T09:00:00Z"),
+      artifact("july-b", "2026-07-02T09:00:00Z"),
+      artifact("june", "2026-06-20T09:00:00Z"),
+    ]);
 
     expect(groups.map((group) => group.title)).toEqual([
       "Pinned",
-      "Today",
-      "Previous 7 days",
-      "Earlier",
+      monthTitle("2026-07-10T09:00:00Z"),
+      monthTitle("2026-06-20T09:00:00Z"),
     ]);
     expect(
       groups.flatMap((group) => group.items.map((item) => item.id))
-    ).toEqual(["older-pinned", "today", "week", "earlier"]);
+    ).toEqual(["older-pinned", "july-a", "july-b", "june"]);
   });
 
-  it("sorts each group by most recently updated", () => {
-    const [group] = groupArtifactLibraryItems(
-      [
-        artifact("first", "2026-07-10T08:00:00Z"),
-        artifact("second", "2026-07-10T12:00:00Z"),
-      ],
-      new Date("2026-07-10T15:00:00Z")
-    );
+  it("sorts each month group by most recently updated", () => {
+    const [group] = groupArtifactLibraryItems([
+      artifact("first", "2026-07-02T08:00:00Z"),
+      artifact("second", "2026-07-10T12:00:00Z"),
+    ]);
 
     expect(group?.items.map((item) => item.id)).toEqual(["second", "first"]);
   });

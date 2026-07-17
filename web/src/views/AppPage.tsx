@@ -53,17 +53,19 @@ import FederatedOAuthModal from "@/components/chat/FederatedOAuthModal";
 import ChatScrollContainer, {
   ChatScrollContainerHandle,
 } from "@/sections/chat/ChatScrollContainer";
+import ProjectAccessGate from "@/sections/projects/ProjectAccessGate";
 import ProjectContextPanel from "@/sections/projects/ProjectContextPanel";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import { getProjectTokenCount } from "@/lib/projects/svc";
 import ProjectChatSessionList from "@/sections/projects/ProjectChatSessionList";
+
 import { cn } from "@opal/utils";
 import Suggestions from "@/sections/Suggestions";
 import OnboardingFlow from "@/sections/onboarding/OnboardingFlow";
 import { OnboardingStep } from "@/interfaces/onboarding";
 import { useShowOnboarding } from "@/hooks/useShowOnboarding";
-import { SvgChevronDown, SvgFileText } from "@opal/icons";
-import { Button, Spacer } from "@opal/components";
+import { SvgChevronDown, SvgFileText, SvgSidebar } from "@opal/icons";
+import { Button, Spacer, Tabs } from "@opal/components";
 import { IllustrationContent, RootLayout } from "@opal/layouts";
 import { SvgNotFound, SvgNoAccess } from "@opal/illustrations";
 import useAppFocus from "@/hooks/useAppFocus";
@@ -154,9 +156,16 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
     setCurrentMessageFiles,
     currentProjectId,
     currentProjectDetails,
+    currentProjectState,
     lastFailedFiles,
     clearLastFailedFiles,
   } = useProjectsContext();
+
+  const isProjectReady =
+    !appFocus.isProject() || currentProjectState.status === "ready";
+  const canUseProjectData = appFocus.isProject()
+    ? currentProjectState.status === "ready"
+    : true;
 
   // When changing from project chat to main chat (or vice-versa), clear forced tools
   const { setForcedToolIds } = useForcedTools();
@@ -300,6 +309,8 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
 
   const scrollContainerRef = useRef<ChatScrollContainerHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  // Collapse state for the persistent Space (project) detail right panel.
+  const [projectPanelCollapsed, setProjectPanelCollapsed] = useState(false);
 
   // Reset scroll button when session changes
   useEffect(() => {
@@ -333,10 +344,10 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
 
   // Equivalent to `loadNewPageLogic`
   useEffect(() => {
-    if (searchParams?.get(SEARCH_PARAM_NAMES.SEND_ON_LOAD)) {
-      processSearchParamsAndSubmitMessage(searchParams.toString());
-    }
-  }, [searchParams, router]);
+    if (!searchParams?.get(SEARCH_PARAM_NAMES.SEND_ON_LOAD)) return;
+    if (appFocus.isProject() && !isProjectReady) return;
+    processSearchParamsAndSubmitMessage(searchParams.toString());
+  }, [appFocus, isProjectReady, searchParams, router]);
 
   useEffect(() => {
     window.addEventListener("message", loadNewPageLogic);
@@ -667,7 +678,11 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
   useEffect(() => {
     let cancelled = false;
     async function run() {
-      if (!currentChatSessionId && currentProjectId !== null) {
+      if (
+        !currentChatSessionId &&
+        currentProjectId !== null &&
+        canUseProjectData
+      ) {
         try {
           const total = await getProjectTokenCount(currentProjectId);
           if (!cancelled) setProjectContextTokenCount(total || 0);
@@ -682,7 +697,12 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [currentChatSessionId, currentProjectId, currentProjectDetails?.files]);
+  }, [
+    canUseProjectData,
+    currentChatSessionId,
+    currentProjectId,
+    currentProjectDetails?.files,
+  ]);
 
   // handle error case where no assistants are available
   // Only show this after agents have loaded to prevent flash during initial load
@@ -751,20 +771,45 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
 
       <FederatedOAuthModal />
 
-      {!(noAgents && !isLoadingAgents) && retrievalEnabled && !isMobile && (
+      {!(noAgents && !isLoadingAgents) &&
+        retrievalEnabled &&
+        !isMobile &&
+        !appFocus.isProject() && (
+          <RootLayout.RightPanel>
+            <div
+              className={cn(
+                "overflow-hidden transition-all duration-300 ease-in-out h-full",
+                documentSidebarVisible ? "w-100" : "w-0"
+              )}
+            >
+              <DocumentsSidebar
+                setPresentingDocument={setPresentingDocument}
+                modal={false}
+                closeSidebar={handleDesktopDocumentSidebarClose}
+                selectedDocuments={selectedDocuments}
+              />
+            </div>
+          </RootLayout.RightPanel>
+        )}
+
+      {/* Space (project) detail panel — desktop persistent right column.
+          Mutually exclusive with the DocumentsSidebar panel above via appFocus
+          so only one RootLayout.RightPanel ever holds the singleton slot. */}
+      {appFocus.isProject() && isProjectReady && !isMobile && (
         <RootLayout.RightPanel>
           <div
             className={cn(
-              "overflow-hidden transition-all duration-300 ease-in-out h-full",
-              documentSidebarVisible ? "w-100" : "w-0"
+              "overflow-hidden transition-all duration-300 ease-in-out h-full border-l border-border-01",
+              projectPanelCollapsed ? "w-0" : "w-96"
             )}
           >
-            <DocumentsSidebar
-              setPresentingDocument={setPresentingDocument}
-              modal={false}
-              closeSidebar={handleDesktopDocumentSidebarClose}
-              selectedDocuments={selectedDocuments}
-            />
+            <div className="w-96 h-full overflow-y-auto p-4">
+              <ProjectContextPanel
+                projectTokenCount={projectContextTokenCount}
+                availableContextTokens={availableContextTokens}
+                setPresentingDocument={setPresentingDocument}
+              />
+            </div>
           </div>
         </RootLayout.RightPanel>
       )}
@@ -865,16 +910,23 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                     )}
                   </Fade>
 
-                  {/* ProjectUI */}
-                  {appFocus.isProject() && (
-                    <div className="w-full max-h-[50vh] overflow-y-auto overscroll-y-none">
-                      <ProjectContextPanel
-                        projectTokenCount={projectContextTokenCount}
-                        availableContextTokens={availableContextTokens}
-                        setPresentingDocument={setPresentingDocument}
-                      />
-                    </div>
-                  )}
+                  {/* ProjectUI — access gate (all sizes) + inline context panel
+                      on mobile only. On desktop the context panel lives in the
+                      right RootLayout panel. */}
+                  {appFocus.isProject() &&
+                    (!isProjectReady ? (
+                      <div className="h-full w-full">
+                        <ProjectAccessGate />
+                      </div>
+                    ) : isMobile ? (
+                      <div className="w-full max-h-[50vh] overflow-y-auto overscroll-y-none">
+                        <ProjectContextPanel
+                          projectTokenCount={projectContextTokenCount}
+                          availableContextTokens={availableContextTokens}
+                          setPresentingDocument={setPresentingDocument}
+                        />
+                      </div>
+                    ) : null)}
 
                   {/* WelcomeMessageUI */}
                   <Fade
@@ -987,43 +1039,53 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                           />
                         </div>
                       )}
-                      <AppInputBar
-                        ref={chatInputBarRef}
-                        deepResearchEnabled={
-                          deepResearchEnabledForCurrentWorkflow
-                        }
-                        toggleDeepResearch={toggleDeepResearch}
-                        isMultiModelActive={multiModel.isMultiModelActive}
-                        filterManager={filterManager}
-                        llmManager={llmManager}
-                        initialMessage={
-                          searchParams?.get(SEARCH_PARAM_NAMES.USER_PROMPT) ||
-                          ""
-                        }
-                        stopGenerating={stopGenerating}
-                        onSubmit={handleAppInputBarSubmit}
-                        chatState={currentChatState}
-                        currentSessionFileTokenCount={
-                          currentChatSessionId
-                            ? currentSessionFileTokenCount
-                            : projectContextTokenCount
-                        }
-                        availableContextTokens={availableContextTokens}
-                        selectedAgent={selectedAgent || liveAgent}
-                        handleFileUpload={handleMessageSpecificFileUpload}
-                        setPresentingDocument={setPresentingDocument}
-                        // Intentionally enabled during name-only onboarding (showOnboarding=false)
-                        // since LLM providers are already configured and the user can chat.
-                        disabled={
-                          (!llmManager.isLoadingProviders &&
-                            llmManager.hasAnyProvider === false) ||
-                          (showOnboarding &&
-                            !isLoadingOnboarding &&
-                            onboardingState.currentStep !==
-                              OnboardingStep.Complete)
-                        }
-                        awaitingPreferredSelection={awaitingPreferredSelection}
-                      />
+                      {isProjectReady && (
+                        <AppInputBar
+                          ref={chatInputBarRef}
+                          placeholder={
+                            appFocus.isProject() &&
+                            currentProjectDetails?.project?.name
+                              ? `Start a chat in ${currentProjectDetails.project.name}`
+                              : undefined
+                          }
+                          deepResearchEnabled={
+                            deepResearchEnabledForCurrentWorkflow
+                          }
+                          toggleDeepResearch={toggleDeepResearch}
+                          isMultiModelActive={multiModel.isMultiModelActive}
+                          filterManager={filterManager}
+                          llmManager={llmManager}
+                          initialMessage={
+                            searchParams?.get(SEARCH_PARAM_NAMES.USER_PROMPT) ||
+                            ""
+                          }
+                          stopGenerating={stopGenerating}
+                          onSubmit={handleAppInputBarSubmit}
+                          chatState={currentChatState}
+                          currentSessionFileTokenCount={
+                            currentChatSessionId
+                              ? currentSessionFileTokenCount
+                              : projectContextTokenCount
+                          }
+                          availableContextTokens={availableContextTokens}
+                          selectedAgent={selectedAgent || liveAgent}
+                          handleFileUpload={handleMessageSpecificFileUpload}
+                          setPresentingDocument={setPresentingDocument}
+                          // Intentionally enabled during name-only onboarding (showOnboarding=false)
+                          // since LLM providers are already configured and the user can chat.
+                          disabled={
+                            (!llmManager.isLoadingProviders &&
+                              llmManager.hasAnyProvider === false) ||
+                            (showOnboarding &&
+                              !isLoadingOnboarding &&
+                              onboardingState.currentStep !==
+                                OnboardingStep.Complete)
+                          }
+                          awaitingPreferredSelection={
+                            awaitingPreferredSelection
+                          }
+                        />
+                      )}
                       <div
                         className={cn(
                           "transition-all duration-150 ease-in-out overflow-hidden",
@@ -1045,10 +1107,39 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                         <Spacer rem={1.5} />
                       </>
                     )}
-                  {/* ProjectChatSessionList */}
-                  {appFocus.isProject() && (
+                  {/* Sessions / Memory tabs (center-left project column) */}
+                  {appFocus.isProject() && isProjectReady && (
                     <div className="w-full max-w-(--app-page-main-content-width) h-full overflow-y-auto overscroll-y-none mx-auto">
-                      <ProjectChatSessionList />
+                      <Tabs
+                        key={currentProjectId ?? "project"}
+                        variant="pill"
+                        defaultValue="sessions"
+                      >
+                        <Tabs.List
+                          rightChildren={
+                            !isMobile ? (
+                              <Button
+                                icon={SvgSidebar}
+                                prominence="tertiary"
+                                size="sm"
+                                onClick={() =>
+                                  setProjectPanelCollapsed((prev) => !prev)
+                                }
+                                tooltip={
+                                  projectPanelCollapsed
+                                    ? "Show space details"
+                                    : "Hide space details"
+                                }
+                              />
+                            ) : undefined
+                          }
+                        >
+                          <Tabs.Trigger value="sessions">Sessions</Tabs.Trigger>
+                        </Tabs.List>
+                        <Tabs.Content value="sessions">
+                          <ProjectChatSessionList />
+                        </Tabs.Content>
+                      </Tabs>
                     </div>
                   )}
 

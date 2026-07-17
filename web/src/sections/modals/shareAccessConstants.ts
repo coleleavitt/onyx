@@ -21,12 +21,12 @@ export const PERMISSION_OPTIONS: SharePermissionMenuOption<ShareAccessPermission
 export const SCOPE_OPTIONS: SharePermissionMenuOption<ShareScope>[] = [
   {
     icon: SvgLock,
-    label: "Only those invited",
+    label: "Only people with access can view",
     value: "PRIVATE",
   },
   {
     icon: SvgOrganization,
-    label: "Anyone in your organization",
+    label: "Anyone in your organization can view",
     value: "PUBLIC",
   },
 ];

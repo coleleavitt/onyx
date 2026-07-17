@@ -79,15 +79,16 @@ export default function WorkflowCatalogPage() {
       values.push(workflow);
       groups.set(workflow.category, values);
     }
-    return [...groups.entries()];
+    return Array.from(groups.entries());
   }, [filtered, recommended]);
 
   async function togglePin(workflow: WorkflowCatalogItem) {
     setBusyId(workflow.id);
     const wasPinned = pinnedIds.has(workflow.id);
+    const currentPinnedIds = Array.from(pinnedIds);
     const optimisticIds = wasPinned
-      ? [...pinnedIds].filter((id) => id !== workflow.id)
-      : [...pinnedIds, workflow.id];
+      ? currentPinnedIds.filter((id) => id !== workflow.id)
+      : [...currentPinnedIds, workflow.id];
     await mutate({ workflow_ids: optimisticIds }, { revalidate: false });
     try {
       if (wasPinned) await unpinWorkflow(workflow.id);

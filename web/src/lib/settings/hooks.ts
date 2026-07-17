@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useMemo } from "react";
+
 import { usePathname } from "next/navigation";
 import useCCPairs from "@/hooks/useCCPairs";
 import { errorHandlingFetcher } from "@/lib/fetcher";
@@ -17,6 +17,14 @@ import {
 import { enterpriseFeaturesAvailable } from "@/lib/settings/featureAvailability";
 
 const SETTINGS_ERROR_RETRY_INTERVAL = 5_000;
+
+// Stable per page load. The logo/brand endpoints have static URLs, so without a
+// version param the browser would cache them across admin uploads; with a param
+// derived from `Date.now()` on every render the `<img src>` changed constantly,
+// re-fetching and flashing the logo on each navigation/fold. A module-level
+// constant keeps the URL identical across renders and client navigations (no
+// re-fetch flash) while still refreshing on a full page reload.
+const LOGO_CACHE_BUSTER = Date.now();
 
 const DEFAULT_SETTINGS: Settings = {
   auto_scroll: true,
@@ -96,13 +104,7 @@ export function useSettings(): AppSettings {
     }
   );
 
-  // Cache-buster: the logo endpoint URL never changes, so the browser serves
-  // a cached image even after an admin uploads a new logo. Regenerating this
-  // timestamp whenever the enterprise settings reference changes forces a
-  // re-fetch. We use referential equality on the SWR data (compare: a===b),
-  // so this only fires when SWR actually receives new enterprise data.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const logoBuster = useMemo(() => Date.now(), [enterprise]);
+  const logoBuster = LOGO_CACHE_BUSTER;
 
   return {
     ...core,

@@ -95,6 +95,7 @@ from onyx.secondary_llm_flows.source_filter import SearchCycle
 from onyx.server.query_and_chat.placement import Placement
 from onyx.server.query_and_chat.streaming_models import Packet
 from onyx.server.query_and_chat.streaming_models import SearchToolDocumentsDelta
+from onyx.server.query_and_chat.streaming_models import SearchToolError
 from onyx.server.query_and_chat.streaming_models import SearchToolFilterDelta
 from onyx.server.query_and_chat.streaming_models import SearchToolQueriesDelta
 from onyx.server.query_and_chat.streaming_models import SearchToolStart
@@ -154,6 +155,19 @@ def _build_scope_note(
         f"(This internal search covered only: {searched}. Queries run: {queries_str}. "
         "Call internal_search again with different query terms to keep searching.)"
     )
+
+
+def _build_no_results_note(scope_note: str) -> str:
+    base_note = (
+        "The internal_search tool completed successfully but found no matching "
+        "internal documents for the queries and filters used. Do not say the "
+        "tool failed. If the user asked about company, organization, team, or "
+        "otherwise internal-specific information, do not answer from public "
+        "knowledge or generic assumptions. Say that no matching internal "
+        "documents were found, and ask the user for the relevant source or for "
+        "permission to try different internal-search query terms."
+    )
+    return f"{base_note} {scope_note}" if scope_note else base_note
 
 
 def deduplicate_queries(
@@ -983,7 +997,31 @@ class SearchTool(Tool[SearchToolOverrideKwargs]):
             search_weights.append(ORIGINAL_QUERY_WEIGHT)
 
         # Run all searches in parallel (Vespa queries + Slack)
-        all_search_results = run_functions_tuples_in_parallel(search_functions)
+        try:
+            all_search_results = run_functions_tuples_in_parallel(search_functions)
+        except Exception as e:
+            # Retrieval infrastructure failed (embedding model server or document
+            # index unreachable). Surface a real error instead of letting the UI
+            # render a misleading "No results found" empty state.
+            self.emitter.emit(
+                Packet(
+                    placement=placement,
+                    obj=SearchToolError(
+                        message="Internal search is temporarily unavailable."
+                    ),
+                )
+            )
+            raise ToolCallException(
+                message=f"Internal search retrieval failed: {e}",
+                llm_facing_message=(
+                    "Internal search failed due to a search infrastructure error, "
+                    "so no internal documents could be checked. Tell the user that "
+                    "internal search is temporarily unavailable and suggest trying "
+                    "again shortly. Do not answer company-, organization-, or "
+                    "team-specific questions from public knowledge or generic "
+                    "assumptions."
+                ),
+            ) from e
         if not all_search_results:
             all_search_results = []
 
@@ -1003,7 +1041,7 @@ class SearchTool(Tool[SearchToolOverrideKwargs]):
             logger.info("Search tool - no results found, returning empty response")
             empty_response, _ = convert_inference_sections_to_llm_string(
                 top_sections=[],
-                note=scope_note or None,
+                note=_build_no_results_note(scope_note),
             )
             return ToolResponse(
                 rich_response=SearchDocsResponse(

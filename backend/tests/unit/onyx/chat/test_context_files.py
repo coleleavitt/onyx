@@ -352,12 +352,29 @@ class TestExtractContextFiles:
             file_type=ChatFileType.TABULAR,
         )
         chat_history_file_id = ctx.tool_metadata.file_id
+        assert "read_file" in ctx.message.message
+        assert "file_reader" not in ctx.message.message
 
         # Both pathways must produce the same ID for the LLM
         assert tool_metadata_file_id == chat_history_file_id, (
             f"File ID mismatch: extract_context_files uses '{tool_metadata_file_id}' "
             f"but build_file_context uses '{chat_history_file_id}'."
         )
+
+
+    def test_tabular_content_is_injected_when_extracted_text_is_available(self) -> None:
+        from onyx.chat.chat_utils import build_file_context
+
+        ctx = build_file_context(
+            tool_file_id=str(uuid4()),
+            filename="data.xlsx",
+            file_type=ChatFileType.TABULAR,
+            content_text="Advisor,Amount\nStewart Willis,40216752.33",
+            token_count=12,
+        )
+
+        assert "Stewart Willis,40216752.33" in ctx.message.message
+        assert "read_file" not in ctx.message.message
 
     @patch("onyx.chat.process_message.DISABLE_VECTOR_DB", True)
     def test_overflow_with_vector_db_disabled_provides_tool_metadata(self) -> None:

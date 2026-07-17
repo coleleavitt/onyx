@@ -6,6 +6,7 @@ import zipfile
 from datetime import datetime
 from datetime import timezone
 from io import BytesIO
+from uuid import UUID
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -26,6 +27,7 @@ from onyx.db.models import User
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_processing.extract_file_text import count_pdf_embedded_images
+from onyx.file_store.file_store import get_default_file_store
 from onyx.server.features.build.configs import USER_LIBRARY_MAX_FILE_SIZE_BYTES
 from onyx.server.features.build.configs import USER_LIBRARY_MAX_FILES_PER_UPLOAD
 from onyx.server.features.build.configs import USER_LIBRARY_MAX_TOTAL_SIZE_BYTES
@@ -37,9 +39,12 @@ from onyx.server.features.build.db.user_library import get_or_create_craft_conne
 from onyx.server.features.build.db.user_library import get_user_storage_bytes
 from onyx.server.features.build.db.user_library import list_user_files
 from onyx.server.features.build.db.user_library import store_user_file
+from onyx.server.features.build.models import UploadResponse as SessionUploadResponse
 from onyx.server.features.build.sandbox.user_library import (
     sync_user_library_to_active_sandboxes,
 )
+from onyx.server.features.build.session.manager import SessionManager
+from onyx.server.features.build.session.manager import UploadLimitExceededError
 from onyx.server.features.build.utils import sanitize_filename as api_sanitize_filename
 from onyx.utils.logger import setup_logger
 
@@ -74,6 +79,11 @@ class UploadResponse(BaseModel):
 class DeleteFileResponse(BaseModel):
     success: bool
     deleted: str
+    deleted_count: int = 1
+
+
+class AttachLibraryFileRequest(BaseModel):
+    session_id: str
 
 
 def _looks_like_pdf(filename: str, content_type: str | None) -> bool:
@@ -479,6 +489,58 @@ def create_directory(
     )
 
 
+@router.post("/files/{document_id}/attach")
+def attach_library_file(
+    document_id: str,
+    request: AttachLibraryFileRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SessionUploadResponse:
+    doc = fetch_user_file_for_user(db_session, document_id, user.id)
+    metadata = doc.doc_metadata or {}
+    if metadata.get("is_directory"):
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Directories cannot be attached.")
+    file_id = doc.link or metadata.get("file_store_id")
+    if not file_id:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "File blob not found.")
+
+    file_io = get_default_file_store().read_file(file_id, use_tempfile=True)
+    try:
+        content = file_io.read()
+    finally:
+        file_io.close()
+    if not content:
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Empty files cannot be attached.")
+    if len(content) > USER_LIBRARY_MAX_FILE_SIZE_BYTES:
+        raise OnyxError(
+            OnyxErrorCode.PAYLOAD_TOO_LARGE,
+            f"File exceeds maximum size of {USER_LIBRARY_MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB",
+        )
+
+    safe_filename = api_sanitize_filename((doc.semantic_id or doc.id).split("/")[-1])
+    try:
+        relative_path, size_bytes = SessionManager(db_session).upload_file(
+            session_id=UUID(request.session_id),
+            user_id=user.id,
+            filename=safe_filename,
+            content=content,
+        )
+    except UploadLimitExceededError as error:
+        raise OnyxError(OnyxErrorCode.RATE_LIMITED, str(error)) from error
+    except ValueError as error:
+        message = str(error)
+        if "not found" in message.lower():
+            raise OnyxError(OnyxErrorCode.NOT_FOUND, message) from error
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, message) from error
+
+    sync_user_library_to_active_sandboxes(user.id, db_session)
+    return SessionUploadResponse(
+        filename=relative_path.split("/")[-1],
+        path=relative_path,
+        size_bytes=size_bytes,
+    )
+
+
 @router.delete("/files/{document_id}")
 def delete_file(
     document_id: str,
@@ -487,9 +549,15 @@ def delete_file(
 ) -> DeleteFileResponse:
     """Delete a file from the file store and the document table."""
     doc = fetch_user_file_for_user(db_session, document_id, user.id)
-    delete_user_file(db_session, doc)
+    is_directory = bool((doc.doc_metadata or {}).get("is_directory"))
+    blob_ids = delete_user_file(db_session, doc, user.id)
     db_session.commit()
+    cleanup_old_blobs(blob_ids)
 
     sync_user_library_to_active_sandboxes(user.id, db_session)
 
-    return DeleteFileResponse(success=True, deleted=document_id)
+    return DeleteFileResponse(
+        success=True,
+        deleted=document_id,
+        deleted_count=len(blob_ids) + (1 if is_directory else 0),
+    )

@@ -2,6 +2,7 @@ import { parseErrorDetail } from "@/lib/fetcher";
 import type {
   ArtifactLibraryBulkAction,
   ArtifactLibraryItem,
+  ArtifactLibraryPage,
 } from "@/app/craft/v1/artifacts/types";
 
 const BASE_URL = "/api/build/artifact-library";
@@ -53,6 +54,26 @@ export async function saveArtifactVersion(
   );
 }
 
+export async function fetchArtifactLibraryPage(input: {
+  scope?: string;
+  query?: string;
+  artifactType?: string;
+  limit?: number;
+  cursor?: string | null;
+}): Promise<ArtifactLibraryPage> {
+  const params = new URLSearchParams({
+    scope: input.scope ?? "all",
+    limit: String(input.limit ?? 50),
+  });
+  if (input.query?.trim()) params.set("query", input.query.trim());
+  if (input.artifactType) params.set("artifact_type", input.artifactType);
+  if (input.cursor) params.set("cursor", input.cursor);
+  return checkedJson<ArtifactLibraryPage>(
+    await fetch(`${BASE_URL}/page?${params.toString()}`),
+    "Failed to fetch artifact library"
+  );
+}
+
 export async function updateArtifactLibraryItem(
   itemId: string,
   update: { name?: string; published?: boolean }
@@ -94,14 +115,17 @@ export async function removeSharedArtifact(itemId: string): Promise<void> {
 
 export async function updateArtifactLibraryShares(
   itemId: string,
-  userIds: string[],
-  groupIds: number[]
+  update: { userIds: string[]; groupIds: number[]; published?: boolean }
 ): Promise<ArtifactLibraryItem> {
   return checkedJson<ArtifactLibraryItem>(
     await fetch(`${BASE_URL}/${itemId}/shares`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_ids: userIds, group_ids: groupIds }),
+      body: JSON.stringify({
+        user_ids: update.userIds,
+        group_ids: update.groupIds,
+        published: update.published,
+      }),
     }),
     "Failed to update artifact sharing"
   );

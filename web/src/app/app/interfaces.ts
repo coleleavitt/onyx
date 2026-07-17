@@ -136,6 +136,7 @@ export interface ChatSession {
   id: string;
   name: string;
   persona_id: number;
+  user_id?: string | null;
   time_created: string;
   time_updated: string;
   shared_status: ChatSessionSharedStatus;

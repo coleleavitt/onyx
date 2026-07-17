@@ -11,11 +11,13 @@ import {
   type ReactNode,
 } from "react";
 import {
+  attachLibraryFile as attachLibraryFileApi,
   uploadFile as uploadFileApi,
   deleteFile as deleteFileApi,
   fetchDirectoryListing,
 } from "@/app/craft/services/apiServices";
 import { useBuildSessionStore } from "@/app/craft/hooks/useBuildSessionStore";
+import type { LibraryEntry } from "@/app/craft/types/user-library";
 
 /**
  * Upload File Status - tracks the state of files being uploaded
@@ -45,6 +47,8 @@ export interface BuildFile {
   created_at: string;
   // Original File object for upload
   file?: File;
+  // Library document ID for queued direct attachments
+  libraryDocumentId?: string;
   // Path in sandbox after upload (e.g., "attachments/doc.pdf")
   path?: string;
   // Error message if upload failed
@@ -158,6 +162,16 @@ const createOptimisticFile = (file: File): BuildFile => {
   };
 };
 
+const createOptimisticLibraryFile = (entry: LibraryEntry): BuildFile => ({
+  id: `library_${entry.id}`,
+  name: entry.name,
+  status: UploadFileStatus.UPLOADING,
+  file_type: entry.mime_type || "application/octet-stream",
+  size: entry.file_size || 0,
+  created_at: new Date().toISOString(),
+  libraryDocumentId: entry.id,
+});
+
 /**
  * Error types for better error handling
  */
@@ -233,6 +247,11 @@ interface UploadFilesContextValue {
    * - If no session: marks as PENDING (auto-uploads when session available)
    */
   uploadFiles: (files: File[]) => Promise<BuildFile[]>;
+
+  /**
+   * Attach a file from the persistent user library to the active session.
+   */
+  attachLibraryFile: (entry: LibraryEntry) => Promise<BuildFile>;
 
   /**
    * Remove a file from the input bar.
@@ -322,7 +341,9 @@ export function UploadFilesProvider({ children }: UploadFilesProviderProps) {
       let pendingFiles: BuildFile[] = [];
       setCurrentMessageFiles((prev) => {
         pendingFiles = prev.filter(
-          (f) => f.status === UploadFileStatus.PENDING && f.file
+          (f) =>
+            f.status === UploadFileStatus.PENDING &&
+            (f.file !== undefined || f.libraryDocumentId !== undefined)
         );
         // Mark as uploading in the same state update to avoid race conditions
         if (pendingFiles.length > 0) {
@@ -344,7 +365,9 @@ export function UploadFilesProvider({ children }: UploadFilesProviderProps) {
         const results = await Promise.all(
           pendingFiles.map(async (file) => {
             try {
-              const result = await uploadFileApi(sessionId, file.file!);
+              const result = file.libraryDocumentId
+                ? await attachLibraryFileApi(file.libraryDocumentId, sessionId)
+                : await uploadFileApi(sessionId, file.file!);
               return { id: file.id, success: true as const, result };
             } catch (error) {
               const { message } = classifyError(error);
@@ -691,6 +714,63 @@ export function UploadFilesProvider({ children }: UploadFilesProviderProps) {
     [activeSessionId, currentMessageFiles, triggerFilesRefresh]
   );
 
+  const attachLibraryFile = useCallback(
+    async (entry: LibraryEntry): Promise<BuildFile> => {
+      if (entry.is_directory) {
+        return {
+          ...createOptimisticLibraryFile(entry),
+          status: UploadFileStatus.FAILED,
+          error: "Folders cannot be attached directly.",
+        };
+      }
+      if (currentMessageFiles.some((file) => file.libraryDocumentId === entry.id)) {
+        const existing = currentMessageFiles.find(
+          (file) => file.libraryDocumentId === entry.id
+        );
+        if (existing) return existing;
+      }
+
+      const optimisticFile = createOptimisticLibraryFile(entry);
+      setCurrentMessageFiles((prev) => [...prev, optimisticFile]);
+      const sessionId = activeSessionId;
+      if (!sessionId) {
+        const pending = { ...optimisticFile, status: UploadFileStatus.PENDING };
+        setCurrentMessageFiles((prev) =>
+          prev.map((file) => (file.id === optimisticFile.id ? pending : file))
+        );
+        return pending;
+      }
+
+      try {
+        const result = await attachLibraryFileApi(entry.id, sessionId);
+        const completed = {
+          ...optimisticFile,
+          status: UploadFileStatus.COMPLETED,
+          path: result.path,
+          name: result.filename,
+          size: result.size_bytes,
+        };
+        setCurrentMessageFiles((prev) =>
+          prev.map((file) => (file.id === optimisticFile.id ? completed : file))
+        );
+        triggerFilesRefresh(sessionId);
+        return completed;
+      } catch (error) {
+        const { message } = classifyError(error);
+        const failed = {
+          ...optimisticFile,
+          status: UploadFileStatus.FAILED,
+          error: message,
+        };
+        setCurrentMessageFiles((prev) =>
+          prev.map((file) => (file.id === optimisticFile.id ? failed : file))
+        );
+        return failed;
+      }
+    },
+    [activeSessionId, currentMessageFiles, triggerFilesRefresh]
+  );
+
   /**
    * Remove a file. Uses activeSessionId internally for sandbox deletion.
    */
@@ -779,6 +859,7 @@ export function UploadFilesProvider({ children }: UploadFilesProviderProps) {
       activeSessionId,
       setActiveSession,
       uploadFiles,
+      attachLibraryFile,
       removeFile,
       clearFiles,
       hasUploadingFiles,
@@ -789,6 +870,7 @@ export function UploadFilesProvider({ children }: UploadFilesProviderProps) {
       activeSessionId,
       setActiveSession,
       uploadFiles,
+      attachLibraryFile,
       removeFile,
       clearFiles,
       hasUploadingFiles,

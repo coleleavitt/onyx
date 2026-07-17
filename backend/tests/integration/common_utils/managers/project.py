@@ -1,6 +1,7 @@
 from typing import List
 
 from onyx.server.features.projects.models import CategorizedFilesSnapshot
+from onyx.server.features.projects.models import ProjectAccessStateSnapshot
 from onyx.server.features.projects.models import ProjectJoinRequestSnapshot
 from onyx.server.features.projects.models import ProjectSharingSnapshot
 from onyx.server.features.projects.models import UserFileSnapshot
@@ -15,11 +16,15 @@ class ProjectManager:
     def create(
         name: str,
         user_performing_action: DATestUser,
+        description: str | None = None,
     ) -> UserProjectSnapshot:
         """Create a new project via API."""
+        params = {"name": name}
+        if description is not None:
+            params["description"] = description
         response = client.post(
             f"{API_SERVER_URL}/user/projects/create",
-            params={"name": name},
+            params=params,
             headers=user_performing_action.headers,
         )
         response.raise_for_status()
@@ -62,6 +67,53 @@ class ProjectManager:
         )
         response.raise_for_status()
         return ProjectSharingSnapshot.model_validate(response.json())
+
+    @staticmethod
+    def get_access_state(
+        project_id: int,
+        user_performing_action: DATestUser,
+    ) -> ProjectAccessStateSnapshot | None:
+        response = client.get(
+            f"{API_SERVER_URL}/user/projects/{project_id}/access-state",
+            headers=user_performing_action.headers,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return ProjectAccessStateSnapshot.model_validate(response.json())
+
+    @staticmethod
+    def update(
+        project_id: int,
+        user_performing_action: DATestUser,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        include_description: bool = False,
+    ) -> UserProjectSnapshot:
+        body: dict[str, str | None] = {}
+        if name is not None:
+            body["name"] = name
+        if include_description:
+            body["description"] = description
+        response = client.patch(
+            f"{API_SERVER_URL}/user/projects/{project_id}",
+            json=body,
+            headers=user_performing_action.headers,
+        )
+        response.raise_for_status()
+        return UserProjectSnapshot.model_validate(response.json())
+
+    @staticmethod
+    def cancel_access_request(
+        project_id: int,
+        user_performing_action: DATestUser,
+    ) -> bool:
+        response = client.delete(
+            f"{API_SERVER_URL}/user/projects/{project_id}/request-access",
+            headers=user_performing_action.headers,
+        )
+        return response.status_code == 204
 
     @staticmethod
     def update_sharing(

@@ -40,6 +40,11 @@ export interface ArtifactLibraryItem {
   group_shares: Array<{ group_id: number; group_name: string }>;
 }
 
+export interface ArtifactLibraryPage {
+  items: ArtifactLibraryItem[];
+  next_cursor: string | null;
+}
+
 export type ArtifactLibraryBulkAction =
   | "pin"
   | "unpin"

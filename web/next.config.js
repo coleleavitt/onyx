@@ -9,6 +9,10 @@ const nextConfig = {
   output: "standalone",
   transpilePackages: ["@onyx-ai/opal", "@onyx-ai/shared"],
   typedRoutes: true,
+  // The dev server serves /_next/* only to same-origin requests; without these hosts a
+  // browser reaching the dev app through a tunnel gets 403s on every chunk and never
+  // hydrates. Dev-only — Next ignores this in production builds.
+  allowedDevOrigins: ["*.trycloudflare.com", "*.ngrok-free.app"],
   // NOTE: `reactCompiler` is set per-phase in module.exports below — enabled for
   // builds, disabled for the dev server. See the comment there for the rationale.
   // Pin the workspace root to this directory so Turbopack resolves modules

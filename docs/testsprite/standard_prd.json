@@ -1,0 +1,107 @@
+{
+  "meta": {
+    "project": "Onyx Regression Coverage",
+    "version": "1.0.0",
+    "prepared_by": "TestSprite",
+    "source_prd": "docs/testsprite/internal-tool-switching-prd.md"
+  },
+  "product_overview": "Regression coverage for Onyx chat, model picker, live LLM responses, MCP tools, authentication, settings navigation, command-menu search, and authenticated frontend-proxy API endpoints.",
+  "core_goals": [
+    "Verify live chat works with a visible working model.",
+    "Ensure broken GPT-5.6 family models stay hidden from the end-user model picker.",
+    "Track MCP tool switching, credential gating, and forced-invocation behavior in TestSprite.",
+    "Catch regressions in login, settings navigation, chat input, command-menu search, and core API endpoints.",
+    "Keep tests runnable from the repository through existing Playwright and TestSprite command wrappers."
+  ],
+  "key_features": [
+    "Model picker visibility and default model validation",
+    "Live LLM streaming response validation",
+    "Multi-model picker payload validation",
+    "Authenticated frontend-proxy API smoke tests",
+    "MCP tool switching and credential gating",
+    "Login and settings navigation smoke coverage",
+    "Chat input behavior coverage",
+    "Chat search command-menu coverage"
+  ],
+  "user_flow_summary": [
+    "User logs in and lands in chat.",
+    "User selects GPT-5.5 from the model picker and receives a live streamed response.",
+    "User searches the model picker and does not see GPT-5.6 Sol, Terra, or Luna.",
+    "User adds a second model and sends a multi-model chat request.",
+    "User sends chat input through Enter, send button, empty-input guards, and long message paths.",
+    "User opens the chat command menu and searches recent chats/projects.",
+    "Admin opens Language Models, Security, and Users settings pages.",
+    "Admin-configured MCP tools and per-user credentials remain usable through the existing Playwright flows."
+  ],
+  "validation_criteria": [
+    "GPT-5.5 is the default visible model.",
+    "gpt-5.6-sol, gpt-5.6-terra, and gpt-5.6-luna are hidden.",
+    "A live GPT-5.5 prompt streams non-empty message_delta packets and renders on the page.",
+    "Multi-model chat sends llm_overrides with GPT-5.5 plus the added model.",
+    "Core authenticated /api endpoints return valid responses through localhost:3000.",
+    "Login, settings, chat input, and command-menu smoke tests pass natively and through TestSprite.",
+    "The only known red TestSprite test is MCP forced invocation when the API server is not running with INTEGRATION_TESTS_MODE=true."
+  ],
+  "features": [
+    {
+      "name": "Model Picker Guardrails",
+      "description": "Default model and visible-model validation for end-user chat.",
+      "files": [
+        "web/tests/e2e/chat/model_visibility_5_6.spec.ts",
+        "web/tests/e2e/chat/live_llm_model_picker.spec.ts",
+        "web/tests/e2e/chat/multi_model_picker_payload.spec.ts"
+      ]
+    },
+    {
+      "name": "Authenticated API Smoke",
+      "description": "Frontend-proxy API coverage for user/admin endpoints and model visibility state.",
+      "files": [
+        "testsprite_tests/onyx_api_smoke.py"
+      ]
+    },
+    {
+      "name": "MCP Tool Switching",
+      "description": "Default-agent MCP UI switching, forced invocation, OAuth opt-in, and per-user credential template coverage.",
+      "files": [
+        "web/tests/e2e/mcp/default-agent-mcp.spec.ts",
+        "web/tests/e2e/mcp/mcp_per_user_key.spec.ts",
+        "web/tests/e2e/mcp/mcp_oauth_flow.spec.ts"
+      ]
+    },
+    {
+      "name": "Authentication and Settings Navigation",
+      "description": "Browser smoke coverage for login and high-value settings/admin pages.",
+      "files": [
+        "web/tests/e2e/auth/auth_navigation_smoke.spec.ts",
+        "web/tests/e2e/settings/settings_navigation_smoke.spec.ts"
+      ]
+    },
+    {
+      "name": "Chat UX Smoke",
+      "description": "Core chat input submission and command-menu search coverage.",
+      "files": [
+        "web/tests/e2e/chat/input_bar_behaviors.spec.ts",
+        "web/tests/e2e/chat/chat-search-command-menu.spec.ts"
+      ]
+    },
+    {
+      "name": "File upload chat QA",
+      "description": "A user attaches a file (xlsx, csv, txt, md, json, pdf) to the chat input; the file is processed by the user_file_processing worker and chat answers questions grounded in the file content with citations. Processing must complete (no eternal spinner), never silently FAIL, and the assistant must not claim file tools are unavailable.",
+      "files": [
+        "backend/onyx/server/features/projects/api.py",
+        "backend/onyx/background/celery/tasks/user_file_processing/tasks.py",
+        "testsprite_tests/xlsx_chat_qa_smoke.py",
+        "testsprite_tests/file_formats_processing_smoke.py"
+      ]
+    },
+    {
+      "name": "Dev services supervision",
+      "description": "All Onyx dev services (web, API, model server, celery workers + beat, docker infra) stay healthy; the doctor script detects and heals dead tmux-managed services. Search and file uploads silently degrade when the model server or celery workers die, so their health is release-gating.",
+      "files": [
+        "testsprite_tests/onyx_services_doctor.sh",
+        "testsprite_tests/start_onyx_api_live.sh",
+        "testsprite_tests/start_onyx_jobs_live.sh"
+      ]
+    }
+  ]
+}

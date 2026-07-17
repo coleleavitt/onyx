@@ -315,7 +315,7 @@ const ChatButton = memo(
 
           // Only route if the deleted chat is the currently opened chat session
           if (active) {
-            route({ projectId: project.id });
+            route({ projectId: project.id, projectName: project.name });
           }
         }
         await refreshChatSessions();
@@ -390,7 +390,7 @@ const ChatButton = memo(
         await performMove(newProject.id);
 
         // Navigate to the new project to see the chat
-        route({ projectId: newProject.id });
+        route({ projectId: newProject.id, projectName: newProject.name });
         setNavigateAfterMoveProjectId(null);
       } catch (error) {
         console.error("Failed to create project and move chat:", error);

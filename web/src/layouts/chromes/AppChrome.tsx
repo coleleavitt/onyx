@@ -575,7 +575,13 @@ export default function AppChrome({ children }: AppChromeProps) {
 
   const { hasBackground, appBackgroundUrl } = useAppBackground();
   const showBackground =
-    hasBackground && (appFocus.isChat() || appFocus.isNewSession());
+    hasBackground &&
+    (appFocus.isChat() ||
+      appFocus.isNewSession() ||
+      appFocus.isProject() ||
+      appFocus.isMoreAgents() ||
+      appFocus.isUserSettings() ||
+      appFocus.isContent());
   const backgroundImageStyle =
     showBackground && appBackgroundUrl
       ? {

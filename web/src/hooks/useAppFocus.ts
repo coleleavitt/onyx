@@ -8,11 +8,13 @@
 import { useMemo } from "react";
 import { SEARCH_PARAM_NAMES } from "@/app/app/services/searchParams";
 import { usePathname, useSearchParams } from "next/navigation";
+import { parseSpaceIdFromPath } from "@/lib/projects/slug";
 
 export type AppFocusType =
   | { type: "agent" | "project" | "chat"; id: string }
   | "new-session"
   | "more-agents"
+  | "content"
   | "user-settings"
   | "shared-chat";
 
@@ -43,6 +45,10 @@ export class AppFocus {
     return this.value === "more-agents";
   }
 
+  isContent(): boolean {
+    return this.value === "content";
+  }
+
   isUserSettings(): boolean {
     return this.value === "user-settings";
   }
@@ -58,6 +64,7 @@ export class AppFocus {
     | "shared-chat"
     | "new-session"
     | "more-agents"
+    | "content"
     | "user-settings" {
     return typeof this.value === "object" ? this.value.type : this.value;
   }
@@ -69,7 +76,11 @@ export default function useAppFocus(): AppFocus {
 
   const chatId = searchParams.get(SEARCH_PARAM_NAMES.CHAT_ID);
   const agentId = searchParams.get(SEARCH_PARAM_NAMES.PERSONA_ID);
-  const projectId = searchParams.get(SEARCH_PARAM_NAMES.PROJECT_ID);
+  const pathSpaceId = parseSpaceIdFromPath(pathname);
+  const projectId =
+    pathSpaceId !== null
+      ? String(pathSpaceId)
+      : searchParams.get(SEARCH_PARAM_NAMES.PROJECT_ID);
 
   // Memoize on the values that determine which AppFocus is constructed.
   // AppFocus is immutable, so same inputs → same instance.
@@ -86,6 +97,13 @@ export default function useAppFocus(): AppFocus {
     if (chatId) return new AppFocus({ type: "chat", id: chatId });
     if (agentId) return new AppFocus({ type: "agent", id: agentId });
     if (projectId) return new AppFocus({ type: "project", id: projectId });
+    if (
+      pathname.startsWith("/app/spaces") ||
+      pathname.startsWith("/app/artifacts") ||
+      pathname.startsWith("/app/customize")
+    ) {
+      return new AppFocus("content");
+    }
     return new AppFocus("new-session");
   }, [pathname, chatId, agentId, projectId]);
 }

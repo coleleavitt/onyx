@@ -14,12 +14,16 @@ import {
 } from "react";
 import useSWR from "swr";
 import { errorHandlingFetcher, skipRetryOnAuthError } from "@/lib/fetcher";
+import { FetchError } from "@/lib/fetcher";
 import {
   UserFileStatus,
   type CategorizedFiles,
+  type CreateProjectInput,
   type Project,
+  type ProjectAccessState,
   type ProjectDetails,
   type ProjectFile,
+  type ProjectMetadataUpdate,
   type UserFileDeleteResult,
 } from "@/lib/projects/types";
 import {
@@ -32,6 +36,10 @@ import {
   getProjectInstructions as svcGetProjectInstructions,
   upsertProjectInstructions as svcUpsertProjectInstructions,
   getProjectDetails as svcGetProjectDetails,
+  fetchProjectAccessState as svcFetchProjectAccessState,
+  requestProjectAccess as svcRequestProjectAccess,
+  cancelProjectAccessRequest as svcCancelProjectAccessRequest,
+  updateProjectMetadata as svcUpdateProjectMetadata,
   renameProject as svcRenameProject,
   deleteProject as svcDeleteProject,
   deleteUserFile as svcDeleteUserFile,
@@ -39,7 +47,8 @@ import {
   unlinkFileFromProject as svcUnlinkFileFromProject,
   linkFileToProject as svcLinkFileToProject,
 } from "@/lib/projects/svc";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { parseSpaceIdFromPath } from "@/lib/projects/slug";
 import { SEARCH_PARAM_NAMES } from "@/app/app/services/searchParams";
 import { useAppRouter } from "@/hooks/appNavigation";
 import { ChatFileType } from "@/app/app/interfaces";
@@ -48,6 +57,14 @@ import { useProjects } from "@/lib/projects/hooks";
 import { useSettings } from "@/lib/settings/hooks";
 
 export type { Project, ProjectFile } from "@/lib/projects/types";
+
+export type ProjectLoadState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; details: ProjectDetails }
+  | { status: "access-required"; accessState: ProjectAccessState }
+  | { status: "not-found" }
+  | { status: "error"; message: string };
 
 // Helper to generate unique temp IDs
 const generateTempId = () => {
@@ -92,6 +109,7 @@ interface ProjectsContextType {
   recentFiles: ProjectFile[];
   currentProjectDetails: ProjectDetails | null;
   currentProjectId: number | null;
+  currentProjectState: ProjectLoadState;
   currentMessageFiles: ProjectFile[];
   beginUpload: (
     files: File[],
@@ -105,8 +123,14 @@ interface ProjectsContextType {
   setCurrentMessageFiles: Dispatch<SetStateAction<ProjectFile[]>>;
   upsertInstructions: (instructions: string) => Promise<void>;
   fetchProjects: () => Promise<Project[]>;
-  createProject: (name: string) => Promise<Project>;
+  createProject: (input: string | CreateProjectInput) => Promise<Project>;
+  updateProjectMetadata: (
+    projectId: number,
+    metadata: ProjectMetadataUpdate
+  ) => Promise<Project>;
   renameProject: (projectId: number, name: string) => Promise<Project>;
+  requestProjectAccess: (projectId: number) => Promise<void>;
+  cancelProjectAccessRequest: (projectId: number) => Promise<void>;
   deleteProject: (projectId: number) => Promise<void>;
   uploadFiles: (
     files: File[],
@@ -135,13 +159,17 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
   // Use SWR hook for projects list - no more SSR initial data
   const { projects, refreshProjects } = useProjects();
   const [recentFiles, setRecentFiles] = useState<ProjectFile[]>([]);
-  const [currentProjectDetails, setCurrentProjectDetails] =
-    useState<ProjectDetails | null>(null);
+  const [currentProjectState, setCurrentProjectState] =
+    useState<ProjectLoadState>({ status: "idle" });
+  const currentProjectDetails =
+    currentProjectState.status === "ready" ? currentProjectState.details : null;
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const pathSpaceId = parseSpaceIdFromPath(pathname);
   const currentProjectIdRaw = searchParams.get(SEARCH_PARAM_NAMES.PROJECT_ID);
-  const currentProjectId = currentProjectIdRaw
-    ? Number.parseInt(currentProjectIdRaw)
-    : null;
+  const currentProjectId =
+    pathSpaceId ??
+    (currentProjectIdRaw ? Number.parseInt(currentProjectIdRaw) : null);
   const [currentMessageFiles, setCurrentMessageFiles] = useState<ProjectFile[]>(
     []
   );
@@ -190,29 +218,67 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
 
   // Load full details for current project
   const refreshCurrentProjectDetails = useCallback(async () => {
-    if (currentProjectId) {
-      setIsLoadingProjectDetails(true);
-      try {
-        const details = await svcGetProjectDetails(currentProjectId);
-        await fetchProjects();
-        setCurrentProjectDetails(details);
-        setAllCurrentProjectFiles(details.files || []);
-        if (projectToUploadFilesMapRef.current.has(currentProjectId)) {
-          setAllCurrentProjectFiles((prev) => [
-            ...prev,
-            ...(projectToUploadFilesMapRef.current.get(currentProjectId) || []),
-          ]);
-        }
-      } finally {
-        setIsLoadingProjectDetails(false);
-      }
+    if (!currentProjectId) {
+      setCurrentProjectState({ status: "idle" });
+      setAllCurrentProjectFiles([]);
+      return;
     }
-  }, [
-    fetchProjects,
-    currentProjectId,
-    setCurrentProjectDetails,
-    projectToUploadFilesMapRef,
-  ]);
+
+    setIsLoadingProjectDetails(true);
+    setCurrentProjectState((previous) =>
+      previous.status === "ready" ? previous : { status: "loading" }
+    );
+    try {
+      const details = await svcGetProjectDetails(currentProjectId);
+      await fetchProjects();
+      setCurrentProjectState({ status: "ready", details });
+      setAllCurrentProjectFiles(details.files || []);
+      if (projectToUploadFilesMapRef.current.has(currentProjectId)) {
+        setAllCurrentProjectFiles((prev) => [
+          ...prev,
+          ...(projectToUploadFilesMapRef.current.get(currentProjectId) || []),
+        ]);
+      }
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 404) {
+        try {
+          const accessState =
+            await svcFetchProjectAccessState(currentProjectId);
+          if (accessState.has_access) {
+            const details = await svcGetProjectDetails(currentProjectId);
+            await fetchProjects();
+            setCurrentProjectState({ status: "ready", details });
+            setAllCurrentProjectFiles(details.files || []);
+          } else {
+            setCurrentProjectState({ status: "access-required", accessState });
+          }
+        } catch (accessError) {
+          setCurrentProjectState(
+            accessError instanceof FetchError && accessError.status === 404
+              ? { status: "not-found" }
+              : {
+                  status: "error",
+                  message:
+                    accessError instanceof Error
+                      ? accessError.message
+                      : "Space could not be loaded.",
+                }
+          );
+        }
+      } else {
+        setCurrentProjectState({
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Space could not be loaded.",
+        });
+      }
+      setAllCurrentProjectFiles([]);
+    } finally {
+      setIsLoadingProjectDetails(false);
+    }
+  }, [fetchProjects, currentProjectId, projectToUploadFilesMapRef]);
 
   const upsertInstructions = useCallback(
     async (instructions: string) => {
@@ -226,52 +292,56 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
   );
 
   const createProject = useCallback(
-    async (name: string): Promise<Project> => {
-      try {
-        const project: Project = await svcCreateProject(name);
-        // Navigate to the newly created project's page
-        route({ projectId: project.id });
-        // Refresh list to keep order consistent with backend
-        await fetchProjects();
-        return project;
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to create project";
-        throw err;
-      }
+    async (input: string | CreateProjectInput): Promise<Project> => {
+      const project: Project = await svcCreateProject(input);
+      route({ projectId: project.id, projectName: project.name });
+      await fetchProjects();
+      return project;
     },
     [fetchProjects, route]
   );
 
-  const renameProject = useCallback(
-    async (projectId: number, name: string): Promise<Project> => {
-      // Optimistically update project details UI if this is the current project
+  const updateProjectMetadata = useCallback(
+    async (
+      projectId: number,
+      metadata: ProjectMetadataUpdate
+    ): Promise<Project> => {
       if (currentProjectId === projectId) {
-        setCurrentProjectDetails((prev) =>
-          prev ? { ...prev, project: { ...prev.project, name } } : prev
+        setCurrentProjectState((previous) =>
+          previous.status === "ready"
+            ? {
+                status: "ready",
+                details: {
+                  ...previous.details,
+                  project: { ...previous.details.project, ...metadata },
+                },
+              }
+            : previous
         );
       }
 
       try {
-        const updated = await svcRenameProject(projectId, name);
-        // Refresh to get canonical state from server (SWR handles projects list)
+        const updated = await svcUpdateProjectMetadata(projectId, metadata);
         await fetchProjects();
         if (currentProjectId === projectId) {
           await refreshCurrentProjectDetails();
         }
         return updated;
       } catch (err) {
-        // Refresh to restore on failure
         await fetchProjects();
         if (currentProjectId === projectId) {
           await refreshCurrentProjectDetails();
         }
-        const message =
-          err instanceof Error ? err.message : "Failed to rename project";
         throw err;
       }
     },
     [fetchProjects, currentProjectId, refreshCurrentProjectDetails]
+  );
+
+  const renameProject = useCallback(
+    async (projectId: number, name: string): Promise<Project> =>
+      updateProjectMetadata(projectId, { name }),
+    [updateProjectMetadata]
   );
 
   const deleteProject = useCallback(
@@ -279,13 +349,35 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       await svcDeleteProject(projectId);
       await fetchProjects();
       if (currentProjectId === projectId) {
-        setCurrentProjectDetails(null);
+        setCurrentProjectState({ status: "idle" });
         setAllCurrentProjectFiles([]);
         projectToUploadFilesMapRef.current.delete(projectId);
         route();
       }
     },
     [fetchProjects, currentProjectId, projectToUploadFilesMapRef, route]
+  );
+
+  const requestProjectAccess = useCallback(
+    async (projectId: number): Promise<void> => {
+      await svcRequestProjectAccess(projectId);
+      const accessState = await svcFetchProjectAccessState(projectId);
+      if (currentProjectId === projectId) {
+        setCurrentProjectState({ status: "access-required", accessState });
+      }
+    },
+    [currentProjectId]
+  );
+
+  const cancelProjectAccessRequest = useCallback(
+    async (projectId: number): Promise<void> => {
+      await svcCancelProjectAccessRequest(projectId);
+      const accessState = await svcFetchProjectAccessState(projectId);
+      if (currentProjectId === projectId) {
+        setCurrentProjectState({ status: "access-required", accessState });
+      }
+    },
+    [currentProjectId]
   );
 
   const getRecentFiles = useCallback(async (): Promise<ProjectFile[]> => {
@@ -550,7 +642,9 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
 
   // Clear project details when switching projects to show skeleton
   useEffect(() => {
-    setCurrentProjectDetails(null);
+    setCurrentProjectState(
+      currentProjectId ? { status: "loading" } : { status: "idle" }
+    );
     setAllCurrentProjectFiles([]);
   }, [currentProjectId]);
 
@@ -610,10 +704,16 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
         });
 
         // Update currentProjectDetails.files with latest statuses
-        setCurrentProjectDetails((prev) => {
-          if (!prev || !prev.files || prev.files.length === 0) return prev;
+        setCurrentProjectState((prev) => {
+          if (
+            prev.status !== "ready" ||
+            !prev.details.files ||
+            prev.details.files.length === 0
+          ) {
+            return prev;
+          }
           let changed = false;
-          const nextFiles = prev.files.map((f) => {
+          const nextFiles = prev.details.files.map((f) => {
             const latest = statusById.get(f.id);
             if (latest) {
               if (
@@ -628,7 +728,10 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
             return f;
           });
           return changed
-            ? ({ ...prev, files: nextFiles } as ProjectDetails)
+            ? {
+                status: "ready",
+                details: { ...prev.details, files: nextFiles },
+              }
             : prev;
         });
 
@@ -716,6 +819,7 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       recentFiles,
       currentProjectDetails,
       currentProjectId,
+      currentProjectState,
       currentMessageFiles,
       allRecentFiles,
       allCurrentProjectFiles,
@@ -725,7 +829,10 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       upsertInstructions,
       fetchProjects,
       createProject,
+      updateProjectMetadata,
       renameProject,
+      requestProjectAccess,
+      cancelProjectAccessRequest,
       deleteProject,
       uploadFiles,
       getRecentFiles,
@@ -751,37 +858,39 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
         setAllCurrentProjectFiles((prev) =>
           prev.filter((f) => f.id !== file.id)
         );
-        svcUnlinkFileFromProject(projectId, file.id).then(async (result) => {
-          if (result.ok) {
-            if (currentProjectId === projectId) {
-              await refreshCurrentProjectDetails();
-            }
-            await refreshRecentFiles();
-          } else {
-            if (currentProjectId === projectId) {
-              setAllCurrentProjectFiles((prev) => [file, ...prev]);
-            }
+        try {
+          const result = await svcUnlinkFileFromProject(projectId, file.id);
+          if (!result.ok) throw new Error(`Unlink failed (${result.status})`);
+          if (currentProjectId === projectId) {
+            await refreshCurrentProjectDetails();
           }
-        });
+          await refreshRecentFiles();
+        } catch {
+          if (currentProjectId === projectId) {
+            setAllCurrentProjectFiles((prev) => [file, ...prev]);
+          }
+          toast.error("Failed to remove file. Please try again.");
+        }
       },
       linkFileToProject: async (projectId: number, file: ProjectFile) => {
         const existing = allCurrentProjectFiles.find((f) => f.id === file.id);
         if (existing) return;
         setAllCurrentProjectFiles((prev) => [file, ...prev]);
-        svcLinkFileToProject(projectId, file.id).then(async (result) => {
-          if (result.ok) {
-            if (currentProjectId === projectId) {
-              await refreshCurrentProjectDetails();
-            }
-            await refreshRecentFiles();
-          } else {
-            if (currentProjectId === projectId) {
-              setAllCurrentProjectFiles((prev) =>
-                prev.filter((f) => f.id !== file.id)
-              );
-            }
+        try {
+          const result = await svcLinkFileToProject(projectId, file.id);
+          if (!result.ok) throw new Error(`Link failed (${result.status})`);
+          if (currentProjectId === projectId) {
+            await refreshCurrentProjectDetails();
           }
-        });
+          await refreshRecentFiles();
+        } catch {
+          if (currentProjectId === projectId) {
+            setAllCurrentProjectFiles((prev) =>
+              prev.filter((f) => f.id !== file.id)
+            );
+          }
+          toast.error("Failed to add file. Please try again.");
+        }
       },
     }),
     [
@@ -789,6 +898,7 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       recentFiles,
       currentProjectDetails,
       currentProjectId,
+      currentProjectState,
       currentMessageFiles,
       allRecentFiles,
       allCurrentProjectFiles,
@@ -798,7 +908,10 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       upsertInstructions,
       fetchProjects,
       createProject,
+      updateProjectMetadata,
       renameProject,
+      requestProjectAccess,
+      cancelProjectAccessRequest,
       deleteProject,
       uploadFiles,
       getRecentFiles,

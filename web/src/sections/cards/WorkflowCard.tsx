@@ -56,6 +56,7 @@ export default function WorkflowCard({
               prominence="tertiary"
               size="sm"
               tooltip={pinned ? "Unpin workflow" : "Pin workflow"}
+              aria-label={pinned ? "Unpin workflow" : "Pin workflow"}
               disabled={busy}
               onClick={() => onTogglePin(workflow)}
             />

@@ -74,12 +74,14 @@ interface UserLibraryModalProps {
   open: boolean;
   onClose: () => void;
   onChanges?: () => void; // Called when files are uploaded or deleted
+  onAttachFile?: (entry: LibraryEntry) => Promise<unknown>;
 }
 
 export default function UserLibraryModal({
   open,
   onClose,
   onChanges,
+  onAttachFile,
 }: UserLibraryModalProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [isUploading, setIsUploading] = useState(false);
@@ -150,7 +152,7 @@ export default function UserLibraryModal({
         } else {
           await uploadLibraryFiles(targetPath, fileArray);
         }
-        mutate();
+        await mutate();
         onChanges?.();
       } catch (err) {
         setUploadError(err instanceof Error ? err.message : "Upload failed");
@@ -216,7 +218,7 @@ export default function UserLibraryModal({
 
     try {
       await deleteLibraryFile(entryToDelete.id);
-      mutate();
+      await mutate();
       onChanges?.();
     } catch (err) {
       console.error("Failed to delete:", err);
@@ -231,7 +233,8 @@ export default function UserLibraryModal({
 
     try {
       await createLibraryDirectory({ name, parent_path: "/" });
-      mutate();
+      await mutate();
+      onChanges?.();
     } catch (err) {
       console.error("Failed to create directory:", err);
       setUploadError(
@@ -241,7 +244,7 @@ export default function UserLibraryModal({
       setShowNewFolderModal(false);
       setNewFolderName("");
     }
-  }, [mutate, newFolderName]);
+  }, [mutate, newFolderName, onChanges]);
 
   const fileCount = hierarchicalTree.length;
 
@@ -326,6 +329,7 @@ export default function UserLibraryModal({
                         onToggleFolder={toggleFolder}
                         onDelete={setEntryToDelete}
                         onUploadToFolder={handleUploadToFolder}
+                        onAttachFile={onAttachFile}
                       />
                     </div>
                   </ShadowDiv>
@@ -469,6 +473,7 @@ interface LibraryTreeViewProps {
   onToggleFolder: (path: string) => void;
   onDelete: (entry: LibraryEntry) => void;
   onUploadToFolder: (folderPath: string) => void;
+  onAttachFile?: (entry: LibraryEntry) => Promise<unknown>;
   depth?: number;
 }
 
@@ -478,6 +483,7 @@ function LibraryTreeView({
   onToggleFolder,
   onDelete,
   onUploadToFolder,
+  onAttachFile,
   depth = 0,
 }: LibraryTreeViewProps) {
   // Sort entries: directories first, then alphabetically
@@ -494,7 +500,27 @@ function LibraryTreeView({
 
         return (
           <div key={entry.id} className="flex flex-col">
-            <div className="group flex items-center gap-2 rounded-8 px-2 py-1.5 transition-colors hover:bg-background-tint-01">
+            <div
+              role={!entry.is_directory && onAttachFile ? "button" : undefined}
+              tabIndex={!entry.is_directory && onAttachFile ? 0 : undefined}
+              onClick={() => {
+                if (!entry.is_directory && onAttachFile) void onAttachFile(entry);
+              }}
+              onKeyDown={(event) => {
+                if (
+                  !entry.is_directory &&
+                  onAttachFile &&
+                  (event.key === "Enter" || event.key === " ")
+                ) {
+                  event.preventDefault();
+                  void onAttachFile(entry);
+                }
+              }}
+              className={cn(
+                "group flex items-center gap-2 rounded-8 px-2 py-1.5 transition-colors hover:bg-background-tint-01",
+                !entry.is_directory && onAttachFile && "cursor-pointer"
+              )}
+            >
               {/* Indent for nesting depth */}
               {depth > 0 && (
                 <span
@@ -566,7 +592,10 @@ function LibraryTreeView({
                   prominence="tertiary"
                   size="sm"
                   icon={SvgTrash}
-                  onClick={() => onDelete(entry)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete(entry);
+                  }}
                   tooltip="Delete"
                 />
               </div>
@@ -580,6 +609,7 @@ function LibraryTreeView({
                 onToggleFolder={onToggleFolder}
                 onDelete={onDelete}
                 onUploadToFolder={onUploadToFolder}
+                onAttachFile={onAttachFile}
                 depth={depth + 1}
               />
             )}

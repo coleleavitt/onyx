@@ -7,6 +7,7 @@ import CommandMenu, {
   useCommandMenuContext,
 } from "@/refresh-components/commandmenu/CommandMenu";
 import { useProjects } from "@/lib/projects/hooks";
+import { spacePath } from "@/lib/projects/slug";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
 import CreateProjectModal from "@/sections/modals/CreateProjectModal";
 import { timeAgo } from "@opal/time";
@@ -167,7 +168,7 @@ export default function ChatSearchCommandMenu({
 
   const handleProjectSelect = useCallback(
     (projectId: number) => {
-      router.push(`/chat?projectId=${projectId}` as Route);
+      router.push(spacePath(projectId));
       setOpen(false);
     },
     [router]

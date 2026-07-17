@@ -1,4 +1,6 @@
+import base64
 import io
+import json
 from urllib.parse import quote
 from uuid import UUID
 
@@ -19,6 +21,7 @@ from onyx.db.artifact_library import delete_artifact_library_item
 from onyx.db.artifact_library import dismiss_shared_artifact_library_item
 from onyx.db.artifact_library import fetch_artifact_library_item
 from onyx.db.artifact_library import list_artifact_library_items
+from onyx.db.artifact_library import list_artifact_library_items_after
 from onyx.db.artifact_library import replace_artifact_library_shares
 from onyx.db.artifact_library import set_artifact_library_item_pin
 from onyx.db.artifact_library import update_artifact_library_item
@@ -39,10 +42,16 @@ from onyx.server.features.build.artifact_library.models import (
     ArtifactLibraryBulkResponse,
 )
 from onyx.server.features.build.artifact_library.models import (
+    ArtifactLibraryCursorPayload,
+)
+from onyx.server.features.build.artifact_library.models import (
     ArtifactLibraryImportRequest,
 )
 from onyx.server.features.build.artifact_library.models import (
     ArtifactLibraryItemSnapshot,
+)
+from onyx.server.features.build.artifact_library.models import (
+    ArtifactLibraryPageSnapshot,
 )
 from onyx.server.features.build.artifact_library.models import ArtifactLibraryPinRequest
 from onyx.server.features.build.artifact_library.models import (
@@ -74,6 +83,55 @@ def _snapshot(item: ArtifactLibraryItem, user: User) -> ArtifactLibraryItemSnaps
     return ArtifactLibraryItemSnapshot.from_model(
         item, requesting_user_id=_user_id(user)
     )
+
+
+def _cursor_filters(
+    *,
+    scope: ArtifactLibraryScope,
+    query: str | None,
+    artifact_type: ArtifactType | None,
+    pinned: bool | None,
+    published: bool | None,
+) -> dict[str, str | bool | None]:
+    normalized_query = query.strip() if query else None
+    return {
+        "scope": scope.value,
+        "query": normalized_query or None,
+        "artifact_type": artifact_type.value if artifact_type is not None else None,
+        "pinned": pinned,
+        "published": published,
+    }
+
+
+def _encode_cursor(
+    *,
+    item: ArtifactLibraryItemSnapshot,
+    filters: dict[str, str | bool | None],
+) -> str:
+    payload = ArtifactLibraryCursorPayload(
+        **filters,
+        cursor_pinned=item.is_pinned,
+        cursor_updated_at=item.updated_at,
+        cursor_id=item.id,
+    )
+    raw = payload.model_dump_json().encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def _decode_cursor(
+    cursor: str,
+    *,
+    filters: dict[str, str | bool | None],
+) -> ArtifactLibraryCursorPayload:
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
+        payload = ArtifactLibraryCursorPayload.model_validate(json.loads(raw))
+    except Exception as error:
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Invalid artifact cursor.") from error
+    for key, value in filters.items():
+        if getattr(payload, key) != value:
+            raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Artifact cursor filters do not match.")
+    return payload
 
 
 def _owned_item(
@@ -181,6 +239,51 @@ def list_library_items(
         offset=offset,
     )
     return [_snapshot(item, user) for item in items]
+
+
+@router.get("/page")
+def list_library_items_page(
+    scope: ArtifactLibraryScope = ArtifactLibraryScope.ALL,
+    query: str | None = Query(default=None, max_length=255),
+    artifact_type: ArtifactType | None = None,
+    pinned: bool | None = None,
+    published: bool | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    cursor: str | None = Query(default=None, max_length=4096),
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ArtifactLibraryPageSnapshot:
+    filters = _cursor_filters(
+        scope=scope,
+        query=query,
+        artifact_type=artifact_type,
+        pinned=pinned,
+        published=published,
+    )
+    decoded_cursor = _decode_cursor(cursor, filters=filters) if cursor else None
+    items = list_artifact_library_items_after(
+        user=user,
+        db_session=db_session,
+        scope=scope,
+        query=query,
+        artifact_type=artifact_type,
+        pinned=pinned,
+        published=published,
+        cursor_pinned=decoded_cursor.cursor_pinned if decoded_cursor else None,
+        cursor_updated_at=decoded_cursor.cursor_updated_at if decoded_cursor else None,
+        cursor_id=decoded_cursor.cursor_id if decoded_cursor else None,
+        limit=limit + 1,
+    )
+    page_items = items[:limit]
+    snapshots = [_snapshot(item, user) for item in page_items]
+    return ArtifactLibraryPageSnapshot(
+        items=snapshots,
+        next_cursor=(
+            _encode_cursor(item=snapshots[-1], filters=filters)
+            if len(items) > limit and snapshots
+            else None
+        ),
+    )
 
 
 @router.post("")
@@ -364,6 +467,11 @@ def update_library_item_shares(
         item=item,
         user_ids=set(request.user_ids),
         group_ids=set(request.group_ids),
+        db_session=db_session,
+    )
+    update_artifact_library_item(
+        item=item,
+        published=request.published,
         db_session=db_session,
     )
     db_session.commit()

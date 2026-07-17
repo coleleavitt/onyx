@@ -1485,9 +1485,11 @@ export class OnyxApiClient {
    * @returns The project ID
    * @throws Error if the project creation fails
    */
-  async createProject(name: string): Promise<number> {
+  async createProject(name: string, description?: string): Promise<number> {
+    const params = new URLSearchParams({ name });
+    if (description !== undefined) params.set("description", description);
     const response = await this.post(
-      `/user/projects/create?name=${encodeURIComponent(name)}`
+      `/user/projects/create?${params.toString()}`
     );
     const data = await this.handleResponse<{ id: number }>(
       response,

@@ -13,6 +13,9 @@ from onyx.db.models import ProjectJoinRequest
 from onyx.db.models import UserFile
 from onyx.db.models import UserProject
 from onyx.db.projects import CategorizedFilesResult
+from onyx.db.projects import compute_project_last_activity
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.models import ChatFileType
 from onyx.server.models import MinimalUserSnapshot
 from onyx.server.query_and_chat.chat_utils import mime_type_to_chat_file_type
@@ -89,12 +92,15 @@ class UserProjectSnapshot(BaseModel):
     id: int
     name: str
     description: str | None
+    emoji: str | None = None
     created_at: datetime
+    updated_at: datetime | None = None
     user_id: UUID | None
     owner: MinimalUserSnapshot | None = None
     user_permission: ProjectAccessLevel = ProjectAccessLevel.OWNER
     organization_permission: ProjectSharePermission | None = None
     is_personal: bool = True
+    is_pinned: bool = False
     instructions: str | None = None
     chat_sessions: list[ChatSessionDetails]
 
@@ -105,15 +111,23 @@ class UserProjectSnapshot(BaseModel):
         *,
         requesting_user_id: UUID | None = None,
         user_permission: ProjectAccessLevel = ProjectAccessLevel.OWNER,
+        is_pinned: bool = False,
     ) -> "UserProjectSnapshot":
         return cls(
             id=model.id,
             name=model.name,
             description=model.description,
+            emoji=model.emoji,
             created_at=model.created_at,
+            updated_at=compute_project_last_activity(model),
             user_id=model.user_id,
+            is_pinned=is_pinned,
             owner=(
-                MinimalUserSnapshot(id=model.user.id, email=model.user.email)
+                MinimalUserSnapshot(
+                    id=model.user.id,
+                    email=model.user.email,
+                    full_name=model.user.personal_name,
+                )
                 if model.user is not None
                 else None
             ),
@@ -215,6 +229,91 @@ class ProjectSharingSnapshot(BaseModel):
         )
 
 
+PROJECT_NAME_MAX_LENGTH = 255
+PROJECT_DESCRIPTION_MAX_LENGTH = 255
+PROJECT_EMOJI_MAX_LENGTH = 32
+
+
+def normalize_project_name(name: str) -> str:
+    normalized = name.strip()
+    if not normalized:
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Project name cannot be empty.")
+    if len(normalized) > PROJECT_NAME_MAX_LENGTH:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            f"Project name must be {PROJECT_NAME_MAX_LENGTH} characters or fewer.",
+        )
+    return normalized
+
+
+def normalize_project_description(description: str | None) -> str | None:
+    if description is None:
+        return None
+    normalized = description.strip()
+    if not normalized:
+        return None
+    if len(normalized) > PROJECT_DESCRIPTION_MAX_LENGTH:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            f"Project description must be {PROJECT_DESCRIPTION_MAX_LENGTH} characters or fewer.",
+        )
+    return normalized
+
+
+def normalize_project_emoji(emoji: str | None) -> str | None:
+    if emoji is None:
+        return None
+    normalized = emoji.strip()
+    if not normalized:
+        return None
+    if len(normalized) > PROJECT_EMOJI_MAX_LENGTH:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            f"Project emoji must be {PROJECT_EMOJI_MAX_LENGTH} characters or fewer.",
+        )
+    return normalized
+
+
+class ProjectMetadataUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    description: str | None = None
+    emoji: str | None = None
+
+    def normalized_name(self) -> str | None:
+        if "name" not in self.model_fields_set:
+            return None
+        if self.name is None:
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT, "Project name cannot be empty."
+            )
+        return normalize_project_name(self.name)
+
+    def normalized_description(self) -> str | None:
+        if "description" not in self.model_fields_set:
+            return None
+        return normalize_project_description(self.description)
+
+    def has_description_update(self) -> bool:
+        return "description" in self.model_fields_set
+
+    def normalized_emoji(self) -> str | None:
+        if "emoji" not in self.model_fields_set:
+            return None
+        return normalize_project_emoji(self.emoji)
+
+    def has_emoji_update(self) -> bool:
+        return "emoji" in self.model_fields_set
+
+    def validate_has_update(self) -> None:
+        if not self.model_fields_set:
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT,
+                "At least one project field must be provided.",
+            )
+
+
 class ProjectUserShareRequest(BaseModel):
     user_id: UUID
     permission: ProjectSharePermission
@@ -229,12 +328,48 @@ class ProjectShareRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     organization_permission: ProjectSharePermission | None = None
-    user_shares: list[ProjectUserShareRequest] = Field(default_factory=list)
-    group_shares: list[ProjectGroupShareRequest] = Field(default_factory=list)
+    user_shares: list[ProjectUserShareRequest] = Field(
+        default_factory=list, max_length=100
+    )
+    group_shares: list[ProjectGroupShareRequest] = Field(
+        default_factory=list, max_length=100
+    )
 
 
 class ProjectAccessRequest(BaseModel):
     requested_permission: ProjectSharePermission = ProjectSharePermission.VIEWER
+
+
+class ProjectAccessRequestSnapshot(BaseModel):
+    id: int
+    requested_permission: ProjectSharePermission
+    status: ProjectJoinRequestStatus
+    created_at: datetime
+    resolved_at: datetime | None
+
+    @classmethod
+    def from_model(cls, model: ProjectJoinRequest) -> "ProjectAccessRequestSnapshot":
+        return cls(
+            id=model.id,
+            requested_permission=model.requested_permission,
+            status=model.status,
+            created_at=model.created_at,
+            resolved_at=model.resolved_at,
+        )
+
+
+class ProjectAccessStateSnapshot(BaseModel):
+    has_access: bool
+    access_request: ProjectAccessRequestSnapshot | None = None
+
+    @property
+    def pending_request(self) -> ProjectAccessRequestSnapshot | None:
+        if (
+            self.access_request is not None
+            and self.access_request.status == ProjectJoinRequestStatus.PENDING
+        ):
+            return self.access_request
+        return None
 
 
 class ResolveProjectAccessRequest(BaseModel):

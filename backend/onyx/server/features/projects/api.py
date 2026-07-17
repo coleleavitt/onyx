@@ -30,21 +30,32 @@ from onyx.db.models import UserProject
 from onyx.db.persona import get_personas_by_ids
 from onyx.db.projects import cancel_project_join_request
 from onyx.db.projects import create_or_reset_project_join_request
+from onyx.db.projects import fetch_latest_project_join_request_for_user
 from onyx.db.projects import fetch_project_by_id
 from onyx.db.projects import fetch_project_for_user
+from onyx.db.projects import get_pinned_project_ids
 from onyx.db.projects import get_project_access_level
 from onyx.db.projects import get_project_token_count
 from onyx.db.projects import list_projects_for_user
+from onyx.db.projects import project_exists
 from onyx.db.projects import ProjectAccessPolicy
 from onyx.db.projects import replace_project_shares
 from onyx.db.projects import resolve_project_join_request
+from onyx.db.projects import set_project_pinned
 from onyx.db.projects import upload_files_to_user_files_with_indexing
+from onyx.db.projects import user_has_project_access
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.projects.models import CategorizedFilesSnapshot
 from onyx.server.features.projects.models import ChatSessionRequest
+from onyx.server.features.projects.models import normalize_project_description
+from onyx.server.features.projects.models import normalize_project_emoji
+from onyx.server.features.projects.models import normalize_project_name
 from onyx.server.features.projects.models import ProjectAccessRequest
+from onyx.server.features.projects.models import ProjectAccessRequestSnapshot
+from onyx.server.features.projects.models import ProjectAccessStateSnapshot
 from onyx.server.features.projects.models import ProjectJoinRequestSnapshot
+from onyx.server.features.projects.models import ProjectMetadataUpdateRequest
 from onyx.server.features.projects.models import ProjectShareRequest
 from onyx.server.features.projects.models import ProjectSharingSnapshot
 from onyx.server.features.projects.models import ResolveProjectAccessRequest
@@ -83,7 +94,13 @@ def _project_snapshot(
     *,
     user: User,
     db_session: Session,
+    is_pinned: bool | None = None,
 ) -> UserProjectSnapshot:
+    pinned = (
+        is_pinned
+        if is_pinned is not None
+        else project.id in get_pinned_project_ids(user=user, db_session=db_session)
+    )
     return UserProjectSnapshot.from_model(
         project,
         requesting_user_id=user.id,
@@ -92,6 +109,7 @@ def _project_snapshot(
             user=user,
             db_session=db_session,
         ),
+        is_pinned=pinned,
     )
 
 
@@ -155,8 +173,14 @@ def get_projects(
     db_session: Session = Depends(get_session),
 ) -> list[UserProjectSnapshot]:
     projects = list_projects_for_user(user=user, db_session=db_session)
+    pinned_ids = get_pinned_project_ids(user=user, db_session=db_session)
     return [
-        _project_snapshot(project, user=user, db_session=db_session)
+        _project_snapshot(
+            project,
+            user=user,
+            db_session=db_session,
+            is_pinned=project.id in pinned_ids,
+        )
         for project in projects
     ]
 
@@ -164,13 +188,19 @@ def get_projects(
 @router.post("/create", tags=PUBLIC_API_TAGS)
 def create_project(
     name: str,
+    description: str | None = None,
+    instructions: str | None = None,
+    emoji: str | None = None,
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
-    stripped_name = name.strip()
-    if not stripped_name:
-        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Project name cannot be empty.")
-    project = UserProject(name=stripped_name, user_id=user.id, instructions="")
+    project = UserProject(
+        name=normalize_project_name(name),
+        description=normalize_project_description(description),
+        emoji=normalize_project_emoji(emoji),
+        user_id=user.id,
+        instructions=(instructions or "").strip(),
+    )
     db_session.add(project)
     db_session.commit()
     db_session.refresh(project)
@@ -432,18 +462,14 @@ def get_project_details(
     )
 
 
-class UpdateProjectRequest(BaseModel):
-    name: str | None = None
-    description: str | None = None
-
-
-@router.patch("/{project_id}", response_model=UserProjectSnapshot, tags=PUBLIC_API_TAGS)
+@router.patch("/{project_id}", tags=PUBLIC_API_TAGS)
 def update_project(
     project_id: int,
-    body: UpdateProjectRequest,
+    body: ProjectMetadataUpdateRequest,
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
+    body.validate_has_update()
     project = _get_project_or_error(
         project_id,
         user=user,
@@ -451,14 +477,46 @@ def update_project(
         policy=ProjectAccessPolicy.EDIT,
     )
 
-    if body.name is not None:
-        project.name = body.name
-    if body.description is not None:
-        project.description = body.description
+    name = body.normalized_name()
+    if name is not None:
+        project.name = name
+    if body.has_description_update():
+        project.description = body.normalized_description()
+    if body.has_emoji_update():
+        project.emoji = body.normalized_emoji()
 
     db_session.commit()
     db_session.refresh(project)
     return _project_snapshot(project, user=user, db_session=db_session)
+
+
+class ProjectPinRequest(BaseModel):
+    pinned: bool
+
+
+@router.patch("/{project_id}/pin", tags=PUBLIC_API_TAGS)
+def set_project_pin(
+    project_id: int,
+    body: ProjectPinRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> UserProjectSnapshot:
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
+    )
+    set_project_pinned(
+        project_id=project_id,
+        user=user,
+        pinned=body.pinned,
+        db_session=db_session,
+    )
+    db_session.commit()
+    return _project_snapshot(
+        project, user=user, db_session=db_session, is_pinned=body.pinned
+    )
 
 
 @router.delete("/{project_id}", tags=PUBLIC_API_TAGS)
@@ -748,6 +806,35 @@ def get_project_total_token_count(
     )
 
     return TokenCountResponse(total_tokens=total_tokens)
+
+
+@router.get("/{project_id}/access-state", tags=PUBLIC_API_TAGS)
+def get_project_access_state(
+    project_id: int,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectAccessStateSnapshot:
+    if not project_exists(project_id, db_session=db_session):
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project not found.")
+
+    latest_request = fetch_latest_project_join_request_for_user(
+        project_id,
+        requester=user,
+        db_session=db_session,
+    )
+    return ProjectAccessStateSnapshot(
+        has_access=user_has_project_access(
+            project_id,
+            user=user,
+            db_session=db_session,
+            policy=ProjectAccessPolicy.VIEW,
+        ),
+        access_request=(
+            ProjectAccessRequestSnapshot.from_model(latest_request)
+            if latest_request is not None
+            else None
+        ),
+    )
 
 
 @router.get("/{project_id}/sharing", tags=PUBLIC_API_TAGS)

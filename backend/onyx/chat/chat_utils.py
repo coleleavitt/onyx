@@ -78,10 +78,10 @@ def build_file_context(
     Centralises how files should appear in the LLM prompt
     — the ID that FileReaderTool accepts (``UserFile.id`` for user files).
     """
-    if file_type.use_metadata_only():
+    if file_type.use_metadata_only() and content_text is None:
         message_text = (
             f"File: {filename} (id={tool_file_id})\n"
-            "Use the file_reader or python tools to access "
+            "Use the read_file tool or python tool to access "
             "this file's contents."
         )
         message = ChatMessageSimple(

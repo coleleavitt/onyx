@@ -1,7 +1,12 @@
 import type {
+  BrainSettings,
+  BrainSettingsUpdate,
+  MemoryGraph,
   MemoryInput,
   MemoryItem,
   MemoryRevision,
+  MemorySourceItem,
+  RelatedMemoriesResponse,
 } from "@/lib/memory/types";
 
 async function handle<T>(response: Response): Promise<T> {
@@ -59,6 +64,42 @@ export async function restoreMemoryRevision(
   return handle<MemoryItem>(
     await fetch(`/api/memory/${memoryId}/history/${revisionId}/restore`, {
       method: "POST",
+    })
+  );
+}
+
+export async function getMemoryGraph(): Promise<MemoryGraph> {
+  return handle<MemoryGraph>(await fetch("/api/memory/graph"));
+}
+
+export async function getRelatedMemories(
+  memoryId: number
+): Promise<RelatedMemoriesResponse> {
+  return handle<RelatedMemoriesResponse>(
+    await fetch(`/api/memory/${memoryId}/related`)
+  );
+}
+
+export async function getMemorySources(
+  memoryId: number
+): Promise<MemorySourceItem[]> {
+  return handle<MemorySourceItem[]>(
+    await fetch(`/api/memory/${memoryId}/sources`)
+  );
+}
+
+export async function getBrainSettings(): Promise<BrainSettings> {
+  return handle<BrainSettings>(await fetch("/api/memory/brain/settings"));
+}
+
+export async function updateBrainSettings(
+  input: BrainSettingsUpdate
+): Promise<BrainSettings> {
+  return handle<BrainSettings>(
+    await fetch("/api/memory/brain/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
     })
   );
 }

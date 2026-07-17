@@ -1,3 +1,4 @@
+import { FetchError } from "@/lib/fetcher";
 import type {
   Project,
   CategorizedFiles,
@@ -8,27 +9,71 @@ import type {
   ProjectDetails,
   ProjectSharing,
   ProjectShareUpdate,
+  CreateProjectInput,
+  ProjectMetadataUpdate,
+  ProjectAccessState,
+  ProjectJoinRequest,
 } from "@/lib/projects/types";
 
-const handleRequestError = (action: string, response: Response): never => {
-  throw new Error(`${action} failed (Status: ${response.status})`);
+const handleRequestError = async (
+  action: string,
+  response: Response
+): Promise<never> => {
+  let info: unknown = null;
+  try {
+    info = await response.json();
+  } catch {
+    info = null;
+  }
+  const detail =
+    info && typeof info === "object" && "detail" in info
+      ? String((info as { detail?: unknown }).detail)
+      : `${action} failed (Status: ${response.status})`;
+  throw new FetchError(detail, response.status, info);
 };
 
 export async function fetchProjects(): Promise<Project[]> {
   const response = await fetch("/api/user/projects");
   if (!response.ok) {
-    handleRequestError("Fetch projects", response);
+    await handleRequestError("Fetch projects", response);
   }
   return response.json();
 }
 
-export async function createProject(name: string): Promise<Project> {
+export async function createProject(
+  input: string | CreateProjectInput
+): Promise<Project> {
+  const createInput =
+    typeof input === "string" ? { name: input, description: null } : input;
+  const params = new URLSearchParams({ name: createInput.name });
+  if (
+    createInput.description !== undefined &&
+    createInput.description !== null
+  ) {
+    params.set("description", createInput.description);
+  }
+  if (
+    createInput.instructions !== undefined &&
+    createInput.instructions !== null &&
+    createInput.instructions !== ""
+  ) {
+    params.set("instructions", createInput.instructions);
+  }
+  if (
+    createInput.emoji !== undefined &&
+    createInput.emoji !== null &&
+    createInput.emoji !== ""
+  ) {
+    params.set("emoji", createInput.emoji);
+  }
   const response = await fetch(
-    `/api/user/projects/create?name=${encodeURIComponent(name)}`,
-    { method: "POST" }
+    `/api/user/projects/create?${params.toString()}`,
+    {
+      method: "POST",
+    }
   );
   if (!response.ok) {
-    handleRequestError("Create project", response);
+    await handleRequestError("Create project", response);
   }
   return response.json();
 }
@@ -56,7 +101,7 @@ export async function uploadFiles(
   });
 
   if (!response.ok) {
-    handleRequestError("Upload files", response);
+    await handleRequestError("Upload files", response);
   }
 
   return response.json();
@@ -65,7 +110,7 @@ export async function uploadFiles(
 export async function getRecentFiles(): Promise<ProjectFile[]> {
   const response = await fetch(`/api/user/files/recent`);
   if (!response.ok) {
-    handleRequestError("Fetch recent files", response);
+    await handleRequestError("Fetch recent files", response);
   }
   return response.json();
 }
@@ -75,7 +120,7 @@ export async function getFilesInProject(
 ): Promise<ProjectFile[]> {
   const response = await fetch(`/api/user/projects/files/${projectId}`);
   if (!response.ok) {
-    handleRequestError("Fetch project files", response);
+    await handleRequestError("Fetch project files", response);
   }
   return response.json();
 }
@@ -83,7 +128,7 @@ export async function getFilesInProject(
 export async function getProject(projectId: number): Promise<Project> {
   const response = await fetch(`/api/user/projects/${projectId}`);
   if (!response.ok) {
-    handleRequestError("Fetch project", response);
+    await handleRequestError("Fetch project", response);
   }
   return response.json();
 }
@@ -93,7 +138,7 @@ export async function getProjectSharing(
 ): Promise<ProjectSharing> {
   const response = await fetch(`/api/user/projects/${projectId}/sharing`);
   if (!response.ok) {
-    handleRequestError("Fetch project sharing", response);
+    await handleRequestError("Fetch project sharing", response);
   }
   return response.json();
 }
@@ -108,7 +153,7 @@ export async function updateProjectSharing(
     body: JSON.stringify(sharing),
   });
   if (!response.ok) {
-    handleRequestError("Update project sharing", response);
+    await handleRequestError("Update project sharing", response);
   }
   return response.json();
 }
@@ -127,7 +172,22 @@ export async function resolveProjectAccessRequest(
     }
   );
   if (!response.ok) {
-    handleRequestError("Resolve project access request", response);
+    await handleRequestError("Resolve project access request", response);
+  }
+  return response.json();
+}
+
+export async function updateProjectMetadata(
+  projectId: number,
+  metadata: ProjectMetadataUpdate
+): Promise<Project> {
+  const response = await fetch(`/api/user/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(metadata),
+  });
+  if (!response.ok) {
+    await handleRequestError("Update project", response);
   }
   return response.json();
 }
@@ -136,13 +196,61 @@ export async function renameProject(
   projectId: number,
   name: string
 ): Promise<Project> {
-  const response = await fetch(`/api/user/projects/${projectId}`, {
+  return updateProjectMetadata(projectId, { name });
+}
+
+export async function fetchProjectAccessState(
+  projectId: number
+): Promise<ProjectAccessState> {
+  const response = await fetch(`/api/user/projects/${projectId}/access-state`);
+  if (!response.ok) {
+    await handleRequestError("Fetch project access state", response);
+  }
+  return response.json();
+}
+
+export async function requestProjectAccess(
+  projectId: number
+): Promise<ProjectJoinRequest> {
+  const response = await fetch(
+    `/api/user/projects/${projectId}/request-access`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requested_permission: "VIEWER" }),
+    }
+  );
+  if (!response.ok) {
+    await handleRequestError("Request project access", response);
+  }
+  return response.json();
+}
+
+export async function cancelProjectAccessRequest(
+  projectId: number
+): Promise<void> {
+  const response = await fetch(
+    `/api/user/projects/${projectId}/request-access`,
+    {
+      method: "DELETE",
+    }
+  );
+  if (!response.ok) {
+    await handleRequestError("Cancel project access request", response);
+  }
+}
+
+export async function setProjectPinned(
+  projectId: number,
+  pinned: boolean
+): Promise<Project> {
+  const response = await fetch(`/api/user/projects/${projectId}/pin`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ pinned }),
   });
   if (!response.ok) {
-    handleRequestError("Rename project", response);
+    await handleRequestError("Update space pin", response);
   }
   return response.json();
 }
@@ -152,7 +260,7 @@ export async function deleteProject(projectId: number): Promise<void> {
     method: "DELETE",
   });
   if (!response.ok) {
-    handleRequestError("Delete project", response);
+    await handleRequestError("Delete project", response);
   }
 }
 
@@ -161,7 +269,7 @@ export async function getProjectInstructions(
 ): Promise<string | null> {
   const response = await fetch(`/api/user/projects/${projectId}/instructions`);
   if (!response.ok) {
-    handleRequestError("Fetch project instructions", response);
+    await handleRequestError("Fetch project instructions", response);
   }
   const data = (await response.json()) as { instructions: string | null };
   return data.instructions ?? null;
@@ -177,7 +285,7 @@ export async function upsertProjectInstructions(
     body: JSON.stringify({ instructions }),
   });
   if (!response.ok) {
-    handleRequestError("Update project instructions", response);
+    await handleRequestError("Update project instructions", response);
   }
   const data = (await response.json()) as { instructions: string | null };
   return data.instructions ?? null;
@@ -188,7 +296,7 @@ export async function getProjectDetails(
 ): Promise<ProjectDetails> {
   const response = await fetch(`/api/user/projects/${projectId}/details`);
   if (!response.ok) {
-    handleRequestError("Fetch project details", response);
+    await handleRequestError("Fetch project details", response);
   }
   return response.json();
 }
@@ -204,7 +312,7 @@ export async function unlinkFileFromProject(
     { method: "DELETE" }
   );
   if (!response.ok) {
-    handleRequestError("Unlink file from project", response);
+    await handleRequestError("Unlink file from project", response);
   }
   return response;
 }
@@ -220,7 +328,7 @@ export async function linkFileToProject(
     { method: "POST" }
   );
   if (!response.ok) {
-    handleRequestError("Link file to project", response);
+    await handleRequestError("Link file to project", response);
   }
   return response;
 }
@@ -235,7 +343,7 @@ export async function deleteUserFile(
     }
   );
   if (!response.ok) {
-    handleRequestError("Delete file", response);
+    await handleRequestError("Delete file", response);
   }
   return (await response.json()) as UserFileDeleteResult;
 }
@@ -249,7 +357,7 @@ export async function getUserFileStatuses(
     body: JSON.stringify({ file_ids: fileIds }),
   });
   if (!response.ok) {
-    handleRequestError("Fetch file statuses", response);
+    await handleRequestError("Fetch file statuses", response);
   }
   return response.json();
 }
@@ -318,7 +426,7 @@ export async function moveChatSession(
     }
   );
   if (!response.ok) {
-    handleRequestError("Move chat session", response);
+    await handleRequestError("Move chat session", response);
   }
   return response.ok;
 }
@@ -332,7 +440,7 @@ export async function removeChatSessionFromProject(
     body: JSON.stringify({ chat_session_id: chatSessionId }),
   });
   if (!response.ok) {
-    handleRequestError("Remove chat session from project", response);
+    await handleRequestError("Remove chat session from project", response);
   }
   return response.ok;
 }

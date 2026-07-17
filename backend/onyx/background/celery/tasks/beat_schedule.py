@@ -199,6 +199,16 @@ beat_task_templates: list[dict] = [
             "queue": OnyxCeleryQueues.PRIMARY,
         },
     },
+    {
+        "name": "brain-self-improvement",
+        "task": OnyxCeleryTask.BRAIN_SELF_IMPROVEMENT,
+        "schedule": crontab(hour=3, minute=30),
+        "options": {
+            "priority": OnyxCeleryPriority.LOW,
+            "expires": 60 * 60 * 6,
+            "queue": OnyxCeleryQueues.PRIMARY,
+        },
+    },
     # Sandbox sweep: background-snapshot changed sessions, sleep idle sandboxes.
     {
         "name": "cleanup-idle-sandboxes",

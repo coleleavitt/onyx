@@ -8,6 +8,16 @@ export type AgentParams = {
   instructions?: string; // system_prompt
 };
 
+export async function openAgentsPageFromSidebar(page: Page): Promise<void> {
+  const moreAgents = page.getByTestId("AppSidebar/more-agents");
+  if (await moreAgents.isVisible().catch(() => false)) {
+    await moreAgents.click();
+  } else {
+    await page.goto("/app/agents");
+  }
+  await page.waitForURL("**/app/agents");
+}
+
 // Create an assistant via the UI from the app page and wait until it is active
 export async function createAgent(page: Page, params: AgentParams) {
   const { name, description = "", instructions = "Test Instructions" } = params;
@@ -19,7 +29,7 @@ export async function createAgent(page: Page, params: AgentParams) {
   }
 
   // Open Assistants modal/list
-  await page.getByTestId("AppSidebar/more-agents").click();
+  await openAgentsPageFromSidebar(page);
   await page.getByLabel("AgentsPage/new-agent-button").click();
 
   // Fill required fields

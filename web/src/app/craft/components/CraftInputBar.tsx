@@ -91,6 +91,7 @@ const CraftInputBar = memo(
       const {
         currentMessageFiles,
         uploadFiles,
+        attachLibraryFile,
         removeFile,
         clearFiles,
         hasUploadingFiles,
@@ -108,10 +109,7 @@ const CraftInputBar = memo(
         fetchLibraryTree
       );
       const libraryFiles = useMemo(
-        () =>
-          (libraryTree ?? [])
-            .filter((entry) => !entry.is_directory)
-            .map((entry) => ({ id: entry.id, name: entry.name })),
+        () => (libraryTree ?? []).filter((entry) => !entry.is_directory),
         [libraryTree]
       );
       const [libraryModalOpen, setLibraryModalOpen] = useState(false);
@@ -213,11 +211,12 @@ const CraftInputBar = memo(
             onBrowseSkills: () => router.push("/craft/v1/skills"),
             onBrowseApps: () => router.push("/craft/v1/apps"),
             libraryFiles,
+            onAttachLibraryFile: (entry) => void attachLibraryFile(entry),
             // Defer the modal until the + popover finishes closing, else it paints over it.
             onManageLibrary: () =>
               window.setTimeout(() => setLibraryModalOpen(true), 200),
           }),
-        [pickerSections, addEntry, libraryFiles, router]
+        [pickerSections, addEntry, attachLibraryFile, libraryFiles, router]
       );
 
       const bottomLeftSlot = (
@@ -294,6 +293,7 @@ const CraftInputBar = memo(
             open={libraryModalOpen}
             onClose={() => setLibraryModalOpen(false)}
             onChanges={() => mutateLibrary()}
+            onAttachFile={attachLibraryFile}
           />
         </>
       );

@@ -31,9 +31,10 @@ import {
   serializeDraftState,
   type ShareDraftState,
 } from "@/sections/modals/shareDraftState";
-import { Button, Divider, Text } from "@opal/components";
+import { Button, Text } from "@opal/components";
 import {
   SvgCheck,
+  SvgCopy,
   SvgLock,
   SvgOrganization,
   SvgShare,
@@ -248,6 +249,14 @@ export default function ShareProjectModal({
     }
   }
 
+  async function copyLink() {
+    if (!project || typeof window === "undefined") return;
+    const url = new URL("/app", window.location.origin);
+    url.searchParams.set("projectId", String(project.id));
+    await navigator.clipboard.writeText(url.toString());
+    toast.success("Space link copied.");
+  }
+
   async function resolveRequest(requestId: number, approve: boolean) {
     if (!project) return;
     setResolvingRequestId(requestId);
@@ -279,13 +288,13 @@ export default function ShareProjectModal({
       <Modal.Content height="lg" width="md">
         <Modal.Header
           icon={SvgShare}
-          title={markdown(`Share *${project.name}*`)}
+          title={markdown(`Share space *${project.name}*`)}
           onClose={onClose}
         />
         <Modal.Body>
           {loadError ? (
             <Text color="status-error-05" font="secondary-body">
-              Project sharing could not be loaded.
+              Space sharing could not be loaded.
             </Text>
           ) : !sharing || !effectiveDraft ? (
             <div className="flex w-full justify-center py-6">
@@ -295,6 +304,19 @@ export default function ShareProjectModal({
             </div>
           ) : (
             <div className="flex w-full flex-col gap-3">
+              <div className="flex items-center justify-between gap-2 rounded-12 bg-background-tint-00 p-2">
+                <Text color="text-03" font="secondary-body">
+                  Share this private link with people who should request access.
+                </Text>
+                <Button
+                  icon={SvgCopy}
+                  onClick={() => void copyLink()}
+                  prominence="secondary"
+                  size="sm"
+                >
+                  Copy space link
+                </Button>
+              </div>
               <AddPeoplePicker
                 existingGroupIds={existingGroupIds}
                 existingUserIds={existingUserIds}
@@ -322,43 +344,10 @@ export default function ShareProjectModal({
                 users={users}
               />
 
+              <Text color="text-03" font="secondary-action">
+                People with access
+              </Text>
               <div className="flex w-full flex-col gap-2 rounded-12 bg-background-tint-00 p-1">
-                <ShareAccessRow
-                  icon={effectiveDraft.isPublic ? SvgOrganization : SvgLock}
-                  titleSlot={
-                    <SharePermissionMenu
-                      ariaLabel="Change project sharing scope"
-                      menuWidth="2xl"
-                      onChange={(scope) =>
-                        setDraft((current) =>
-                          current
-                            ? { ...current, isPublic: scope === "PUBLIC" }
-                            : current
-                        )
-                      }
-                      options={SCOPE_OPTIONS}
-                      showTriggerIcon={false}
-                      value={effectiveDraft.isPublic ? "PUBLIC" : "PRIVATE"}
-                    />
-                  }
-                  rightChildren={
-                    <SharePermissionMenu
-                      ariaLabel="Change organization permission"
-                      onChange={(permission) =>
-                        setDraft((current) =>
-                          current
-                            ? { ...current, publicPermission: permission }
-                            : current
-                        )
-                      }
-                      options={PERMISSION_OPTIONS}
-                      value={effectiveDraft.publicPermission}
-                    />
-                  }
-                />
-
-                <Divider paddingParallel="fit" paddingPerpendicular="fit" />
-
                 {sharing.owner && (
                   <ShareAccessRow
                     avatarInitial={sharing.owner.email.charAt(0).toUpperCase()}
@@ -438,6 +427,45 @@ export default function ShareProjectModal({
                 ))}
               </div>
 
+              <Text color="text-03" font="secondary-action">
+                General access
+              </Text>
+              <div className="flex w-full flex-col gap-2 rounded-12 bg-background-tint-00 p-1">
+                <ShareAccessRow
+                  icon={effectiveDraft.isPublic ? SvgOrganization : SvgLock}
+                  titleSlot={
+                    <SharePermissionMenu
+                      ariaLabel="Change project sharing scope"
+                      menuWidth="2xl"
+                      onChange={(scope) =>
+                        setDraft((current) =>
+                          current
+                            ? { ...current, isPublic: scope === "PUBLIC" }
+                            : current
+                        )
+                      }
+                      options={SCOPE_OPTIONS}
+                      showTriggerIcon={false}
+                      value={effectiveDraft.isPublic ? "PUBLIC" : "PRIVATE"}
+                    />
+                  }
+                  rightChildren={
+                    <SharePermissionMenu
+                      ariaLabel="Change organization permission"
+                      onChange={(permission) =>
+                        setDraft((current) =>
+                          current
+                            ? { ...current, publicPermission: permission }
+                            : current
+                        )
+                      }
+                      options={PERMISSION_OPTIONS}
+                      value={effectiveDraft.publicPermission}
+                    />
+                  }
+                />
+              </div>
+
               {pendingRequests.length > 0 && (
                 <div className="flex w-full flex-col gap-2">
                   <Text color="text-03" font="secondary-action">
@@ -461,6 +489,7 @@ export default function ShareProjectModal({
                             prominence="tertiary"
                             size="sm"
                             tooltip="Deny access"
+                            aria-label={`Deny access for ${request.requester.email}`}
                           />
                           <Button
                             disabled={resolvingRequestId !== null}
@@ -471,6 +500,7 @@ export default function ShareProjectModal({
                             prominence="secondary"
                             size="sm"
                             tooltip="Approve access"
+                            aria-label={`Approve access for ${request.requester.email}`}
                           />
                         </div>
                       }

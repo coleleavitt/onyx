@@ -24,3 +24,9 @@ export interface UploadResponse {
   total_uploaded: number;
   total_size_bytes: number;
 }
+
+export interface SessionUploadResponse {
+  filename: string;
+  path: string;
+  size_bytes: number;
+}

@@ -194,18 +194,31 @@ def set_sync_disabled(
                 update_document_metadata__no_commit(db_session, child.id, child_meta)
 
 
-def delete_user_file(db_session: Session, doc: DbDocument) -> None:
-    """Delete a user file's blob from the file store and its document record."""
+def delete_user_file(
+    db_session: Session, doc: DbDocument, user_id: UUID
+) -> list[str]:
+    """Delete a library file/directory record and return blobs to clean after commit."""
+    docs_to_delete = [doc]
     meta = doc.doc_metadata or {}
-    if not meta.get("is_directory"):
-        file_id = doc.link or meta.get("file_store_id")
-        if file_id:
-            try:
-                get_default_file_store().delete_file(file_id, error_on_missing=False)
-            except Exception as e:
-                logger.warning("Failed to delete file blob %s: %s", file_id, e)
+    if meta.get("is_directory") and doc.semantic_id:
+        prefix = doc.semantic_id.rstrip("/") + "/"
+        docs_to_delete.extend(
+            child
+            for child in list_user_files(db_session, user_id)
+            if child.id != doc.id
+            and child.semantic_id is not None
+            and child.semantic_id.startswith(prefix)
+        )
 
-    delete_document_by_id__no_commit(db_session, doc.id)
+    blob_ids: list[str] = []
+    for candidate in docs_to_delete:
+        candidate_meta = candidate.doc_metadata or {}
+        if not candidate_meta.get("is_directory"):
+            file_id = candidate.link or candidate_meta.get("file_store_id")
+            if file_id:
+                blob_ids.append(file_id)
+        delete_document_by_id__no_commit(db_session, candidate.id)
+    return blob_ids
 
 
 def get_user_storage_bytes(db_session: Session, user_id: UUID) -> int:

@@ -10,8 +10,11 @@ import {
   SvgDocFile,
   SvgDownload,
   SvgFile,
+  SvgEdit,
   SvgHistory,
   SvgImage,
+  SvgPin,
+  SvgPinned,
   SvgShare,
   SvgSimpleLoader,
 } from "@opal/icons";
@@ -21,6 +24,8 @@ interface ArtifactPreviewModalProps {
   onClose: () => void;
   onHistory: () => void;
   onShare: () => void;
+  onRename?: () => void;
+  onPin?: () => void;
 }
 
 interface PreviewPayload {
@@ -76,6 +81,8 @@ export default function ArtifactPreviewModal({
   onClose,
   onHistory,
   onShare,
+  onRename,
+  onPin,
 }: ArtifactPreviewModalProps) {
   const [payload, setPayload] = useState<PreviewPayload>(EMPTY_PAYLOAD);
   const [loading, setLoading] = useState(true);
@@ -254,6 +261,20 @@ export default function ArtifactPreviewModal({
             Versions
           </Button>
           <div className="flex items-center gap-2">
+            {onPin ? (
+              <Button
+                icon={item.is_pinned ? SvgPinned : SvgPin}
+                prominence="tertiary"
+                onClick={onPin}
+              >
+                {item.is_pinned ? "Unpin" : "Pin"}
+              </Button>
+            ) : null}
+            {item.is_owner && onRename ? (
+              <Button icon={SvgEdit} prominence="tertiary" onClick={onRename}>
+                Rename
+              </Button>
+            ) : null}
             {item.is_owner ? (
               <Button icon={SvgShare} prominence="secondary" onClick={onShare}>
                 Share

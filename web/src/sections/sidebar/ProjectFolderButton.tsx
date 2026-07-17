@@ -78,7 +78,7 @@ const ProjectFolderButton = memo(({ project }: ProjectFolderButtonProps) => {
   }
 
   function handleTextClick() {
-    route({ projectId: project.id });
+    route({ projectId: project.id, projectName: project.name });
   }
 
   async function handleRename(newName: string) {

@@ -9,12 +9,15 @@ export interface Project {
   id: number;
   name: string;
   description: string | null;
+  emoji: string | null;
   created_at: string;
+  updated_at: string | null;
   user_id: string | null;
   owner: MinimalUserSnapshot | null;
   user_permission: ProjectAccessLevel;
   organization_permission: ProjectSharePermission | null;
   is_personal: boolean;
+  is_pinned: boolean;
   instructions: string | null;
   chat_sessions: ChatSession[];
 }
@@ -58,6 +61,32 @@ export interface ProjectShareUpdate {
     group_id: number;
     permission: ProjectSharePermission;
   }>;
+}
+
+export interface CreateProjectInput {
+  name: string;
+  description?: string | null;
+  instructions?: string | null;
+  emoji?: string | null;
+}
+
+export interface ProjectMetadataUpdate {
+  name?: string;
+  description?: string | null;
+  emoji?: string | null;
+}
+
+export interface ProjectAccessRequestState {
+  id: number;
+  requested_permission: ProjectSharePermission;
+  status: ProjectJoinRequestStatus;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface ProjectAccessState {
+  has_access: boolean;
+  access_request: ProjectAccessRequestState | null;
 }
 
 export interface CategorizedFiles {

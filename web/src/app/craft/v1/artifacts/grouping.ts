@@ -1,57 +1,60 @@
 import type { ArtifactLibraryItem } from "@/app/craft/v1/artifacts/types";
 
 export interface ArtifactLibraryGroup {
-  key: "pinned" | "today" | "previous-week" | "earlier";
+  key: string;
   title: string;
   items: ArtifactLibraryItem[];
 }
 
-function startOfDay(value: Date): Date {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+const MONTH_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  month: "long",
+  year: "numeric",
+});
+
+function monthKey(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/**
+ * Groups artifacts into a leading "Pinned" section followed by month sections
+ * (e.g. "July 2026", "June 2026"), each sorted newest-first — mirroring the
+ * month-based timeline used on comparable artifact libraries.
+ */
 export function groupArtifactLibraryItems(
-  items: ArtifactLibraryItem[],
-  now = new Date()
+  items: ArtifactLibraryItem[]
 ): ArtifactLibraryGroup[] {
-  const today = startOfDay(now).getTime();
-  const previousWeek = today - 6 * 24 * 60 * 60 * 1000;
   const sorted = [...items].sort(
     (left, right) =>
       new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime()
   );
 
-  const groups: ArtifactLibraryGroup[] = [
-    {
-      key: "pinned",
-      title: "Pinned",
-      items: sorted.filter((item) => item.is_pinned),
-    },
-    {
-      key: "today",
-      title: "Today",
-      items: sorted.filter((item) => {
-        const updated = startOfDay(new Date(item.updated_at)).getTime();
-        return !item.is_pinned && updated === today;
-      }),
-    },
-    {
-      key: "previous-week",
-      title: "Previous 7 days",
-      items: sorted.filter((item) => {
-        const updated = startOfDay(new Date(item.updated_at)).getTime();
-        return !item.is_pinned && updated < today && updated >= previousWeek;
-      }),
-    },
-    {
-      key: "earlier",
-      title: "Earlier",
-      items: sorted.filter((item) => {
-        const updated = startOfDay(new Date(item.updated_at)).getTime();
-        return !item.is_pinned && updated < previousWeek;
-      }),
-    },
-  ];
+  const groups: ArtifactLibraryGroup[] = [];
 
-  return groups.filter((group) => group.items.length > 0);
+  const pinned = sorted.filter((item) => item.is_pinned);
+  if (pinned.length > 0) {
+    groups.push({ key: "pinned", title: "Pinned", items: pinned });
+  }
+
+  const byMonth = new Map<string, ArtifactLibraryGroup>();
+  for (const item of sorted) {
+    if (item.is_pinned) continue;
+    const date = new Date(item.updated_at);
+    const key = monthKey(date);
+    const existing = byMonth.get(key);
+    if (existing) {
+      existing.items.push(item);
+    } else {
+      byMonth.set(key, {
+        key,
+        title: MONTH_FORMATTER.format(date),
+        items: [item],
+      });
+    }
+  }
+
+  // Map iteration order follows insertion, which is already newest-first
+  // because `sorted` is descending by updated_at.
+  groups.push(...Array.from(byMonth.values()));
+
+  return groups;
 }

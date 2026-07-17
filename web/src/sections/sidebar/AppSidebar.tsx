@@ -38,6 +38,7 @@ import {
   usePinnedAgents,
 } from "@/lib/agents/hooks";
 import ProjectFolderButton from "@/sections/sidebar/ProjectFolderButton";
+import SidebarNavGroup from "@/sections/sidebar/SidebarNavGroup";
 import CreateProjectModal from "@/sections/modals/CreateProjectModal";
 import MoveCustomAgentChatModal from "@/sections/modals/MoveCustomAgentChatModal";
 import { useProjectsContext } from "@/providers/ProjectsContext";
@@ -70,6 +71,7 @@ import {
   SvgFiles,
   SvgFolder,
   SvgFolderPlus,
+  SvgHistory,
   SvgMoreHorizontal,
   SvgOnyxOctagon,
   SvgSearchMenu,
@@ -173,7 +175,13 @@ function RecentsSection({
         isOver && "bg-background-tint-03"
       )}
     >
-      <SidebarLayouts.Section title="Recents">
+      <SidebarNavGroup
+        icon={SvgHistory}
+        label="Recents"
+        persistKey="recents"
+        defaultExpanded
+        hasChildren
+      >
         {chatSessions.length === 0 ? (
           <Text as="p" text01 className="px-3">
             Try sending a message! Your chat history will appear here.
@@ -202,7 +210,7 @@ function RecentsSection({
               ))}
           </>
         )}
-      </SidebarLayouts.Section>
+      </SidebarNavGroup>
     </div>
   );
 }
@@ -230,8 +238,9 @@ export default function AppSidebar() {
     isLoading: isLoadingProjects,
   } = useProjects();
   const { isLoading: isLoadingAgents } = useAgents();
+  const isOnyxCraftEnabled = combinedSettingsData?.onyx_craft_enabled === true;
   const { data: pinnedArtifacts = [] } = useSWR<ArtifactLibraryItem[]>(
-    PINNED_ARTIFACTS_URL,
+    isOnyxCraftEnabled ? PINNED_ARTIFACTS_URL : null,
     errorHandlingFetcher,
     { revalidateOnFocus: false, dedupingInterval: 30_000 }
   );
@@ -261,10 +270,6 @@ export default function AppSidebar() {
   >(null);
   const [showMoveCustomAgentModal, setShowMoveCustomAgentModal] =
     useState(false);
-
-  // Check if Onyx Craft is enabled via settings (backed by PostHog feature flag)
-  // Only explicit true enables the feature; false or undefined = disabled
-  const isOnyxCraftEnabled = combinedSettingsData?.onyx_craft_enabled === true;
 
   // Fetch notifications for build mode intro
   const { notifications, refresh: mutateNotifications } = useNotifications({
@@ -698,7 +703,15 @@ export default function AppSidebar() {
                 collisionDetection={closestCenter}
                 onDragEnd={handleAgentDragEnd}
               >
-                <SidebarLayouts.Section title="Agents">
+                <SidebarNavGroup
+                  icon={SvgOnyxOctagon}
+                  label="Agents"
+                  href="/app/agents"
+                  selected={false}
+                  folded={folded}
+                  persistKey="agents"
+                  hasChildren
+                >
                   <SortableContext
                     items={visibleAgentIds}
                     strategy={verticalListSortingStrategy}
@@ -708,7 +721,7 @@ export default function AppSidebar() {
                     ))}
                   </SortableContext>
                   {moreAgentsButton}
-                </SidebarLayouts.Section>
+                </SidebarNavGroup>
               </DndContext>
 
               {/* Wrap Projects and Recents in a shared DndContext for chat-to-project drag */}
@@ -721,9 +734,15 @@ export default function AppSidebar() {
                 ]}
                 onDragEnd={handleChatProjectDragEnd}
               >
-                {/* Spaces and durable artifacts */}
-                <SidebarLayouts.Section
-                  title="Workspace"
+                {/* Spaces */}
+                <SidebarNavGroup
+                  icon={SvgFolder}
+                  label="Spaces"
+                  href="/app/spaces"
+                  selected={pathname === "/app/spaces"}
+                  folded={folded}
+                  persistKey="spaces"
+                  hasChildren
                   action={
                     <OpalButton
                       icon={SvgFolderPlus}
@@ -734,82 +753,74 @@ export default function AppSidebar() {
                     />
                   }
                 >
-                  <SidebarTab
-                    icon={SvgFolder}
-                    folded={folded}
-                    href="/app/spaces"
-                    selected={pathname === "/app/spaces"}
-                  >
-                    Spaces
-                  </SidebarTab>
                   {projects.map((project) => (
                     <ProjectFolderButton key={project.id} project={project} />
                   ))}
                   {projects.length === 0 && newProjectButton}
-                  <SidebarTab
+                </SidebarNavGroup>
+
+                {/* Artifacts */}
+                {isOnyxCraftEnabled ? (
+                  <SidebarNavGroup
                     icon={SvgFiles}
-                    folded={folded}
+                    label="Artifacts"
                     href="/app/artifacts"
                     selected={pathname === "/app/artifacts"}
+                    folded={folded}
+                    persistKey="artifacts"
+                    hasChildren={pinnedArtifacts.length > 0}
                   >
-                    Artifacts
+                    {pinnedArtifacts.map((artifact) => (
+                      <SidebarTab
+                        key={artifact.id}
+                        icon={SvgFileSmall}
+                        folded={folded}
+                        href={`/app/artifacts?artifactId=${artifact.id}`}
+                        variant="sidebar-light"
+                      >
+                        {artifact.name}
+                      </SidebarTab>
+                    ))}
+                  </SidebarNavGroup>
+                ) : null}
+
+                {/* Customize */}
+                <SidebarNavGroup
+                  icon={SvgSliders}
+                  label="Customize"
+                  href="/app/customize/skills"
+                  selected={false}
+                  folded={folded}
+                  persistKey="customize"
+                  hasChildren
+                >
+                  <SidebarTab
+                    icon={SvgBlocks}
+                    href="/app/customize/skills"
+                    selected={pathname === "/app/customize/skills"}
+                    variant="sidebar-light"
+                  >
+                    Skills
                   </SidebarTab>
-                  {!folded && pinnedArtifacts.length === 0 ? (
-                    <Text as="p" text01 className="px-3 py-1">
-                      No pinned artifacts
-                    </Text>
-                  ) : null}
-                  {pinnedArtifacts.map((artifact) => (
+                  {isOnyxCraftEnabled ? (
                     <SidebarTab
-                      key={artifact.id}
-                      icon={SvgFileSmall}
-                      folded={folded}
-                      href={`/app/artifacts?artifactId=${artifact.id}`}
+                      icon={SvgWorkflow}
+                      href="/app/customize/workflows"
+                      selected={pathname === "/app/customize/workflows"}
                       variant="sidebar-light"
                     >
-                      {artifact.name}
+                      Workflows
                     </SidebarTab>
-                  ))}
-                </SidebarLayouts.Section>
-
-                <SidebarLayouts.Section>
-                  <SidebarTab
-                    icon={SvgSliders}
-                    folded={folded}
-                    href="/app/customize/skills"
-                    selected={pathname.startsWith("/app/customize")}
-                  >
-                    Customize
-                  </SidebarTab>
-                  {!folded ? (
-                    <>
-                      <SidebarTab
-                        icon={SvgBlocks}
-                        href="/app/customize/skills"
-                        selected={pathname === "/app/customize/skills"}
-                        variant="sidebar-light"
-                      >
-                        Skills
-                      </SidebarTab>
-                      <SidebarTab
-                        icon={SvgWorkflow}
-                        href="/app/customize/workflows"
-                        selected={pathname === "/app/customize/workflows"}
-                        variant="sidebar-light"
-                      >
-                        Workflows
-                      </SidebarTab>
-                      <SidebarTab
-                        icon={SvgBookOpen}
-                        href="/app/customize/memory"
-                        selected={pathname === "/app/customize/memory"}
-                        variant="sidebar-light"
-                      >
-                        Memory
-                      </SidebarTab>
-                    </>
                   ) : null}
-                </SidebarLayouts.Section>
+                  <SidebarTab
+                    icon={SvgBookOpen}
+                    href="/app/customize/memory"
+                    selected={pathname === "/app/customize/memory"}
+                    variant="sidebar-light"
+                  >
+                    Memory
+                  </SidebarTab>
+                </SidebarNavGroup>
 
                 {/* Recents */}
                 <RecentsSection

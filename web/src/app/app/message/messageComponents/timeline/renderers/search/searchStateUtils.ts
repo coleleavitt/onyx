@@ -5,6 +5,7 @@ import {
   SearchToolQueriesDelta,
   SearchToolFilterDelta,
   SearchToolDocumentsDelta,
+  SearchToolError,
   SectionEnd,
 } from "@/app/app/services/streamingModels";
 import { OnyxDocument } from "@/lib/search/interfaces";
@@ -37,6 +38,9 @@ export interface SearchState {
   hasResults: boolean;
   isComplete: boolean;
   isInternetSearch: boolean;
+  // Set when retrieval infrastructure failed — the empty result list means
+  // "search broke", not "search found nothing".
+  errorMessage: string | null;
 }
 
 /**
@@ -89,6 +93,10 @@ export const constructCurrentSearchState = (
       packet.obj.type === PacketType.ERROR
   )?.obj as SectionEnd | null;
 
+  const searchError = packets.find(
+    (packet) => packet.obj.type === PacketType.SEARCH_TOOL_ERROR
+  )?.obj as SearchToolError | undefined;
+
   // Deduplicate queries using Set for O(n) instead of indexOf which is O(n²)
   const seenQueries = new Set<string>();
   const queries = queryDeltas
@@ -132,5 +140,6 @@ export const constructCurrentSearchState = (
     hasResults,
     isComplete,
     isInternetSearch,
+    errorMessage: searchError?.message ?? null,
   };
 };

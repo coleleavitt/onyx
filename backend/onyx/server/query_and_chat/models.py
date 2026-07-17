@@ -188,6 +188,7 @@ class ChatSessionDetails(BaseModel):
     id: UUID
     name: str | None
     persona_id: int | None = None
+    user_id: UUID | None = None
     time_created: str
     time_updated: str
     shared_status: ChatSessionSharedStatus
@@ -200,6 +201,7 @@ class ChatSessionDetails(BaseModel):
             id=model.id,
             name=model.description,
             persona_id=model.persona_id,
+            user_id=model.user_id,
             time_created=model.time_created.isoformat(),
             time_updated=model.time_updated.isoformat(),
             shared_status=model.shared_status,

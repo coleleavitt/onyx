@@ -8,6 +8,9 @@ import { SvgBookOpen, SvgHistory, SvgTrash } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTextArea from "@/refresh-components/inputs/InputTextArea";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
+import MemoryRelatedPages from "@/views/memory/MemoryRelatedPages";
+import MemorySources from "@/views/memory/MemorySources";
+
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import {
   createMemory,
@@ -32,7 +35,8 @@ const CATEGORY_LABELS: Record<MemoryCategory, string> = {
 interface MemoryEditorModalProps {
   open: boolean;
   memory: MemoryItem | null;
-  canEdit: boolean;
+  canCreateUpdateRestore: boolean;
+  canDelete: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -40,7 +44,8 @@ interface MemoryEditorModalProps {
 export default function MemoryEditorModal({
   open,
   memory,
-  canEdit,
+  canCreateUpdateRestore,
+  canDelete,
   onClose,
   onChanged,
 }: MemoryEditorModalProps) {
@@ -75,7 +80,7 @@ export default function MemoryEditorModal({
   );
 
   async function save() {
-    if (!content.trim() || !canEdit) return;
+    if (!content.trim() || !canCreateUpdateRestore) return;
     setBusy(true);
     try {
       if (memory) {
@@ -105,7 +110,7 @@ export default function MemoryEditorModal({
   }
 
   async function remove() {
-    if (!memory || !canEdit) return;
+    if (!memory || !canDelete) return;
     setBusy(true);
     try {
       await deleteMemory(memory.id);
@@ -122,7 +127,7 @@ export default function MemoryEditorModal({
   }
 
   async function restore(revision: MemoryRevision) {
-    if (!memory || !canEdit) return;
+    if (!memory || !canCreateUpdateRestore) return;
     setBusy(true);
     try {
       const restored = await restoreMemoryRevision(memory.id, revision.id);
@@ -177,7 +182,7 @@ export default function MemoryEditorModal({
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Short, recognizable title"
-                  variant={canEdit ? "primary" : "disabled"}
+                  variant={canCreateUpdateRestore ? "primary" : "disabled"}
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -189,7 +194,7 @@ export default function MemoryEditorModal({
                   onValueChange={(value) =>
                     setCategory(value as MemoryCategory)
                   }
-                  disabled={!canEdit}
+                  disabled={!canCreateUpdateRestore}
                 >
                   <InputSelect.Trigger>
                     {CATEGORY_LABELS[category]}
@@ -214,9 +219,15 @@ export default function MemoryEditorModal({
                   onChange={(event) => setContent(event.target.value)}
                   placeholder="What should Onyx remember?"
                   rows={10}
-                  variant={canEdit ? "primary" : "disabled"}
+                  variant={canCreateUpdateRestore ? "primary" : "disabled"}
                 />
               </label>
+              {memory ? (
+                <div className="flex w-full flex-col gap-4">
+                  <MemoryRelatedPages memoryId={memory.id} />
+                  <MemorySources memoryId={memory.id} />
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="flex w-full flex-col gap-2">
@@ -245,7 +256,7 @@ export default function MemoryEditorModal({
                       <Button
                         prominence="secondary"
                         size="sm"
-                        disabled={busy || !canEdit}
+                        disabled={busy || !canCreateUpdateRestore}
                         onClick={() => void restore(revision)}
                       >
                         Restore
@@ -294,7 +305,7 @@ export default function MemoryEditorModal({
                   icon={SvgTrash}
                   prominence="tertiary"
                   size="sm"
-                  disabled={!canEdit}
+                  disabled={!canDelete}
                   onClick={() => setConfirmDelete(true)}
                 >
                   Delete
@@ -307,7 +318,12 @@ export default function MemoryEditorModal({
           </Button>
           {tab === "details" ? (
             <Button
-              disabled={!canEdit || !content.trim() || !hasChanges || busy}
+              disabled={
+                !canCreateUpdateRestore ||
+                !content.trim() ||
+                !hasChanges ||
+                busy
+              }
               onClick={() => void save()}
             >
               {memory ? "Save" : "Add memory"}

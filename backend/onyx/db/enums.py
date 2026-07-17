@@ -659,6 +659,14 @@ class MemoryGovernanceAuditAction(str, PyEnum):
     BULK_DELETE = "BULK_DELETE"
 
 
+class MemorySourceType(str, PyEnum):
+    CHAT_SESSION = "chat_session"
+    DOCUMENT = "document"
+    CONNECTOR = "connector"
+    FILE = "file"
+    MANUAL = "manual"
+
+
 class PersonaAccessLevel(str, PyEnum):
     """Computed access the requesting user holds on a persona.
 

@@ -21,6 +21,7 @@ import {
 import { cn } from "@opal/utils";
 import { useUser } from "@/providers/UserProvider";
 import useUserPersonalization from "@/hooks/useUserPersonalization";
+import { getMemoryCapabilities } from "@/lib/memory/capabilities";
 import type { MemoryItem } from "@/lib/types";
 
 interface MemoryItemProps {
@@ -173,7 +174,7 @@ export default function MemoriesModal({
   initialTargetIndex,
   highlightOnOpen = false,
   focusNewLine = false,
-  allowCreateAndEdit = true,
+  allowCreateAndEdit,
 }: MemoriesModalProps) {
   const close = useModalClose(onClose);
   const [focusMemoryId, setFocusMemoryId] = useState<number | null>(null);
@@ -211,6 +212,10 @@ export default function MemoriesModal({
   const effectiveMemories =
     memoriesProp ?? user?.personalization?.memories ?? [];
   const effectiveSave = onSaveMemoriesProp ?? internalSaveMemories;
+  const { canCreateUpdateRestore } = getMemoryCapabilities(
+    user?.personalization
+  );
+  const canCreateAndEdit = allowCreateAndEdit ?? canCreateUpdateRestore;
 
   // Drives scroll-into-view + highlight when opening from a FileTile click
   const [highlightMemoryId, setHighlightMemoryId] = useState<number | null>(
@@ -250,7 +255,7 @@ export default function MemoriesModal({
   // Always start with an empty card; optionally focus it (View/Add button)
   const hasAddedEmptyRef = useRef(false);
   useEffect(() => {
-    if (hasAddedEmptyRef.current || !allowCreateAndEdit) return;
+    if (hasAddedEmptyRef.current || !canCreateAndEdit) return;
     hasAddedEmptyRef.current = true;
 
     const id = handleAddMemory();
@@ -258,7 +263,7 @@ export default function MemoriesModal({
       setFocusMemoryId(id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowCreateAndEdit]);
+  }, [canCreateAndEdit]);
 
   const onAddLine = () => {
     const id = handleAddMemory();
@@ -284,12 +289,12 @@ export default function MemoriesModal({
               searchIcon
             />
             <Button
-              disabled={!canAddMemory || !allowCreateAndEdit}
+              disabled={!canAddMemory || !canCreateAndEdit}
               prominence="tertiary"
               onClick={onAddLine}
               rightIcon={SvgPlusCircle}
               title={
-                !allowCreateAndEdit
+                !canCreateAndEdit
                   ? "Creating memories is disabled by your organization"
                   : !canAddMemory
                     ? `Maximum of ${MAX_MEMORY_COUNT} memories reached`
@@ -326,7 +331,7 @@ export default function MemoriesModal({
                     onHighlighted={() => {
                       setHighlightMemoryId(null);
                     }}
-                    readOnly={!allowCreateAndEdit}
+                    readOnly={!canCreateAndEdit}
                   />
                   {memory.isNew && (
                     <Divider paddingParallel="fit" paddingPerpendicular="fit" />

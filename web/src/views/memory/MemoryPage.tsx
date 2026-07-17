@@ -18,6 +18,7 @@ import {
   SvgFolder,
   SvgLightbulbSimple,
   SvgMenu,
+  SvgNetworkGraph,
   SvgPlus,
   SvgSettings,
   SvgShield,
@@ -28,13 +29,16 @@ import Modal from "@/refresh-components/Modal";
 import useUserPersonalization from "@/hooks/useUserPersonalization";
 import { useUser } from "@/providers/UserProvider";
 import { toast } from "@/hooks/useToast";
+import { getMemoryCapabilities } from "@/lib/memory/capabilities";
 import { useMemoryLibrary } from "@/lib/memory/hooks";
 import type { MemoryCategory, MemoryItem } from "@/lib/memory/types";
 import MemoryEditorModal from "@/views/memory/MemoryEditorModal";
+import MemoryGraphView from "@/views/memory/MemoryGraphView";
+import BrainSettingsModal from "@/views/memory/BrainSettingsModal";
 import MemoryCard from "@/sections/cards/MemoryCard";
 
 type CategoryFilter = "all" | MemoryCategory;
-type ViewMode = "grid" | "list";
+type ViewMode = "grid" | "list" | "graph";
 
 interface CategoryDefinition {
   value: CategoryFilter;
@@ -86,9 +90,11 @@ function MemorySettingsModal({ open, onClose }: MemorySettingsModalProps) {
   } = useUserPersonalization(user, updateUserPersonalization, {
     onError: () => toast.error("Memory preference update failed."),
   });
+  const memoryPolicyLoaded = user?.personalization !== undefined;
   const organizationMemoriesEnabled =
-    personalizationValues.organization_memories_enabled;
+    memoryPolicyLoaded && personalizationValues.organization_memories_enabled;
   const organizationCreationEnabled =
+    memoryPolicyLoaded &&
     personalizationValues.organization_memory_creation_enabled;
 
   return (
@@ -161,24 +167,24 @@ function MemorySettingsModal({ open, onClose }: MemorySettingsModalProps) {
 }
 
 export default function MemoryPage() {
-  const { isAdmin, user, updateUserPersonalization } = useUser();
-  const { personalizationValues } = useUserPersonalization(
-    user,
-    updateUserPersonalization
-  );
+  const { isAdmin, user } = useUser();
   const { data, memories, error, isLoading, mutate } = useMemoryLibrary();
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [editorOpen, setEditorOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [brainOpen, setBrainOpen] = useState(false);
   const [selectedMemory, setSelectedMemory] = useState<MemoryItem | null>(null);
-  const organizationCreationEnabled =
-    personalizationValues.organization_memory_creation_enabled;
+  const { canCreateUpdateRestore, canDelete } = getMemoryCapabilities(
+    user?.personalization
+  );
 
   useEffect(() => {
     const stored = window.localStorage.getItem("onyx-memory-view");
-    if (stored === "grid" || stored === "list") setView(stored);
+    if (stored === "grid" || stored === "list" || stored === "graph") {
+      setView(stored);
+    }
   }, []);
 
   const visibleMemories = useMemo(() => {
@@ -204,6 +210,11 @@ export default function MemoryPage() {
     setEditorOpen(true);
   }
 
+  function openMemoryById(memoryId: number) {
+    const match = memories.find((memory) => memory.id === memoryId);
+    if (match) openMemory(match);
+  }
+
   function countFor(filter: CategoryFilter): number {
     if (filter === "all") return data?.total ?? 0;
     return data?.category_counts[filter] ?? 0;
@@ -220,6 +231,13 @@ export default function MemoryPage() {
         />
       ) : null}
       <Button
+        icon={SvgNetworkGraph}
+        prominence="secondary"
+        onClick={() => setBrainOpen(true)}
+      >
+        Brain
+      </Button>
+      <Button
         icon={SvgSettings}
         prominence="secondary"
         onClick={() => setSettingsOpen(true)}
@@ -228,7 +246,7 @@ export default function MemoryPage() {
       </Button>
       <Button
         icon={SvgPlus}
-        disabled={!organizationCreationEnabled}
+        disabled={!canCreateUpdateRestore}
         onClick={() => openMemory(null)}
       >
         Add memory
@@ -241,7 +259,7 @@ export default function MemoryPage() {
       <SettingsLayouts.Header
         icon={SvgBookOpen}
         title="Memory"
-        description="Review and manage the durable context Onyx has learned about your work."
+        description="View and manage what Onyx has learned about you."
         density="compact"
         rightChildren={<div className="hidden sm:block">{headerActions}</div>}
       >
@@ -272,6 +290,13 @@ export default function MemoryPage() {
                 tooltip="List view"
                 onClick={() => setViewMode("list")}
               />
+              <Button
+                icon={SvgNetworkGraph}
+                prominence={view === "graph" ? "secondary" : "tertiary"}
+                size="sm"
+                tooltip="Graph view"
+                onClick={() => setViewMode("graph")}
+              />
             </div>
           </div>
         </div>
@@ -282,6 +307,7 @@ export default function MemoryPage() {
             {CATEGORIES.map((item) => {
               const Icon = item.icon;
               const active = category === item.value;
+
               return (
                 <SidebarTab
                   key={item.value}
@@ -303,61 +329,77 @@ export default function MemoryPage() {
           </div>
 
           <section className="min-w-0 flex-1">
-            <div className="mb-3 flex items-baseline gap-2">
-              <Text font="heading-h3" color="text-05">
-                {CATEGORIES.find((item) => item.value === category)?.label}
-              </Text>
-              <Text font="secondary-body" color="text-03">
-                {`${visibleMemories.length} ${visibleMemories.length === 1 ? "memory" : "memories"}`}
-              </Text>
-            </div>
-
-            {isLoading ? (
-              <div className="flex justify-center py-16">
-                <SvgSimpleLoader className="h-6 w-6" />
-              </div>
-            ) : error ? (
-              <MessageCard
-                variant="error"
-                title="Memory could not be loaded"
-                description="Try refreshing the page."
-              />
-            ) : visibleMemories.length === 0 ? (
-              <IllustrationContent
-                illustration={SvgNoResult}
-                title={
-                  memories.length === 0
-                    ? "No memories yet"
-                    : "No memories found"
-                }
-                description={
-                  memories.length === 0
-                    ? "Add durable context or let Onyx learn useful details from conversations."
-                    : "Try a different category or search."
-                }
-              />
-            ) : view === "grid" ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {visibleMemories.map((memory) => (
-                  <MemoryCard
-                    key={memory.id}
-                    memory={memory}
-                    view="grid"
-                    onClick={openMemory}
-                  />
-                ))}
-              </div>
+            {view === "graph" ? (
+              <>
+                <div className="mb-3 flex items-baseline gap-2">
+                  <Text font="heading-h3" color="text-05">
+                    Context graph
+                  </Text>
+                  <Text font="secondary-body" color="text-03">
+                    Explore how your memories connect.
+                  </Text>
+                </div>
+                <MemoryGraphView onSelectMemory={openMemoryById} />
+              </>
             ) : (
-              <div className="flex flex-col divide-y divide-border-01 border-y border-border-01">
-                {visibleMemories.map((memory) => (
-                  <MemoryCard
-                    key={memory.id}
-                    memory={memory}
-                    view="list"
-                    onClick={openMemory}
+              <>
+                <div className="mb-3 flex items-baseline gap-2">
+                  <Text font="heading-h3" color="text-05">
+                    {CATEGORIES.find((item) => item.value === category)?.label}
+                  </Text>
+                  <Text font="secondary-body" color="text-03">
+                    {`${visibleMemories.length} ${visibleMemories.length === 1 ? "memory" : "memories"}`}
+                  </Text>
+                </div>
+
+                {isLoading ? (
+                  <div className="flex justify-center py-16">
+                    <SvgSimpleLoader className="h-6 w-6" />
+                  </div>
+                ) : error ? (
+                  <MessageCard
+                    variant="error"
+                    title="Memory could not be loaded"
+                    description="Try refreshing the page."
                   />
-                ))}
-              </div>
+                ) : visibleMemories.length === 0 ? (
+                  <IllustrationContent
+                    illustration={SvgNoResult}
+                    title={
+                      memories.length === 0
+                        ? "No memories yet"
+                        : "No memories found"
+                    }
+                    description={
+                      memories.length === 0
+                        ? "Add durable context or let Onyx learn useful details from conversations."
+                        : "Try a different category or search."
+                    }
+                  />
+                ) : view === "grid" ? (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {visibleMemories.map((memory) => (
+                      <MemoryCard
+                        key={memory.id}
+                        memory={memory}
+                        view="grid"
+                        onClick={openMemory}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col divide-y divide-border-01 border-y border-border-01">
+                    {visibleMemories.map((memory) => (
+                      <MemoryCard
+                        key={memory.id}
+                        memory={memory}
+                        view="list"
+                        onClick={openMemory}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </section>
         </div>
@@ -366,13 +408,18 @@ export default function MemoryPage() {
       <MemoryEditorModal
         open={editorOpen}
         memory={selectedMemory}
-        canEdit={organizationCreationEnabled}
+        canCreateUpdateRestore={canCreateUpdateRestore}
+        canDelete={canDelete}
         onClose={() => setEditorOpen(false)}
         onChanged={() => void mutate()}
       />
       <MemorySettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+      />
+      <BrainSettingsModal
+        open={brainOpen}
+        onClose={() => setBrainOpen(false)}
       />
     </SettingsLayouts.Root>
   );
