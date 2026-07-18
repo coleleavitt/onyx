@@ -29,11 +29,20 @@ memory actually changing a later answer* — untracked.
 ## Code summary — how the memory system works
 
 **Storage (`backend/onyx/db/models.py`)**: `Memory` (flat per-user rows: `title`,
-`category`, `memory_text`), `MemoryRevision` (version history, carries `source`),
-`MemoryRelation` (undirected graph edges), `MemorySource` (citations),
-`MemoryGovernancePolicy` (org singleton), `MemoryGovernanceAudit`.
+`category`, `memory_text`, optional `project_id` space scope), `MemoryRevision`
+(version history, carries `source`), `MemoryRelation` (undirected graph edges),
+`MemorySource` (citations; chat-session sources carry an in-app
+`/app?chatId=...` URL), `MemoryGovernancePolicy` (org singleton),
+`MemoryGovernanceAudit`.
 Categories (`MemoryCategory`): `notes / concepts / entities / workstreams`.
 Source types (`MemorySourceType`): `chat_session / document / connector / file / manual`.
+
+**Space scoping**: a memory with `project_id` set only applies inside that
+space's chats; `NULL` means global. Recall in a space returns global + that
+space's memories; recall outside any space returns global only. Memories written
+by the chat memory tool inherit the chat's space; brain pages are scoped to a
+space when every cited session belongs to it. Deleting a space releases its
+memories to the global scope (`ON DELETE SET NULL`).
 
 **Creation — three paths, one master gate:**
 - Manual: `POST /memory` → `create_memory_item(source="manual")`
@@ -46,7 +55,10 @@ Source types (`MemorySourceType`): `chat_session / document / connector / file /
 - Brain self-improvement: `brain_self_improvement()`
   (`backend/onyx/background/celery/tasks/brain/tasks.py`, daily) — an LLM extracts
   pages from recent sessions/cited docs (`source="brain"`) and builds the
-  relation graph + source citations. Needs `user.brain_enabled`.
+  relation graph + source citations. Needs `user.brain_enabled`. An on-demand
+  variant, `brain_self_improvement_user`, runs the same pipeline for one user
+  when `POST /memory/brain/run` is called ("Refresh now" in the Brain modal);
+  the endpoint rate-limits repeats with a 5-minute Redis NX guard.
 - **Every** path is gated by the org singleton
   `MemoryGovernancePolicy.is_memory_creation_allowed` (`memories_enabled AND
   memory_creation_enabled`), which defaults to enabled.
@@ -60,10 +72,11 @@ by `policy.memories_enabled` (fetch) + `user.use_memories` (inject). The memory
 tool is write-only; the relation graph (`backend/onyx/db/brain.py`
 `get_related_memories` / `get_memory_graph`) powers the **UI only**, not chat recall.
 
-**API (`backend/onyx/server/features/memory/api.py`, prefix `/memory`)**: list /
-create / get / update / delete, `/graph`, `/{id}/history` + `/restore`,
-`/{id}/related`, `/{id}/sources`, and `/brain/settings` (GET/PUT). Admin governance
-lives at `/admin/memory-governance`.
+**API (`backend/onyx/server/features/memory/api.py`, prefix `/memory`)**: list
+(supports `?project_id=` scope filter) / create (accepts `project_id`) / get /
+update / delete, `/graph`, `/{id}/history` + `/restore`, `/{id}/related`,
+`/{id}/sources`, `/brain/settings` (GET/PUT), and `/brain/run` (POST, on-demand
+brain refresh). Admin governance lives at `/admin/memory-governance`.
 
 **UI (`web/src/views/memory/*`, route `/app/customize/memory`)**: MemoryPage
 (grid/list/graph views, category tabs, Add/Brain/Settings), MemoryEditorModal
@@ -76,6 +89,11 @@ The **Add memory** button is gated by `organization_memory_creation_enabled`.
   DB/context-layer proof: populate across categories → `get_memories` recall
   context (recency-ordered, exposed via `as_formatted_list`) + brain graph
   (edges, degree, source citations, ownership guards). Deterministic, no LLM.
+- `backend/tests/external_dependency_unit/tools/test_memory_space_scope_and_manual_run.py` —
+  space-scope proof (global vs per-space recall isolation, tool writes
+  inheriting the chat's space, brain page project attribution) plus the
+  on-demand `brain_self_improvement_user` task end to end with a mocked LLM
+  (scoped page creation + clickable session citations).
 - `backend/tests/integration/tests/memory/test_memory_lifecycle.py` — full-stack
   proof: manual populate via `MemoryManager`, deterministic chat-tool populate
   (`forced_tool_ids` + `mock_llm_response`), and a real-LLM (`gpt-5-mini`) recall

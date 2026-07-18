@@ -671,6 +671,7 @@ class OnyxCeleryTask:
     # Organization memory governance
     MEMORY_RETENTION_CLEANUP = "memory_retention_cleanup"
     BRAIN_SELF_IMPROVEMENT = "brain_self_improvement"
+    BRAIN_SELF_IMPROVEMENT_USER = "brain_self_improvement_user"
 
     CHECK_FOR_DOCUMENTS_FOR_OPENSEARCH_MIGRATION_TASK = (
         "check_for_documents_for_opensearch_migration_task"

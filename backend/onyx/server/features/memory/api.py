@@ -6,6 +6,9 @@ from fastapi import Query
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
+from onyx.configs.constants import OnyxCeleryPriority
+from onyx.configs.constants import OnyxCeleryQueues
+from onyx.configs.constants import OnyxCeleryTask
 from onyx.db.brain import BrainSettings
 from onyx.db.brain import get_memory_graph
 from onyx.db.brain import get_memory_sources
@@ -19,14 +22,19 @@ from onyx.db.memory import create_memory_item
 from onyx.db.memory import delete_memory_item
 from onyx.db.memory import get_memory_item_for_user
 from onyx.db.memory import get_memory_revision
+from onyx.db.memory import is_memory_creation_allowed
 from onyx.db.memory import list_memory_items_for_user
 from onyx.db.memory import list_memory_revisions
 from onyx.db.memory import restore_memory_revision
 from onyx.db.memory import update_memory_item
 from onyx.db.models import Memory
 from onyx.db.models import User
+from onyx.db.projects import ProjectAccessPolicy
+from onyx.db.projects import user_has_project_access
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
+from onyx.redis.redis_pool import get_redis_client
+from onyx.server.features.memory.models import BrainRunTriggerResponse
 from onyx.server.features.memory.models import BrainSettingsUpdateRequest
 from onyx.server.features.memory.models import MemoryCreateRequest
 from onyx.server.features.memory.models import MemoryListResponse
@@ -36,8 +44,14 @@ from onyx.server.features.memory.models import MemorySourceSnapshot
 from onyx.server.features.memory.models import MemoryUpdateRequest
 from onyx.server.features.memory.models import RelatedMemoriesResponse
 from onyx.server.features.memory.models import RelatedMemory
+from shared_configs.contextvars import get_current_tenant_id
 
 router = APIRouter(prefix="/memory")
+
+# A manual brain refresh is expensive (LLM extraction over recent sessions), so
+# repeat requests inside the cooldown are rejected instead of queued.
+BRAIN_MANUAL_RUN_COOLDOWN_SECONDS = 5 * 60
+BRAIN_MANUAL_RUN_TASK_EXPIRES_SECONDS = 60 * 60
 
 
 def _user_id(user: User) -> UUID:
@@ -62,14 +76,35 @@ def _memory_or_404(
     return memory
 
 
+def _validate_project_scope(
+    project_id: int | None,
+    *,
+    user: User,
+    db_session: Session,
+) -> None:
+    if project_id is None:
+        return
+    if not user_has_project_access(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
+    ):
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Space not found")
+
+
 @router.get("")
 def list_current_user_memories(
     category: MemoryCategory | None = None,
     query: str | None = Query(default=None, max_length=200),
+    project_id: int | None = Query(default=None),
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> MemoryListResponse:
-    all_items = list_memory_items_for_user(_user_id(user), db_session=db_session)
+    _validate_project_scope(project_id, user=user, db_session=db_session)
+    all_items = list_memory_items_for_user(
+        _user_id(user), db_session=db_session, project_id=project_id
+    )
     category_counts = {
         item_category: sum(item.category == item_category for item in all_items)
         for item_category in MemoryCategory
@@ -79,6 +114,7 @@ def list_current_user_memories(
         db_session=db_session,
         category=category,
         query=query,
+        project_id=project_id,
     )
     return MemoryListResponse(
         items=[MemorySnapshot.from_model(item) for item in items],
@@ -93,6 +129,7 @@ def create_current_user_memory(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> MemorySnapshot:
+    _validate_project_scope(body.project_id, user=user, db_session=db_session)
     memory = create_memory_item(
         user_id=_user_id(user),
         memory_text=body.content.strip(),
@@ -100,6 +137,7 @@ def create_current_user_memory(
         category=body.category,
         source="manual",
         db_session=db_session,
+        project_id=body.project_id,
     )
     if memory is None:
         raise OnyxError(
@@ -140,6 +178,55 @@ def update_current_user_brain_settings(
     if settings is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "User not found")
     return settings
+
+
+@router.post("/brain/run")
+def trigger_current_user_brain_run(
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+    tenant_id: str = Depends(get_current_tenant_id),
+) -> BrainRunTriggerResponse:
+    """Queue an on-demand brain run for the current user (the scheduled nightly
+    sweep still happens); a Redis guard rate-limits repeat requests."""
+    if not user.brain_enabled:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            "Enable Brain before requesting a refresh",
+        )
+    if not is_memory_creation_allowed(db_session):
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "Memory creation is disabled for this organization",
+        )
+
+    # NX+EX = atomic dedupe (a queued-but-unstarted run can't be double-queued)
+    # and cooldown in one call.
+    redis_client = get_redis_client(tenant_id=tenant_id)
+    guard_set = redis_client.set(
+        f"brain_manual_run:{_user_id(user)}",
+        1,
+        nx=True,
+        ex=BRAIN_MANUAL_RUN_COOLDOWN_SECONDS,
+    )
+    if not guard_set:
+        raise OnyxError(
+            OnyxErrorCode.RATE_LIMITED,
+            "A brain refresh was requested recently — try again in a few minutes",
+        )
+
+    from onyx.background.celery.versioned_apps.client import app as client_app
+
+    client_app.send_task(
+        OnyxCeleryTask.BRAIN_SELF_IMPROVEMENT_USER,
+        kwargs={"user_id": str(_user_id(user)), "tenant_id": tenant_id},
+        queue=OnyxCeleryQueues.PRIMARY,
+        priority=OnyxCeleryPriority.HIGH,
+        expires=BRAIN_MANUAL_RUN_TASK_EXPIRES_SECONDS,
+    )
+    return BrainRunTriggerResponse(
+        queued=True,
+        cooldown_seconds=BRAIN_MANUAL_RUN_COOLDOWN_SECONDS,
+    )
 
 
 @router.get("/{memory_id}")

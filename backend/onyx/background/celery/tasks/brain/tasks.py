@@ -11,6 +11,7 @@ the documents) that produced them. This is the engine behind the
 import datetime
 from collections import defaultdict
 from dataclasses import dataclass
+from uuid import UUID
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -73,6 +74,9 @@ class _SourceRef:
     label: str
     source_id: str
     url: str | None = None
+    # For chat-session refs: the project (space) the session belongs to, used
+    # to scope pages derived entirely from one space's conversations.
+    project_id: int | None = None
 
 
 @dataclass
@@ -170,6 +174,9 @@ def _build_context(
             source_type=MemorySourceType.CHAT_SESSION,
             label=session.description or "Chat session",
             source_id=str(session.id),
+            # Conversation-history citations deep-link back into the app.
+            url=f"/app?chatId={session.id}",
+            project_id=session.project_id,
         )
         for session in sessions
     }
@@ -339,6 +346,27 @@ def _attach_sources(
         db_session.commit()
 
 
+def _page_project_id(
+    refs: list[_SourceRef],
+) -> int | None:
+    """A page derived exclusively from one space's chat sessions is scoped to
+    that space; anything mixed (multiple spaces, global sessions, documents)
+    stays global."""
+    if not refs:
+        return None
+    project_ids = {
+        ref.project_id
+        for ref in refs
+        if ref.source_type == MemorySourceType.CHAT_SESSION
+    }
+    if len(project_ids) != 1:
+        return None
+    only = project_ids.pop()
+    # Document refs alongside a space's sessions still describe that space's
+    # work, so they don't break the attribution.
+    return only
+
+
 def _apply_pages(
     db_session: Session,
     user: User,
@@ -352,11 +380,18 @@ def _apply_pages(
 
     applied: dict[str, int] = {}
     for page in pages:
+        page_refs = [
+            source_map[ref_key]
+            for ref_key in (_normalize_source_ref(ref) for ref in page.sources)
+            if ref_key in source_map
+        ]
         # Match the stored (normalized) title so re-runs update rather than
         # duplicate a near-identical page.
         key = memory_title_for_content(page.content, page.title).strip().lower()
         current = by_title.get(key)
         if current is not None:
+            # Updates keep the page's existing scope: a page that graduated to
+            # global (or was created inside a space) stays where it is.
             memory = update_memory_item(
                 current,
                 memory_text=page.content,
@@ -373,18 +408,14 @@ def _apply_pages(
                 category=page.category,
                 source=BRAIN_SOURCE,
                 db_session=db_session,
+                project_id=_page_project_id(page_refs),
             )
         if memory is None:
             continue
         by_title[key] = memory
         applied[key] = memory.id
 
-        refs = [
-            source_map[key]
-            for key in (_normalize_source_ref(ref) for ref in page.sources)
-            if key in source_map
-        ]
-        _attach_sources(db_session, memory.id, refs)
+        _attach_sources(db_session, memory.id, page_refs)
 
     # Link related pages once every page has an id.
     for page in pages:
@@ -469,3 +500,36 @@ def brain_self_improvement() -> int:
     if processed:
         task_logger.info("Brain self-improvement updated %s user(s)", processed)
     return processed
+
+
+@shared_task(
+    name=OnyxCeleryTask.BRAIN_SELF_IMPROVEMENT_USER,
+    ignore_result=True,
+    soft_time_limit=60 * 10,
+    bind=False,
+)
+def brain_self_improvement_user(
+    *,
+    user_id: str,
+    tenant_id: str | None = None,  # noqa: ARG001 — consumed by the task base
+) -> bool:
+    """On-demand brain run for a single user, triggered from the API.
+
+    Same pipeline as the nightly run, but for one user so a manual "refresh
+    now" doesn't wait for (or repeat) the whole-tenant sweep. `tenant_id` is
+    consumed by the task base to select the tenant schema.
+    """
+    with get_session_with_current_tenant() as db_session:
+        if not is_memory_creation_allowed(db_session):
+            return False
+        user = db_session.get(User, UUID(user_id))
+        if user is None or not user.brain_enabled:
+            return False
+
+        try:
+            llm = get_default_llm()
+        except ValueError:
+            task_logger.info("Manual brain run skipped: no default LLM configured.")
+            return False
+
+        return _run_for_user(db_session, user, llm)

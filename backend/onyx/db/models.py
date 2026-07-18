@@ -508,11 +508,19 @@ class Memory(Base):
     __table_args__ = (
         Index("ix_memory_created_at", "created_at"),
         Index("ix_memory_user_category_updated", "user_id", "category", "updated_at"),
+        Index("ix_memory_user_project", "user_id", "project_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("user.id", ondelete="CASCADE"), nullable=False
+    )
+    # Space scoping: a memory tied to a project (space) is only recalled in that
+    # space's chats; NULL means the memory is global to the user. Deleting the
+    # project releases its memories back to the global scope rather than
+    # destroying learned context.
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_project.id", ondelete="SET NULL"), nullable=True
     )
     memory_text: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -541,6 +549,9 @@ class Memory(Base):
     )
 
     user: Mapped["User"] = relationship("User", back_populates="memories")
+    # Joined-load: memory lists are small (<=200/user) and snapshots need the
+    # space name without an N+1.
+    project: Mapped["UserProject | None"] = relationship("UserProject", lazy="joined")
     revisions: Mapped[list["MemoryRevision"]] = relationship(
         "MemoryRevision",
         back_populates="memory",

@@ -1,4 +1,5 @@
 import type {
+  BrainRunTrigger,
   BrainSettings,
   BrainSettingsUpdate,
   MemoryGraph,
@@ -101,5 +102,11 @@ export async function updateBrainSettings(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     })
+  );
+}
+
+export async function triggerBrainRun(): Promise<BrainRunTrigger> {
+  return handle<BrainRunTrigger>(
+    await fetch("/api/memory/brain/run", { method: "POST" })
   );
 }

@@ -864,7 +864,12 @@ def build_chat_turn(
     # Compute skip-clarification flag for deep research path (cheap, always available)
     skip_clarification = is_last_assistant_message_clarification(chat_history)
 
-    user_memory_context = get_memories(user, db_session)
+    # Recall is scoped to the chat's space: global memories plus (when the
+    # session lives in a project) that project's memories. New memories written
+    # by the memory tool inherit the same scope.
+    user_memory_context = get_memories(
+        user, db_session, project_id=chat_session.project_id
+    )
 
     # This prompt may come from the Agent or Project. Fetched here (before run_llm_loop)
     # because the inner loop shouldn't need to access the DB-form chat history, but we
@@ -999,17 +1004,11 @@ def build_chat_turn(
     unreadable_attachment_context = _build_unreadable_attachment_context(
         file_descriptors=[
             *new_msg_req.file_descriptors,
-            *[
-                file
-                for message in chat_history
-                for file in (message.files or [])
-            ],
+            *[file for message in chat_history for file in (message.files or [])],
         ],
         db_session=db_session,
     )
-    effective_additional_context = (
-        additional_context or new_msg_req.additional_context
-    )
+    effective_additional_context = additional_context or new_msg_req.additional_context
     if unreadable_attachment_context:
         effective_additional_context = (
             f"{effective_additional_context}\n\n{unreadable_attachment_context}"

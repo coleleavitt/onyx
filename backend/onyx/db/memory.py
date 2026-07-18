@@ -70,6 +70,9 @@ class UserMemoryContext(BaseModel):
     user_info: UserInfo
     user_preferences: str | None = None
     memories: tuple[str, ...] = ()
+    # The project (space) this context was recalled for. New memories written
+    # from the same chat are scoped to it; None means the global scope.
+    project_id: int | None = None
 
     def without_memories(self) -> "UserMemoryContext":
         """Return a copy with memories cleared but user info/preferences intact."""
@@ -78,6 +81,7 @@ class UserMemoryContext(BaseModel):
             user_info=self.user_info,
             user_preferences=self.user_preferences,
             memories=(),
+            project_id=self.project_id,
         )
 
     def as_formatted_list(self) -> list[str]:
@@ -97,7 +101,19 @@ class UserMemoryContext(BaseModel):
         return result
 
 
-def get_memories(user: User, db_session: Session) -> UserMemoryContext:
+def _scope_filter(project_id: int | None) -> Any:
+    """Recall scope: global memories always apply; a space's memories only
+    apply inside that space (mirrors per-space memory isolation)."""
+    if project_id is None:
+        return Memory.project_id.is_(None)
+    return or_(Memory.project_id.is_(None), Memory.project_id == project_id)
+
+
+def get_memories(
+    user: User,
+    db_session: Session,
+    project_id: int | None = None,
+) -> UserMemoryContext:
     # `{{user.<key>}}` placeholder values: IdP directory profile plus basic
     # identity. Identity keys use setdefault so a directory field never gets
     # clobbered (they don't overlap today, but keeps precedence explicit).
@@ -122,7 +138,7 @@ def get_memories(user: User, db_session: Session) -> UserMemoryContext:
     memory_rows = (
         db_session.scalars(
             select(Memory)
-            .where(Memory.user_id == user.id)
+            .where(Memory.user_id == user.id, _scope_filter(project_id))
             .order_by(Memory.updated_at.desc(), Memory.id.desc())
             .limit(MAX_CONTEXT_MEMORIES)
         ).all()
@@ -145,6 +161,7 @@ def get_memories(user: User, db_session: Session) -> UserMemoryContext:
         user_info=user_info,
         user_preferences=user_preferences,
         memories=tuple(bounded_memories),
+        project_id=project_id,
     )
 
 
@@ -183,8 +200,14 @@ def list_memory_items_for_user(
     db_session: Session,
     category: MemoryCategory | None = None,
     query: str | None = None,
+    project_id: int | None = None,
 ) -> list[Memory]:
+    """List a user's memories, optionally narrowed to one space's scope
+    (global + that project's memories). Without `project_id` every memory is
+    returned so the library page shows the full account."""
     stmt = select(Memory).where(Memory.user_id == user_id)
+    if project_id is not None:
+        stmt = stmt.where(_scope_filter(project_id))
     if category is not None:
         stmt = stmt.where(Memory.category == category)
     normalized_query = (query or "").strip()
@@ -215,6 +238,7 @@ def create_memory_item(
     category: MemoryCategory,
     source: str,
     db_session: Session,
+    project_id: int | None = None,
 ) -> Memory | None:
     if not is_memory_creation_allowed(db_session):
         return None
@@ -234,6 +258,7 @@ def create_memory_item(
         title=memory_title_for_content(memory_text, title),
         category=category,
         memory_text=memory_text,
+        project_id=project_id,
     )
     db_session.add(memory)
     db_session.flush()
@@ -330,8 +355,10 @@ def add_memory(
     user_id: UUID,
     memory_text: str,
     db_session: Session | None = None,
+    project_id: int | None = None,
 ) -> int | None:
-    """Insert a new Memory row for the given user.
+    """Insert a new Memory row for the given user, scoped to the project
+    (space) the conversation happened in when one is given.
 
     If the user already has MAX_MEMORIES_PER_USER memories, the oldest
     one (lowest id) is deleted before inserting the new one.
@@ -349,6 +376,7 @@ def add_memory(
             category=MemoryCategory.NOTES,
             source="conversation",
             db_session=db_session,
+            project_id=project_id,
         )
         return memory.id if memory is not None else None
 
@@ -358,9 +386,13 @@ def update_memory_at_index(
     index: int,
     new_text: str,
     db_session: Session | None = None,
+    project_id: int | None = None,
 ) -> int | None:
     """Update the memory at the given 0-based index (ordered by updated_at DESC
     then id DESC, matching get_memories()).
+
+    `project_id` must match the scope the memories were recalled with so the
+    index refers to the same row the LLM saw.
 
     Returns the id of the updated Memory row, or None if the index is out of range.
     """
@@ -370,7 +402,7 @@ def update_memory_at_index(
 
         memory_rows = db_session.scalars(
             select(Memory)
-            .where(Memory.user_id == user_id)
+            .where(Memory.user_id == user_id, _scope_filter(project_id))
             .order_by(Memory.updated_at.desc(), Memory.id.desc())
         ).all()
 

@@ -5,6 +5,9 @@ export interface MemoryItem {
   title: string;
   category: MemoryCategory;
   content: string;
+  /** Space scope: set when the memory only applies inside one space. */
+  project_id: number | null;
+  project_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -86,4 +89,9 @@ export interface BrainSettingsUpdate {
   brain_enabled: boolean;
   brain_use_connectors: boolean;
   brain_focus_instructions: string | null;
+}
+
+export interface BrainRunTrigger {
+  queued: boolean;
+  cooldown_seconds: number;
 }

@@ -1116,11 +1116,13 @@ def run_llm_loop(
                                 user_id=user_memory_context.user_id,
                                 index=tool_response.rich_response.index_to_replace,
                                 new_text=tool_response.rich_response.memory_text,
+                                project_id=user_memory_context.project_id,
                             )
                         else:
                             persisted_memory_id = add_memory(
                                 user_id=user_memory_context.user_id,
                                 memory_text=tool_response.rich_response.memory_text,
+                                project_id=user_memory_context.project_id,
                             )
                     operation: Literal["add", "update"] = (
                         "update"

@@ -7,7 +7,11 @@ import { Button, Switch, Text } from "@opal/components";
 import { SvgNetworkGraph } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTextArea from "@/refresh-components/inputs/InputTextArea";
-import { getBrainSettings, updateBrainSettings } from "@/lib/memory/api";
+import {
+  getBrainSettings,
+  triggerBrainRun,
+  updateBrainSettings,
+} from "@/lib/memory/api";
 import { toast } from "@opal/layouts";
 
 const FOCUS_INSTRUCTIONS_MAX_LENGTH = 2000;
@@ -31,12 +35,14 @@ export default function BrainSettingsModal({
   const [useConnectors, setUseConnectors] = useState(false);
   const [focusInstructions, setFocusInstructions] = useState("");
   const [saving, setSaving] = useState(false);
+  const [refreshQueued, setRefreshQueued] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setBrainEnabled(settings?.brain_enabled ?? false);
     setUseConnectors(settings?.brain_use_connectors ?? false);
     setFocusInstructions(settings?.brain_focus_instructions ?? "");
+    setRefreshQueued(false);
   }, [open, settings]);
 
   async function save() {
@@ -56,6 +62,18 @@ export default function BrainSettingsModal({
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function refreshNow() {
+    try {
+      await triggerBrainRun();
+      setRefreshQueued(true);
+      toast.success("Brain refresh queued — new pages land in a few minutes.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Brain refresh request failed."
+      );
     }
   }
 
@@ -121,14 +139,29 @@ export default function BrainSettingsModal({
                 {`${focusInstructions.length}/${FOCUS_INSTRUCTIONS_MAX_LENGTH}`}
               </Text>
             </label>
-            {settings?.brain_last_run_at ? (
+            <div className="flex items-center justify-between gap-4">
               <Text font="secondary-body" color="text-03">
-                {`Last refreshed ${formatDistanceToNow(
-                  new Date(settings.brain_last_run_at),
-                  { addSuffix: true }
-                )}`}
+                {settings?.brain_last_run_at
+                  ? `Last refreshed ${formatDistanceToNow(
+                      new Date(settings.brain_last_run_at),
+                      { addSuffix: true }
+                    )}`
+                  : "Never refreshed yet."}
               </Text>
-            ) : null}
+              <Button
+                prominence="secondary"
+                size="sm"
+                disabled={!settings?.brain_enabled || refreshQueued || saving}
+                tooltip={
+                  settings?.brain_enabled
+                    ? undefined
+                    : "Enable Brain and save first"
+                }
+                onClick={() => void refreshNow()}
+              >
+                {refreshQueued ? "Refresh queued" : "Refresh now"}
+              </Button>
+            </div>
           </div>
         </Modal.Body>
         <Modal.Footer>

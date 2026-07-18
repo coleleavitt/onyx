@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { formatDistanceToNow } from "date-fns";
 import { Button, Divider, InputTypeIn, Tabs, Text } from "@opal/components";
-import { SvgBookOpen, SvgHistory, SvgTrash } from "@opal/icons";
+import { SvgBookOpen, SvgFolder, SvgHistory, SvgTrash } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTextArea from "@/refresh-components/inputs/InputTextArea";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
@@ -224,6 +224,14 @@ export default function MemoryEditorModal({
               </label>
               {memory ? (
                 <div className="flex w-full flex-col gap-4">
+                  {memory.project_name ? (
+                    <div className="flex items-center gap-2">
+                      <SvgFolder className="h-4 w-4 shrink-0 stroke-text-03" />
+                      <Text font="secondary-body" color="text-03">
+                        {`Scoped to the "${memory.project_name}" space — only recalled in that space's chats.`}
+                      </Text>
+                    </div>
+                  ) : null}
                   <MemoryRelatedPages memoryId={memory.id} />
                   <MemorySources memoryId={memory.id} />
                 </div>
