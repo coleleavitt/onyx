@@ -464,8 +464,14 @@ def _run_for_user(db_session: Session, user: User, llm: LLM) -> bool:
     soft_time_limit=60 * 30,
     bind=False,
 )
-def brain_self_improvement() -> int:
-    """Daily self-improvement run for every brain-enabled user in the tenant."""
+def brain_self_improvement(
+    *,
+    tenant_id: str | None = None,  # noqa: ARG001 — consumed by the task base
+) -> int:
+    """Daily self-improvement run for every brain-enabled user in the tenant.
+
+    The beat middleware injects `tenant_id` into every scheduled send, so the
+    signature must accept it even though the task base consumes it."""
     with get_session_with_current_tenant() as db_session:
         if not is_memory_creation_allowed(db_session):
             return 0
