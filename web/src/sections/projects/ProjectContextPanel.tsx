@@ -2,8 +2,6 @@
 
 import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
-import { useRouter } from "next/navigation";
-import type { Route } from "next";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import FilePickerPopover from "@/refresh-components/popovers/FilePickerPopover";
 import { UserFileStatus, type ProjectFile } from "@/lib/projects/types";
@@ -18,6 +16,12 @@ import ShareProjectModal from "@/sections/modals/ShareProjectModal";
 import UserFilesModal from "@/sections/modals/UserFilesModal";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
 import { FileCard } from "@/sections/cards/FileCard";
+import SpaceDetailHeader from "@/sections/projects/SpaceDetailHeader";
+import ProjectMemoryPanel from "@/sections/projects/ProjectMemoryPanel";
+import SpaceLinksSection from "@/sections/projects/SpaceLinksSection";
+import SpaceSkillsSection from "@/sections/projects/SpaceSkillsSection";
+import SpaceScheduledTasksSection from "@/sections/projects/SpaceScheduledTasksSection";
+import { parseSpaceInstructions } from "@/lib/projects/spaceMetadata";
 import { hasNonImageFiles } from "@/lib/utils";
 import { cn } from "@opal/utils";
 import {
@@ -68,7 +72,6 @@ export default function ProjectContextPanel({
   availableContextTokens = 128_000,
   setPresentingDocument,
 }: ProjectContextPanelProps) {
-  const router = useRouter();
   const addInstructionModal = useCreateModal();
   const editDetailsModal = useCreateModal();
   const projectFilesModal = useCreateModal();
@@ -99,6 +102,7 @@ export default function ProjectContextPanel({
     projects,
     fetchProjects,
     refreshCurrentProjectDetails,
+    updateProjectMetadata,
   } = useProjectsContext();
   const currentProject =
     currentProjectDetails?.project ??
@@ -107,8 +111,11 @@ export default function ProjectContextPanel({
   const canEdit =
     currentProject !== null && currentProject.user_permission !== "VIEWER";
   const isOwner = currentProject?.user_permission === "OWNER";
-  const instructionsText =
-    currentProjectDetails?.project?.instructions?.trim() ?? "";
+  // Strip the machine-readable space-metadata block (links/skills) so only the
+  // human-facing instructions are shown.
+  const instructionsText = parseSpaceInstructions(
+    currentProjectDetails?.project?.instructions
+  ).instructions;
   const handleUploadFiles = useCallback(
     async (files: File[]) => {
       if (!files || files.length === 0) return;
@@ -198,14 +205,19 @@ export default function ProjectContextPanel({
 
       <div className="w-full flex flex-col gap-6 pb-6">
         <div className="flex w-full items-start justify-between gap-3">
-          <Content
-            icon={SvgFolderOpen}
-            title={projectName}
-            description={
-              currentProject?.description ||
-              "Describe your project, goals, subject, etc…"
-            }
-          />
+          {currentProject ? (
+            <div className="min-w-0 flex-1">
+              <SpaceDetailHeader
+                project={currentProject}
+                canEdit={canEdit}
+                onUpdate={(metadata) =>
+                  updateProjectMetadata(currentProject.id, metadata)
+                }
+              />
+            </div>
+          ) : (
+            <Content icon={SvgFolderOpen} title={projectName} />
+          )}
           <div className="flex shrink-0 items-center gap-2">
             {canEdit && (
               <Button
@@ -433,56 +445,27 @@ export default function ProjectContextPanel({
           )}
         </div>
 
-        {/* Skills — shell only; opens the global Skills hub. No per-space
-            skill association is persisted yet (backend follow-up). */}
-        <div className="flex flex-col gap-2">
-          <ContentAction
-            sizePreset="main-ui"
-            variant="section"
-            title="Skills"
-            description="Give this space access to skills."
-            padding="fit"
-            rightChildren={
-              canEdit ? (
-                <Button
-                  icon={SvgPlusCircle}
-                  prominence="tertiary"
-                  onClick={() => router.push("/app/customize/skills" as Route)}
-                >
-                  Add Skills
-                </Button>
-              ) : undefined
-            }
+        {/* Space-scoped memory — real, backed by /api/memory?project_id=... */}
+        {currentProjectId !== null && (
+          <ProjectMemoryPanel
+            projectId={currentProjectId}
+            canEdit={canEdit}
           />
-          <SectionPlaceholder>
-            No skills added to this space yet.
-          </SectionPlaceholder>
-        </div>
+        )}
 
-        {/* Links — shell only; add flow is a coming-soon placeholder
-            (backend follow-up). */}
-        <div className="flex flex-col gap-2">
-          <ContentAction
-            sizePreset="main-ui"
-            variant="section"
-            title="Links"
-            description="Add web links this space can reference."
-            padding="fit"
-            rightChildren={
-              canEdit ? (
-                <Button
-                  icon={SvgPlusCircle}
-                  prominence="tertiary"
-                  disabled
-                  tooltip="Coming soon"
-                >
-                  Add Link
-                </Button>
-              ) : undefined
-            }
+        {/* Per-space skills — persisted via the space-metadata channel. */}
+        <SpaceSkillsSection canEdit={canEdit} />
+
+        {/* Links — working add-URL flow persisted via the space-metadata channel. */}
+        <SpaceLinksSection canEdit={canEdit} />
+
+        {/* Scheduled tasks scoped to this space. */}
+        {currentProjectId !== null && (
+          <SpaceScheduledTasksSection
+            projectId={currentProjectId}
+            canEdit={canEdit}
           />
-          <SectionPlaceholder>Link support is coming soon.</SectionPlaceholder>
-        </div>
+        )}
       </div>
     </>
   );

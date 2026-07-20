@@ -6,6 +6,8 @@ import { useProjects } from "@/lib/projects/hooks";
 import { spacePath } from "@/lib/projects/slug";
 import type { Project } from "@/lib/projects/types";
 import { deleteProject, setProjectPinned } from "@/lib/projects/svc";
+import { groupSpaces } from "@/lib/projects/spaceGrouping";
+import { useInvitedSpaceIds } from "@/lib/projects/useInvitedSpaceIds";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
 import { toast } from "@opal/layouts";
 import SpaceCard from "@/sections/cards/SpaceCard";
@@ -95,25 +97,12 @@ export default function SpacesPage() {
     );
   }, [projects, query]);
 
-  const spaceGroups = useMemo(() => {
-    const pinned = visibleProjects.filter((project) => project.is_pinned);
-    const rest = visibleProjects.filter((project) => !project.is_pinned);
-    const owned = rest.filter((project) => project.user_permission === "OWNER");
-    const shared = rest.filter(
-      (project) => project.user_permission !== "OWNER"
-    );
-    const groups: { key: string; title: string; items: Project[] }[] = [];
-    if (pinned.length > 0) {
-      groups.push({ key: "pinned", title: "Pinned", items: pinned });
-    }
-    if (owned.length > 0) {
-      groups.push({ key: "owned", title: "Your Spaces", items: owned });
-    }
-    if (shared.length > 0) {
-      groups.push({ key: "shared", title: "Shared with you", items: shared });
-    }
-    return groups;
-  }, [visibleProjects]);
+  const invitedProjectIds = useInvitedSpaceIds(projects);
+
+  const spaceGroups = useMemo(
+    () => groupSpaces(visibleProjects, { invitedProjectIds }),
+    [visibleProjects, invitedProjectIds]
+  );
 
   return (
     <SettingsLayouts.Root width="lg">

@@ -32,6 +32,8 @@ export interface MemoryInput {
   title?: string | null;
   category: MemoryCategory;
   content: string;
+  /** Space scope: set to attach the memory to a single space. */
+  project_id?: number | null;
 }
 
 export type MemorySourceType =

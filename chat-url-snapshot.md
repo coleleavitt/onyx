@@ -1,0 +1,27 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e21]:
+    - img "Logo" [ref=e24]
+    - generic [ref=e27]:
+      - generic [ref=e28]:
+        - paragraph [ref=e29]: Welcome to Foundations AI
+        - paragraph [ref=e30]: Secure access to Foundations knowledge and tools.
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - generic [ref=e34] [cursor=pointer]:
+            - generic "Email Address" [ref=e39]
+            - textbox "Email Address" [ref=e41]:
+              - /placeholder: email@yourcompany.com
+          - generic [ref=e44] [cursor=pointer]:
+            - generic "Password" [ref=e49]
+            - textbox "Password" [ref=e52]
+        - button "Sign In" [disabled] [ref=e53]:
+          - generic [ref=e54]:
+            - generic [ref=e55]: Sign In
+            - img [ref=e57]
+    - generic [ref=e59]:
+      - text: New to Foundations AI?
+      - link "Create an Account" [ref=e60] [cursor=pointer]:
+        - /url: /auth/signup
+  - button "Open Next.js Dev Tools" [ref=e61] [cursor=pointer]:
+    - img [ref=e62]
+  - alert [ref=e18]

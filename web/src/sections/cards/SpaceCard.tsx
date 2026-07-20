@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Project } from "@/lib/projects/types";
+import { spaceAccentFromEmoji } from "@/lib/projects/spaceAccent";
 import { getUserInitials } from "@/lib/users/svc";
 import { timeAgo } from "@opal/time";
 import { Button, Popover, PopoverMenu, Text } from "@opal/components";
@@ -74,7 +75,17 @@ export default function SpaceCard({
       }}
       aria-label={`Open space ${project.name}`}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-08 bg-background-tint-02">
+      <div
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-08 bg-background-tint-02"
+        style={
+          project.emoji
+            ? {
+                backgroundColor: spaceAccentFromEmoji(project.emoji)
+                  .backgroundLight,
+              }
+            : undefined
+        }
+      >
         {project.emoji ? (
           <Text font="main-ui-body" color="text-05" nowrap>
             {project.emoji}

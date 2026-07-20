@@ -74,6 +74,9 @@ function ConfigItem({ label, value, onEdit }: ConfigItemProps) {
   const renderValue = () => {
     if (Array.isArray(value)) {
       const displayedItems = isExpanded ? value : value.slice(0, 5);
+      const joinedValue = displayedItems
+        .map((item) => convertObjectToString(item))
+        .join(", ");
       return (
         <Section
           flexDirection="row"
@@ -83,9 +86,7 @@ function ConfigItem({ label, value, onEdit }: ConfigItemProps) {
           height="fit"
         >
           <Text secondaryBody text03 className="wrap-break-word">
-            {displayedItems
-              .map((item) => convertObjectToString(item))
-              .join(", ")}
+            {joinedValue || "-"}
           </Text>
         </Section>
       );

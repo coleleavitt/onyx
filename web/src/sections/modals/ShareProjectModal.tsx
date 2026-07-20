@@ -31,7 +31,7 @@ import {
   serializeDraftState,
   type ShareDraftState,
 } from "@/sections/modals/shareDraftState";
-import { Button, Text } from "@opal/components";
+import { Button, InputTypeIn, Text } from "@opal/components";
 import {
   SvgCheck,
   SvgCopy,
@@ -82,6 +82,8 @@ export default function ShareProjectModal({
   );
   const [stagedPermission, setStagedPermission] =
     useState<ProjectSharePermission>("VIEWER");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [resolvingRequestId, setResolvingRequestId] = useState<number | null>(
     null
@@ -108,6 +110,8 @@ export default function ShareProjectModal({
         setStagedUsers([]);
         setStagedGroups([]);
         setStagedPermission("VIEWER");
+        setInviteEmail("");
+        setInviteError(null);
       })
       .catch(() => {
         if (active) setLoadError(true);
@@ -174,6 +178,30 @@ export default function ShareProjectModal({
           }
         : current
     );
+  }
+
+  function stageInviteEmail() {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) return;
+
+    const match = users.find((user) => user.email.toLowerCase() === email);
+    if (!match) {
+      setInviteError(
+        "No matching Onyx user was found. Invite an existing organization user."
+      );
+      return;
+    }
+    if (
+      existingUserIds.has(match.id) ||
+      stagedUsers.some((user) => user.id === match.id)
+    ) {
+      setInviteError("This person already has access or is already staged.");
+      return;
+    }
+
+    setStagedUsers((current) => [...current, match]);
+    setInviteEmail("");
+    setInviteError(null);
   }
 
   function updateGroupPermission(
@@ -343,6 +371,42 @@ export default function ShareProjectModal({
                 stagedUsers={stagedUsers}
                 users={users}
               />
+
+              <div className="flex flex-col gap-1 rounded-12 bg-background-tint-00 p-2">
+                <Text color="text-03" font="secondary-action">
+                  Invite by email
+                </Text>
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <InputTypeIn
+                      placeholder="teammate@example.com"
+                      value={inviteEmail}
+                      onChange={(event) => {
+                        setInviteEmail(event.target.value);
+                        setInviteError(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          stageInviteEmail();
+                        }
+                      }}
+                    />
+                  </div>
+                  <Button onClick={stageInviteEmail} prominence="secondary">
+                    Invite
+                  </Button>
+                </div>
+                {inviteError ? (
+                  <Text color="status-error-05" font="secondary-body">
+                    {inviteError}
+                  </Text>
+                ) : (
+                  <Text color="text-03" font="secondary-body">
+                    Invite existing organization users by email, then save to grant access.
+                  </Text>
+                )}
+              </div>
 
               <Text color="text-03" font="secondary-action">
                 People with access

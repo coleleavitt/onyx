@@ -7,6 +7,11 @@ import type { Project } from "@/lib/projects/types";
 import Modal from "@/refresh-components/Modal";
 import InputTypeInField from "@/refresh-components/form/InputTypeInField";
 import InputTextAreaField from "@/refresh-components/form/InputTextAreaField";
+import EmojiPickerField from "@/refresh-components/form/EmojiPickerField";
+import {
+  SPACE_DESCRIPTION_MAX_LENGTH,
+  SPACE_NAME_MAX_LENGTH,
+} from "@/lib/projects/constants";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import { Button } from "@opal/components";
 import { InputVertical } from "@opal/layouts";
@@ -21,11 +26,17 @@ interface EditSpaceDetailsModalProps {
 const validationSchema = Yup.object({
   name: Yup.string()
     .trim()
-    .max(255, "Space name must be 255 characters or fewer")
+    .max(
+      SPACE_NAME_MAX_LENGTH,
+      `Space name must be ${SPACE_NAME_MAX_LENGTH} characters or fewer`
+    )
     .required("Space name is required"),
   description: Yup.string()
     .trim()
-    .max(255, "Space description must be 255 characters or fewer"),
+    .max(
+      SPACE_DESCRIPTION_MAX_LENGTH,
+      `Space description must be ${SPACE_DESCRIPTION_MAX_LENGTH} characters or fewer`
+    ),
 });
 
 export default function EditSpaceDetailsModal({
@@ -80,12 +91,11 @@ export default function EditSpaceDetailsModal({
               <Modal.Body>
                 <div className="flex flex-col gap-4">
                   <div className="flex items-end gap-2">
-                    <div className="w-16 shrink-0">
+                    <div className="shrink-0">
                       <InputVertical title="Icon" withLabel="emoji">
-                        <InputTypeInField
+                        <EmojiPickerField
                           name="emoji"
-                          placeholder="🙂"
-                          maxLength={8}
+                          ariaLabel="Pick an emoji for this space"
                         />
                       </InputVertical>
                     </div>

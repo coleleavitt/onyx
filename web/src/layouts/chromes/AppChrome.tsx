@@ -27,7 +27,7 @@ import {
   ChatExportFormat,
 } from "@/lib/chat/exportChatSession";
 import { UNNAMED_CHAT } from "@/lib/constants";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import MoveCustomAgentChatModal from "@/sections/modals/MoveCustomAgentChatModal";
 import ConfirmationModalLayout from "@/refresh-components/layouts/ConfirmationModalLayout";
 import FrostedDiv from "@/refresh-components/FrostedDiv";
@@ -573,9 +573,16 @@ export default function AppChrome({ children }: AppChromeProps) {
   const appFocus = useAppFocus();
   useAppDocumentTitle();
 
+  const pathname = usePathname();
+  // Spaces render on a clean, opaque surface (Perplexity-style). The chat
+  // wallpaper is suppressed on both the Spaces list (/app/spaces) and the
+  // Space detail (/app/spaces/{slug}-{id}) so foreground text sits on an
+  // opaque background rather than the chat image.
+  const isSpacesRoute = pathname?.startsWith("/app/spaces") ?? false;
   const { hasBackground, appBackgroundUrl } = useAppBackground();
   const showBackground =
     hasBackground &&
+    !isSpacesRoute &&
     (appFocus.isChat() ||
       appFocus.isNewSession() ||
       appFocus.isProject() ||

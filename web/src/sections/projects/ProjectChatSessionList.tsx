@@ -146,7 +146,7 @@ function ProjectChatItem({
           sizePreset="main-ui"
           rounding="sm"
           icon={SvgFolderIn}
-          title="Move to Project"
+          title="Move to space"
           onClick={noProp(() => setShowMoveOptions(true))}
         />,
         <LineItemButton
@@ -154,7 +154,7 @@ function ProjectChatItem({
           sizePreset="main-ui"
           rounding="sm"
           icon={SvgFolder}
-          title={`Remove from ${projects.find((p) => p.id === projectId)?.name ?? "Project"}`}
+          title={`Remove from ${projects.find((p) => p.id === projectId)?.name ?? "space"}`}
           onClick={noProp(handleRemoveFromProject)}
         />,
         null,

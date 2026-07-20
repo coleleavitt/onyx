@@ -9,6 +9,10 @@ import { SvgAddLines } from "@opal/icons";
 import Modal from "@/refresh-components/Modal";
 import InputTextAreaField from "@/refresh-components/form/InputTextAreaField";
 import CharacterCount from "@/refresh-components/CharacterCount";
+import {
+  parseSpaceInstructions,
+  serializeSpaceInstructions,
+} from "@/lib/projects/spaceMetadata";
 
 const MAX_INSTRUCTIONS_LENGTH = 8000;
 
@@ -23,6 +27,12 @@ export default function AddInstructionModal() {
   const modal = useModal();
   const { currentProjectDetails, upsertInstructions } = useProjectsContext();
 
+  // The stored instructions may carry a machine-readable space-metadata block
+  // (links/skills). Edit only the human-facing text and preserve the block.
+  const rawInstructions = currentProjectDetails?.project?.instructions ?? "";
+  const { instructions: humanInstructions, meta } =
+    parseSpaceInstructions(rawInstructions);
+
   return (
     <Modal open={modal.isOpen} onOpenChange={modal.toggle}>
       <Modal.Content width="md">
@@ -34,12 +44,15 @@ export default function AddInstructionModal() {
         />
         <Formik
           initialValues={{
-            instructions: currentProjectDetails?.project?.instructions ?? "",
+            instructions: humanInstructions,
           }}
+          enableReinitialize
           validationSchema={validationSchema}
           onSubmit={async (values, { setSubmitting }) => {
             try {
-              await upsertInstructions(values.instructions.trim());
+              await upsertInstructions(
+                serializeSpaceInstructions(values.instructions.trim(), meta)
+              );
               modal.toggle(false);
             } catch (e) {
               console.error("Failed to save instructions", e);

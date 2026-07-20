@@ -1113,13 +1113,13 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                         <Spacer rem={1.5} />
                       </>
                     )}
-                  {/* Sessions / Memory tabs (center-left project column) */}
+                  {/* Threads / Customize tabs (center-left project column) */}
                   {appFocus.isProject() && isProjectReady && (
                     <div className="w-full max-w-(--app-page-main-content-width) h-full overflow-y-auto overscroll-y-none mx-auto">
                       <Tabs
                         key={currentProjectId ?? "project"}
                         variant="pill"
-                        defaultValue="sessions"
+                        defaultValue="threads"
                       >
                         <Tabs.List
                           rightChildren={
@@ -1140,10 +1140,22 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                             ) : undefined
                           }
                         >
-                          <Tabs.Trigger value="sessions">Sessions</Tabs.Trigger>
+                          <Tabs.Trigger value="threads">Threads</Tabs.Trigger>
+                          <Tabs.Trigger value="customize">
+                            Customize
+                          </Tabs.Trigger>
                         </Tabs.List>
-                        <Tabs.Content value="sessions">
+                        <Tabs.Content value="threads">
                           <ProjectChatSessionList />
+                        </Tabs.Content>
+                        <Tabs.Content value="customize">
+                          <div className="pt-2">
+                            <ProjectContextPanel
+                              projectTokenCount={projectContextTokenCount}
+                              availableContextTokens={availableContextTokens}
+                              setPresentingDocument={setPresentingDocument}
+                            />
+                          </div>
                         </Tabs.Content>
                       </Tabs>
                     </div>

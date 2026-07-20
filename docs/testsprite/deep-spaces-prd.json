@@ -1,0 +1,83 @@
+{
+  "project": {
+    "name": "Onyx Deep Spaces Perplexity-Parity Features",
+    "frontend_url": "http://localhost:3000",
+    "backend_api": "http://localhost:3000/api",
+    "scope": "web Spaces UI (/app/spaces and /app/spaces/{slug}-{id})"
+  },
+  "summary": "Implement the deferred Perplexity Spaces parity features in the Onyx web app: Threads/Customize tabs, functional per-space Links, per-space Skills, Scheduled Tasks section, thread move/remove surfacing, and richer sharing/invitation affordances. Persistence uses existing Onyx project endpoints and the project instructions channel where no backend field exists.",
+  "features": [
+    {
+      "id": "spaces-tabs",
+      "title": "Threads / Customize tabs",
+      "description": "The Space detail page presents labeled Threads and Customize tabs. Threads contains the existing project chat/session list. Customize contains the existing project configuration rail sections and must not delete instructions, files, memory, skills, links, or scheduled task sections.",
+      "acceptance_criteria": [
+        "Space detail shows Tabs triggers labeled Threads and Customize.",
+        "Threads tab renders the existing ProjectChatSessionList.",
+        "Customize tab renders ProjectContextPanel with instructions/files/memory/skills/links/scheduled tasks."
+      ]
+    },
+    {
+      "id": "space-links",
+      "title": "Functional per-space links",
+      "description": "Editors can paste a website URL, add it to the space with Added by attribution, view it in the Links section, and remove it. Links persist by serializing a machine-readable metadata block inside the existing project instructions channel.",
+      "acceptance_criteria": [
+        "Add link control is enabled and not Coming soon.",
+        "Valid bare domains normalize to https URLs.",
+        "Duplicate/invalid links are rejected by the helper.",
+        "Links round-trip through serializeSpaceInstructions/parseSpaceInstructions."
+      ]
+    },
+    {
+      "id": "space-skills",
+      "title": "Per-space skills selection",
+      "description": "Editors can add/remove skills from a space. Skill IDs persist in the same project instructions metadata channel and are reflected after reload.",
+      "acceptance_criteria": [
+        "Space Skills section has an Add skills picker, not a global navigation-only link.",
+        "Skill add/remove helpers dedupe and remove skill ids deterministically.",
+        "Skill ids round-trip through the persisted space metadata block."
+      ]
+    },
+    {
+      "id": "space-scheduled-tasks",
+      "title": "Space scheduled tasks section",
+      "description": "The Space rail includes Scheduled Tasks. It reads existing /api/build/scheduled-tasks data, filters by a stable [space:{id}] name tag (because scheduled task models do not carry project_id), partitions active vs paused, and provides a create affordance that pre-tags the new task name.",
+      "acceptance_criteria": [
+        "Scheduled Tasks section renders a clean empty state when no tasks match.",
+        "Active/paused grouping uses shipped pure helper functions.",
+        "Create scheduled task points to the existing new task form with a space-tagged starter."
+      ]
+    },
+    {
+      "id": "space-thread-management",
+      "title": "Thread move/remove from Space",
+      "description": "The space thread list's per-thread menu exposes Move to space and Remove from {space} actions. Existing moveChatSession and removeChatSessionFromProject service calls continue to hit real endpoints.",
+      "acceptance_criteria": [
+        "Thread menu includes Move to space.",
+        "Thread menu includes Remove from {space}.",
+        "The handlers call moveChatSessionService/removeChatSessionFromProjectService."
+      ]
+    },
+    {
+      "id": "space-sharing-invitations",
+      "title": "Sharing and invitations",
+      "description": "The Share Space modal exposes editor/viewer permissions, private/organization scope, user/group shares, an invite-by-email affordance for existing organization users, and owner-visible pending access requests. The Spaces list grouping logic includes an Invited section when pending invitation/request ids are supplied.",
+      "acceptance_criteria": [
+        "Share modal shows invite-by-email input and Invite action.",
+        "Share modal retains access-level and organization/private scope controls.",
+        "Pending access requests render with approve/deny controls.",
+        "groupSpaces helper places invited ids in the first Invited group and avoids duplicates."
+      ]
+    }
+  ],
+  "test_credentials": {
+    "admin_username": "admin_user@example.com",
+    "admin_password": "TestPassword123!",
+    "role": "admin"
+  },
+  "recommended_tests": [
+    "Jest unit tests for spaceMetadata, spaceGrouping, spaceScheduledTasks, shareAccessConstants, and existing spaceAccent/slug helpers.",
+    "Playwright authenticated load of /app/spaces and /app/spaces/rocket-space-31 verifying Threads/Customize tabs, Links/Skills/Scheduled Tasks sections, Share modal invite-by-email, and zero console errors.",
+    "TestSprite command test wrapping the Jest helper suite and a Playwright smoke of the deep Spaces UI."
+  ]
+}
