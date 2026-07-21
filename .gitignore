@@ -25,6 +25,9 @@
 /.testprite.env
 # Local TestSprite harness (smoke scripts, runners, fixtures) — not part of the repo
 /testsprite_tests/
+/backend/.jython_cache/
+/chat-url-snapshot.md
+/sync.sh
 backend/onyx/agent_search/main/test_data.json
 backend/tests/regression/answer_quality/test_data.json
 backend/tests/regression/search_quality/eval-*

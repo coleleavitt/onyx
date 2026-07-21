@@ -31,6 +31,7 @@ import {
   SvgFiles,
   SvgFolderOpen,
   SvgPlusCircle,
+  SvgSidebar,
   SvgSimpleLoader,
   SvgShare,
   SvgUser,
@@ -40,6 +41,7 @@ export interface ProjectContextPanelProps {
   projectTokenCount?: number;
   availableContextTokens?: number;
   setPresentingDocument?: (document: MinimalOnyxDocument) => void;
+  onCollapsePanel?: () => void;
 }
 
 interface SectionPlaceholderProps {
@@ -71,6 +73,7 @@ export default function ProjectContextPanel({
   projectTokenCount = 0,
   availableContextTokens = 128_000,
   setPresentingDocument,
+  onCollapsePanel,
 }: ProjectContextPanelProps) {
   const addInstructionModal = useCreateModal();
   const editDetailsModal = useCreateModal();
@@ -204,42 +207,56 @@ export default function ProjectContextPanel({
       </projectFilesModal.Provider>
 
       <div className="w-full flex flex-col gap-6 pb-6">
-        <div className="flex w-full items-start justify-between gap-3">
-          {currentProject ? (
-            <div className="min-w-0 flex-1">
-              <SpaceDetailHeader
-                project={currentProject}
-                canEdit={canEdit}
-                onUpdate={(metadata) =>
-                  updateProjectMetadata(currentProject.id, metadata)
-                }
-              />
-            </div>
-          ) : (
-            <Content icon={SvgFolderOpen} title={projectName} />
-          )}
-          <div className="flex shrink-0 items-center gap-2">
-            {canEdit && (
-              <Button
-                icon={SvgEdit}
-                interaction={editDetailsModal.isOpen ? "active" : undefined}
-                onClick={() => editDetailsModal.toggle(true)}
-                prominence="secondary"
-              >
-                Edit details
-              </Button>
+        <div className="flex w-full flex-col gap-3">
+          <div className="flex w-full items-start justify-between gap-3">
+            {currentProject ? (
+              <div className="min-w-0 flex-1">
+                <SpaceDetailHeader
+                  project={currentProject}
+                  canEdit={canEdit}
+                  onUpdate={(metadata) =>
+                    updateProjectMetadata(currentProject.id, metadata)
+                  }
+                />
+              </div>
+            ) : (
+              <Content icon={SvgFolderOpen} title={projectName} />
             )}
-            {isOwner && (
+            {onCollapsePanel && (
               <Button
-                icon={SvgShare}
-                interaction={shareProjectModal.isOpen ? "active" : undefined}
-                onClick={() => shareProjectModal.toggle(true)}
-                prominence="secondary"
-              >
-                Share
-              </Button>
+                icon={SvgSidebar}
+                aria-label="Hide space details"
+                prominence="tertiary"
+                tooltip="Hide space details"
+                tooltipSide="bottom"
+                onClick={onCollapsePanel}
+              />
             )}
           </div>
+          {(canEdit || isOwner) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit && (
+                <Button
+                  icon={SvgEdit}
+                  interaction={editDetailsModal.isOpen ? "active" : undefined}
+                  onClick={() => editDetailsModal.toggle(true)}
+                  prominence="secondary"
+                >
+                  Edit details
+                </Button>
+              )}
+              {isOwner && (
+                <Button
+                  icon={SvgShare}
+                  interaction={shareProjectModal.isOpen ? "active" : undefined}
+                  onClick={() => shareProjectModal.toggle(true)}
+                  prominence="secondary"
+                >
+                  Share
+                </Button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 text-text-03">
           {currentProject?.owner?.email && (
@@ -447,10 +464,7 @@ export default function ProjectContextPanel({
 
         {/* Space-scoped memory — real, backed by /api/memory?project_id=... */}
         {currentProjectId !== null && (
-          <ProjectMemoryPanel
-            projectId={currentProjectId}
-            canEdit={canEdit}
-          />
+          <ProjectMemoryPanel projectId={currentProjectId} canEdit={canEdit} />
         )}
 
         {/* Per-space skills — persisted via the space-metadata channel. */}

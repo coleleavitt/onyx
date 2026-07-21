@@ -64,7 +64,7 @@ import OnboardingFlow from "@/sections/onboarding/OnboardingFlow";
 import { OnboardingStep } from "@/interfaces/onboarding";
 import { useShowOnboarding } from "@/hooks/useShowOnboarding";
 import { SvgChevronDown, SvgFileText, SvgSidebar } from "@opal/icons";
-import { Button, Spacer, Tabs } from "@opal/components";
+import { Button, Spacer } from "@opal/components";
 import {
   IllustrationContent,
   RootLayout,
@@ -734,6 +734,73 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
 
   if (!isReady) return <OnyxInitializingLoader />;
 
+  const appInputBar = (
+    <div>
+      <div
+        className={cn(
+          "transition-all duration-150 ease-in-out overflow-hidden",
+          isSearch ? "h-[14px]" : "h-0"
+        )}
+      />
+      {appFocus.isChat() && liveAgent && (
+        <div className="pb-1">
+          <MultiModelSelector
+            selectedModels={multiModel.selectedModels}
+            onAdd={multiModel.addModel}
+            onRemove={multiModel.removeModel}
+            onReplace={multiModel.replaceModel}
+          />
+        </div>
+      )}
+      {isProjectReady && (
+        <AppInputBar
+          ref={chatInputBarRef}
+          placeholder={
+            appFocus.isProject() && currentProjectDetails?.project?.name
+              ? `Start a chat in ${currentProjectDetails.project.name}`
+              : undefined
+          }
+          deepResearchEnabled={deepResearchEnabledForCurrentWorkflow}
+          toggleDeepResearch={toggleDeepResearch}
+          isMultiModelActive={multiModel.isMultiModelActive}
+          filterManager={filterManager}
+          llmManager={llmManager}
+          initialMessage={
+            searchParams?.get(SEARCH_PARAM_NAMES.USER_PROMPT) || ""
+          }
+          stopGenerating={stopGenerating}
+          onSubmit={handleAppInputBarSubmit}
+          chatState={currentChatState}
+          currentSessionFileTokenCount={
+            currentChatSessionId
+              ? currentSessionFileTokenCount
+              : projectContextTokenCount
+          }
+          availableContextTokens={availableContextTokens}
+          selectedAgent={selectedAgent || liveAgent}
+          handleFileUpload={handleMessageSpecificFileUpload}
+          setPresentingDocument={setPresentingDocument}
+          // Intentionally enabled during name-only onboarding (showOnboarding=false)
+          // since LLM providers are already configured and the user can chat.
+          disabled={
+            (!llmManager.isLoadingProviders &&
+              llmManager.hasAnyProvider === false) ||
+            (showOnboarding &&
+              !isLoadingOnboarding &&
+              onboardingState.currentStep !== OnboardingStep.Complete)
+          }
+          awaitingPreferredSelection={awaitingPreferredSelection}
+        />
+      )}
+      <div
+        className={cn(
+          "transition-all duration-150 ease-in-out overflow-hidden",
+          appFocus.isChat() ? "h-[14px]" : "h-0"
+        )}
+      />
+    </div>
+  );
+
   return (
     <>
       <AppPopup />
@@ -804,16 +871,30 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
           <div
             className={cn(
               "overflow-hidden transition-all duration-300 ease-in-out h-full border-l border-border-01",
-              projectPanelCollapsed ? "w-0" : "w-96"
+              projectPanelCollapsed ? "w-12" : "w-96"
             )}
           >
-            <div className="w-96 h-full overflow-y-auto p-4">
-              <ProjectContextPanel
-                projectTokenCount={projectContextTokenCount}
-                availableContextTokens={availableContextTokens}
-                setPresentingDocument={setPresentingDocument}
-              />
-            </div>
+            {projectPanelCollapsed ? (
+              <div className="flex h-full w-12 flex-col items-center pt-4">
+                <Button
+                  icon={SvgSidebar}
+                  aria-label="Show space details"
+                  prominence="tertiary"
+                  tooltip="Show space details"
+                  tooltipSide="left"
+                  onClick={() => setProjectPanelCollapsed(false)}
+                />
+              </div>
+            ) : (
+              <div className="w-96 h-full overflow-y-auto p-4">
+                <ProjectContextPanel
+                  projectTokenCount={projectContextTokenCount}
+                  availableContextTokens={availableContextTokens}
+                  setPresentingDocument={setPresentingDocument}
+                  onCollapsePanel={() => setProjectPanelCollapsed(true)}
+                />
+              </div>
+            )}
           </div>
         </RootLayout.RightPanel>
       )}
@@ -925,12 +1006,14 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                         <ProjectAccessGate />
                       </div>
                     ) : isMobile ? (
-                      <div className="w-full max-h-[50vh] overflow-y-auto overscroll-y-none px-2 sm:px-4">
-                        <ProjectContextPanel
-                          projectTokenCount={projectContextTokenCount}
-                          availableContextTokens={availableContextTokens}
-                          setPresentingDocument={setPresentingDocument}
-                        />
+                      <div className="w-full max-h-[50vh] overflow-y-auto overscroll-y-none px-2 py-2 sm:px-4">
+                        <div className="rounded-16 border border-border-01 bg-background p-4 shadow-box-01">
+                          <ProjectContextPanel
+                            projectTokenCount={projectContextTokenCount}
+                            availableContextTokens={availableContextTokens}
+                            setPresentingDocument={setPresentingDocument}
+                          />
+                        </div>
                       </div>
                     ) : null)}
 
@@ -1028,77 +1111,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                       (Footer) that explains why the Footer removes its top
                       padding during chat to compensate for this extra space.
                     */}
-                    <div>
-                      <div
-                        className={cn(
-                          "transition-all duration-150 ease-in-out overflow-hidden",
-                          isSearch ? "h-[14px]" : "h-0"
-                        )}
-                      />
-                      {appFocus.isChat() && liveAgent && (
-                        <div className="pb-1">
-                          <MultiModelSelector
-                            selectedModels={multiModel.selectedModels}
-                            onAdd={multiModel.addModel}
-                            onRemove={multiModel.removeModel}
-                            onReplace={multiModel.replaceModel}
-                          />
-                        </div>
-                      )}
-                      {isProjectReady && (
-                        <AppInputBar
-                          ref={chatInputBarRef}
-                          placeholder={
-                            appFocus.isProject() &&
-                            currentProjectDetails?.project?.name
-                              ? `Start a chat in ${currentProjectDetails.project.name}`
-                              : undefined
-                          }
-                          deepResearchEnabled={
-                            deepResearchEnabledForCurrentWorkflow
-                          }
-                          toggleDeepResearch={toggleDeepResearch}
-                          isMultiModelActive={multiModel.isMultiModelActive}
-                          filterManager={filterManager}
-                          llmManager={llmManager}
-                          initialMessage={
-                            searchParams?.get(SEARCH_PARAM_NAMES.USER_PROMPT) ||
-                            ""
-                          }
-                          stopGenerating={stopGenerating}
-                          onSubmit={handleAppInputBarSubmit}
-                          chatState={currentChatState}
-                          currentSessionFileTokenCount={
-                            currentChatSessionId
-                              ? currentSessionFileTokenCount
-                              : projectContextTokenCount
-                          }
-                          availableContextTokens={availableContextTokens}
-                          selectedAgent={selectedAgent || liveAgent}
-                          handleFileUpload={handleMessageSpecificFileUpload}
-                          setPresentingDocument={setPresentingDocument}
-                          // Intentionally enabled during name-only onboarding (showOnboarding=false)
-                          // since LLM providers are already configured and the user can chat.
-                          disabled={
-                            (!llmManager.isLoadingProviders &&
-                              llmManager.hasAnyProvider === false) ||
-                            (showOnboarding &&
-                              !isLoadingOnboarding &&
-                              onboardingState.currentStep !==
-                                OnboardingStep.Complete)
-                          }
-                          awaitingPreferredSelection={
-                            awaitingPreferredSelection
-                          }
-                        />
-                      )}
-                      <div
-                        className={cn(
-                          "transition-all duration-150 ease-in-out overflow-hidden",
-                          appFocus.isChat() ? "h-[14px]" : "h-0"
-                        )}
-                      />
-                    </div>
+                    {!appFocus.isProject() && appInputBar}
                   </div>
                 </div>
 
@@ -1113,51 +1126,12 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                         <Spacer rem={1.5} />
                       </>
                     )}
-                  {/* Threads / Customize tabs (center-left project column) */}
                   {appFocus.isProject() && isProjectReady && (
-                    <div className="w-full max-w-(--app-page-main-content-width) h-full overflow-y-auto overscroll-y-none mx-auto">
-                      <Tabs
-                        key={currentProjectId ?? "project"}
-                        variant="pill"
-                        defaultValue="threads"
-                      >
-                        <Tabs.List
-                          rightChildren={
-                            !isMobile ? (
-                              <Button
-                                icon={SvgSidebar}
-                                prominence="tertiary"
-                                size="sm"
-                                onClick={() =>
-                                  setProjectPanelCollapsed((prev) => !prev)
-                                }
-                                tooltip={
-                                  projectPanelCollapsed
-                                    ? "Show space details"
-                                    : "Hide space details"
-                                }
-                              />
-                            ) : undefined
-                          }
-                        >
-                          <Tabs.Trigger value="threads">Threads</Tabs.Trigger>
-                          <Tabs.Trigger value="customize">
-                            Customize
-                          </Tabs.Trigger>
-                        </Tabs.List>
-                        <Tabs.Content value="threads">
-                          <ProjectChatSessionList />
-                        </Tabs.Content>
-                        <Tabs.Content value="customize">
-                          <div className="pt-2">
-                            <ProjectContextPanel
-                              projectTokenCount={projectContextTokenCount}
-                              availableContextTokens={availableContextTokens}
-                              setPresentingDocument={setPresentingDocument}
-                            />
-                          </div>
-                        </Tabs.Content>
-                      </Tabs>
+                    <div className="mx-auto flex h-full min-h-0 w-full max-w-(--app-page-main-content-width) flex-col">
+                      <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-none">
+                        <ProjectChatSessionList />
+                      </div>
+                      <div className="w-full pb-4 pt-2">{appInputBar}</div>
                     </div>
                   )}
 

@@ -347,7 +347,7 @@ export default function ProjectChatSessionList() {
         )}
 
         <div className="flex items-center justify-between gap-2 px-3 py-2">
-          <Text as="p" font="secondary-body" color="text-02">
+          <Text as="p" font="secondary-body" color="text-inverted-03">
             Recent Chats
           </Text>
           {projectChats.length > 0 && (
@@ -368,7 +368,7 @@ export default function ProjectChatSessionList() {
         ) : projectChats.length === 0 ? (
           <Card rounding="md" border="dashed" background="none" padding="sm">
             <div className="p-1">
-              <Text as="p" font="secondary-body" color="text-02">
+              <Text as="p" font="secondary-body" color="text-inverted-03">
                 No chats yet.
               </Text>
             </div>
@@ -376,7 +376,7 @@ export default function ProjectChatSessionList() {
         ) : filteredChats.length === 0 ? (
           <Card rounding="md" border="dashed" background="none" padding="sm">
             <div className="p-1">
-              <Text as="p" font="secondary-body" color="text-02">
+              <Text as="p" font="secondary-body" color="text-inverted-03">
                 No chats match your search.
               </Text>
             </div>

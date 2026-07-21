@@ -1,72 +1,140 @@
 {
-  "project": {
-    "name": "Onyx Deep Spaces Perplexity-Parity Features",
-    "frontend_url": "http://localhost:3000",
-    "backend_api": "http://localhost:3000/api",
+  "meta": {
+    "project": "Onyx Deep Spaces Perplexity-Parity Features",
+    "prepared_by": "TestSprite",
     "scope": "web Spaces UI (/app/spaces and /app/spaces/{slug}-{id})"
   },
-  "summary": "Implement the deferred Perplexity Spaces parity features in the Onyx web app: Threads/Customize tabs, functional per-space Links, per-space Skills, Scheduled Tasks section, thread move/remove surfacing, and richer sharing/invitation affordances. Persistence uses existing Onyx project endpoints and the project instructions channel where no backend field exists.",
+  "product_overview": "Implement the deferred Perplexity Spaces parity features in the Onyx web app: a clean space detail layout with conversations in the main column and space details in a collapsible right panel, functional per-space Links, per-space Skills, Scheduled Tasks section, thread move/remove surfacing, and richer sharing/invitation affordances. Persistence uses existing Onyx project endpoints and the project instructions channel where no backend field exists.",
+  "core_goals": [
+    "Keep Space conversations and the ask-question input easy to reach in the main column.",
+    "Move Space configuration into a desktop right panel that can collapse and expand without losing content.",
+    "Enable editors to manage per-space links and skill selections with deterministic helper behavior.",
+    "Surface scheduled tasks relevant to each Space using a stable [space:{id}] name tag.",
+    "Expose thread move/remove affordances from the Space thread list while reusing existing chat-session services.",
+    "Provide richer sharing and invitation controls without regressing access-request handling."
+  ],
   "features": [
     {
-      "id": "spaces-tabs",
-      "title": "Threads / Customize tabs",
-      "description": "The Space detail page presents labeled Threads and Customize tabs. Threads contains the existing project chat/session list. Customize contains the existing project configuration rail sections and must not delete instructions, files, memory, skills, links, or scheduled task sections.",
+      "name": "Space conversations with collapsible details panel",
+      "description": "The Space detail page keeps the conversation list and ask-question input in the main column while rendering the existing project configuration sections in a desktop right panel. The details panel can collapse to a narrow rail and expand again without deleting instructions, files, memory, skills, links, or scheduled task sections.",
+      "user_flows": [
+        "User opens a Space detail page and sees conversations plus the ask-question input in the main column.",
+        "User confirms there are no duplicated Threads or Customize tab triggers on the Space detail surface.",
+        "User collapses the right details panel to a rail and expands it again.",
+        "User sees instructions, files, memory, skills, links, and scheduled tasks in the right details panel."
+      ],
       "acceptance_criteria": [
-        "Space detail shows Tabs triggers labeled Threads and Customize.",
-        "Threads tab renders the existing ProjectChatSessionList.",
-        "Customize tab renders ProjectContextPanel with instructions/files/memory/skills/links/scheduled tasks."
+        "Space detail does not show duplicated Threads or Customize tab triggers.",
+        "The main column renders the existing ProjectChatSessionList and keeps the ask-question input pinned below it.",
+        "The right details panel renders ProjectContextPanel with instructions/files/memory/skills/links/scheduled tasks.",
+        "The right details panel collapses to a narrow rail and can be expanded again."
+      ],
+      "files": [
+        "web/src/views/AppPage.tsx",
+        "web/src/sections/projects/ProjectContextPanel.tsx",
+        "web/src/sections/projects/ProjectChatSessionList.tsx",
+        "web/tests/e2e/spaces/deep_spaces_parity.spec.ts",
+        "web/tests/e2e/pages/SpaceDetailPage.ts"
       ]
     },
     {
-      "id": "space-links",
-      "title": "Functional per-space links",
+      "name": "Functional per-space links",
       "description": "Editors can paste a website URL, add it to the space with Added by attribution, view it in the Links section, and remove it. Links persist by serializing a machine-readable metadata block inside the existing project instructions channel.",
+      "user_flows": [
+        "Editor opens the Links section and pastes a bare domain or URL.",
+        "System normalizes valid bare domains to https URLs and stores Added by attribution.",
+        "Editor reloads the Space and sees the persisted link.",
+        "Editor removes the link and sees it disappear from the Space."
+      ],
       "acceptance_criteria": [
         "Add link control is enabled and not Coming soon.",
         "Valid bare domains normalize to https URLs.",
         "Duplicate/invalid links are rejected by the helper.",
         "Links round-trip through serializeSpaceInstructions/parseSpaceInstructions."
+      ],
+      "files": [
+        "web/src/lib/projects/spaceMetadata.ts",
+        "web/src/lib/projects/spaceMetadata.test.ts",
+        "web/src/sections/projects/SpaceLinksSection.tsx"
       ]
     },
     {
-      "id": "space-skills",
-      "title": "Per-space skills selection",
+      "name": "Per-space skills selection",
       "description": "Editors can add/remove skills from a space. Skill IDs persist in the same project instructions metadata channel and are reflected after reload.",
+      "user_flows": [
+        "Editor opens the Skills section and clicks Add skills.",
+        "Editor selects one or more skills; duplicate IDs are deduped.",
+        "Editor removes a skill and the persisted metadata reflects the removal."
+      ],
       "acceptance_criteria": [
         "Space Skills section has an Add skills picker, not a global navigation-only link.",
         "Skill add/remove helpers dedupe and remove skill ids deterministically.",
         "Skill ids round-trip through the persisted space metadata block."
+      ],
+      "files": [
+        "web/src/lib/projects/spaceMetadata.ts",
+        "web/src/lib/projects/spaceMetadata.test.ts",
+        "web/src/sections/projects/SpaceSkillsSection.tsx"
       ]
     },
     {
-      "id": "space-scheduled-tasks",
-      "title": "Space scheduled tasks section",
-      "description": "The Space rail includes Scheduled Tasks. It reads existing /api/build/scheduled-tasks data, filters by a stable [space:{id}] name tag (because scheduled task models do not carry project_id), partitions active vs paused, and provides a create affordance that pre-tags the new task name.",
+      "name": "Space scheduled tasks section",
+      "description": "The Space rail includes Scheduled Tasks. It reads existing /api/build/scheduled-tasks data, filters by a stable [space:{id}] name tag because scheduled task models do not carry project_id, partitions active vs paused, and provides a create affordance that pre-tags the new task name.",
+      "user_flows": [
+        "User opens Scheduled Tasks in a Space and sees tasks scoped to that Space.",
+        "User sees a clean empty state when no scheduled tasks match the Space tag.",
+        "User clicks Create scheduled task and lands on the existing task form with a space-tagged starter."
+      ],
       "acceptance_criteria": [
         "Scheduled Tasks section renders a clean empty state when no tasks match.",
         "Active/paused grouping uses shipped pure helper functions.",
         "Create scheduled task points to the existing new task form with a space-tagged starter."
+      ],
+      "files": [
+        "web/src/lib/projects/spaceScheduledTasks.ts",
+        "web/src/lib/projects/spaceScheduledTasks.test.ts",
+        "web/src/sections/projects/SpaceScheduledTasksSection.tsx"
       ]
     },
     {
-      "id": "space-thread-management",
-      "title": "Thread move/remove from Space",
+      "name": "Thread move/remove from Space",
       "description": "The space thread list's per-thread menu exposes Move to space and Remove from {space} actions. Existing moveChatSession and removeChatSessionFromProject service calls continue to hit real endpoints.",
+      "user_flows": [
+        "User opens a thread menu from the Space thread list.",
+        "User selects Move to space and completes relocation through the existing move service.",
+        "User selects Remove from {space} and removes the Space association through the existing remove service."
+      ],
       "acceptance_criteria": [
         "Thread menu includes Move to space.",
         "Thread menu includes Remove from {space}.",
         "The handlers call moveChatSessionService/removeChatSessionFromProjectService."
+      ],
+      "files": [
+        "web/src/sections/projects/ProjectChatSessionList.tsx",
+        "web/src/lib/projects/svc.ts"
       ]
     },
     {
-      "id": "space-sharing-invitations",
-      "title": "Sharing and invitations",
+      "name": "Sharing and invitations",
       "description": "The Share Space modal exposes editor/viewer permissions, private/organization scope, user/group shares, an invite-by-email affordance for existing organization users, and owner-visible pending access requests. The Spaces list grouping logic includes an Invited section when pending invitation/request ids are supplied.",
+      "user_flows": [
+        "Owner opens Share Space and sees invite-by-email, people with access, and general access sections.",
+        "Owner uses editor/viewer and private/organization controls.",
+        "Owner reviews pending access requests and can approve or deny them.",
+        "Invited Spaces appear in the Invited group without duplicate grouping."
+      ],
       "acceptance_criteria": [
         "Share modal shows invite-by-email input and Invite action.",
         "Share modal retains access-level and organization/private scope controls.",
         "Pending access requests render with approve/deny controls.",
         "groupSpaces helper places invited ids in the first Invited group and avoids duplicates."
+      ],
+      "files": [
+        "web/src/sections/modals/ShareProjectModal.tsx",
+        "web/src/sections/modals/shareAccessConstants.ts",
+        "web/src/sections/modals/shareAccessConstants.test.ts",
+        "web/src/lib/projects/spaceGrouping.ts",
+        "web/src/lib/projects/spaceGrouping.test.ts"
       ]
     }
   ],
@@ -77,7 +145,7 @@
   },
   "recommended_tests": [
     "Jest unit tests for spaceMetadata, spaceGrouping, spaceScheduledTasks, shareAccessConstants, and existing spaceAccent/slug helpers.",
-    "Playwright authenticated load of /app/spaces and /app/spaces/rocket-space-31 verifying Threads/Customize tabs, Links/Skills/Scheduled Tasks sections, Share modal invite-by-email, and zero console errors.",
+    "Playwright authenticated load of /app/spaces/{slug}-{id} verifying the no-duplicate-tabs main column, collapsible right details panel, Links/Skills/Scheduled Tasks sections, Share modal invite-by-email, and zero console errors.",
     "TestSprite command test wrapping the Jest helper suite and a Playwright smoke of the deep Spaces UI."
   ]
 }
