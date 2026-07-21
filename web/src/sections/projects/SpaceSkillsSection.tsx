@@ -14,6 +14,7 @@ import { addSkillId, removeSkillId } from "@/lib/projects/spaceMetadata";
 
 interface SpaceSkillsSectionProps {
   canEdit: boolean;
+  compact?: boolean;
 }
 
 /**
@@ -23,6 +24,7 @@ interface SpaceSkillsSectionProps {
  */
 export default function SpaceSkillsSection({
   canEdit,
+  compact = false,
 }: SpaceSkillsSectionProps) {
   const { meta, saveMeta } = useSpaceMeta();
   const { data: skillsList } = useUserSkills();
@@ -32,7 +34,7 @@ export default function SpaceSkillsSection({
 
   const allSkills: Skill[] = useMemo(
     () => [...(skillsList?.builtins ?? []), ...(skillsList?.customs ?? [])],
-    [skillsList]
+    [skillsList],
   );
   const byId = useMemo(() => {
     const map = new Map<string, Skill>();
@@ -52,7 +54,7 @@ export default function SpaceSkillsSection({
       .filter(
         (skill) =>
           normalizedQuery.length === 0 ||
-          skill.name.toLowerCase().includes(normalizedQuery)
+          skill.name.toLowerCase().includes(normalizedQuery),
       );
   }, [allSkills, selectedIds, query]);
 
@@ -63,7 +65,7 @@ export default function SpaceSkillsSection({
       setQuery("");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add skill."
+        error instanceof Error ? error.message : "Failed to add skill.",
       );
     } finally {
       setBusy(false);
@@ -79,7 +81,7 @@ export default function SpaceSkillsSection({
       });
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove skill."
+        error instanceof Error ? error.message : "Failed to remove skill.",
       );
     } finally {
       setBusy(false);
@@ -92,7 +94,9 @@ export default function SpaceSkillsSection({
         sizePreset="main-ui"
         variant="section"
         title="Skills"
-        description="Give this space access to specific skills."
+        description={
+          compact ? undefined : "Give this space access to specific skills."
+        }
         padding="fit"
         center
         rightChildren={
@@ -103,8 +107,11 @@ export default function SpaceSkillsSection({
                   icon={SvgPlusCircle}
                   prominence="tertiary"
                   interaction={pickerOpen ? "active" : undefined}
+                  aria-label="Add skills"
+                  tooltip={compact ? "Add skills" : undefined}
+                  tooltipSide="bottom"
                 >
-                  Add skills
+                  {compact ? undefined : "Add skills"}
                 </Button>
               </Popover.Trigger>
               <Popover.Content align="end" width="sm">

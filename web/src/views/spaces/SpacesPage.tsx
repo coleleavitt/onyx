@@ -63,7 +63,7 @@ export default function SpacesPage() {
       await refreshProjects();
     } catch (pinError) {
       toast.error(
-        pinError instanceof Error ? pinError.message : "Failed to update pin."
+        pinError instanceof Error ? pinError.message : "Failed to update pin.",
       );
     }
   }
@@ -80,7 +80,7 @@ export default function SpacesPage() {
       toast.error(
         deleteError instanceof Error
           ? deleteError.message
-          : "Failed to delete space."
+          : "Failed to delete space.",
       );
     } finally {
       setDeleting(false);
@@ -93,7 +93,7 @@ export default function SpacesPage() {
     return projects.filter(
       (project) =>
         project.name.toLowerCase().includes(normalizedQuery) ||
-        (project.description ?? "").toLowerCase().includes(normalizedQuery)
+        (project.description ?? "").toLowerCase().includes(normalizedQuery),
     );
   }, [projects, query]);
 
@@ -101,20 +101,31 @@ export default function SpacesPage() {
 
   const spaceGroups = useMemo(
     () => groupSpaces(visibleProjects, { invitedProjectIds }),
-    [visibleProjects, invitedProjectIds]
+    [visibleProjects, invitedProjectIds],
   );
 
   return (
     <SettingsLayouts.Root width="lg">
-      <div className="sticky top-0 z-settings-header flex items-center justify-between gap-3 bg-background-tint-01 px-4 pb-2 pt-4">
-        <div className="flex items-center gap-2">
-          <SvgFolder className="h-4 w-4 stroke-text-03" />
-          <Text as="h1" font="heading-h3" color="text-05" nowrap>
-            Spaces
+      <div className="sticky top-0 z-settings-header flex flex-wrap items-start justify-between gap-3 bg-background-neutral-00 px-4 py-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <SvgFolder className="h-4 w-4 shrink-0 stroke-text-03" />
+            <Text as="h1" font="heading-h3" color="text-05" nowrap>
+              Spaces
+            </Text>
+            {!isLoading && projects.length > 0 ? (
+              <Text font="secondary-body" color="text-02" nowrap>
+                {String(projects.length)}
+              </Text>
+            ) : null}
+          </div>
+          <Text as="p" font="secondary-body" color="text-03">
+            Organize chats, files, links, instructions, and collaborators by
+            workspace.
           </Text>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-48 sm:w-64">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-none">
+          <div className="min-w-0 flex-1 sm:w-64 sm:flex-none">
             <InputTypeIn
               clearButton
               placeholder="Search spaces"
@@ -154,21 +165,21 @@ export default function SpacesPage() {
             }
           />
         ) : (
-          <div className="flex w-full flex-col gap-4">
+          <div className="flex w-full flex-col gap-5">
             {spaceGroups.map((group) => {
               const isCollapsed = collapsed[group.key] === true;
               return (
-                <section key={group.key} className="flex w-full flex-col gap-1">
+                <section key={group.key} className="flex w-full flex-col gap-2">
                   <button
                     type="button"
                     aria-expanded={!isCollapsed}
                     onClick={() => toggleCollapsed(group.key)}
-                    className="sticky top-0 z-10 flex w-full items-center gap-2 rounded-08 bg-background-neutral-00 px-3 py-1.5 text-left transition-colors hover:bg-background-tint-01"
+                    className="flex w-full items-center gap-2 rounded-08 px-2 py-1 text-left transition-colors hover:bg-background-tint-01"
                   >
                     <SvgChevronRight
                       className={cn(
                         "h-3.5 w-3.5 shrink-0 stroke-text-03 transition-transform duration-150",
-                        !isCollapsed && "rotate-90"
+                        !isCollapsed && "rotate-90",
                       )}
                     />
                     <Text color="text-03" font="secondary-action">
@@ -179,7 +190,7 @@ export default function SpacesPage() {
                     </Text>
                   </button>
                   {!isCollapsed ? (
-                    <div className="flex w-full flex-col">
+                    <div className="flex w-full flex-col rounded-16 border border-border-01 bg-background-neutral-00 p-1 shadow-box-01">
                       {group.items.map((project) => (
                         <SpaceCard
                           key={project.id}

@@ -199,7 +199,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
       newSearchParams.toString(),
       sources,
       documentSets.map((ds) => ds.name),
-      tags
+      tags,
     );
 
     newSearchParams.delete(SEARCH_PARAM_NAMES.SEND_ON_LOAD);
@@ -221,7 +221,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
       // Only remove project context if user explicitly selected an agent
       // (i.e., agentId is present). Avoid clearing project when agentId was removed.
       const newSearchParams = new URLSearchParams(
-        searchParams?.toString() || ""
+        searchParams?.toString() || "",
       );
       if (newSearchParams.has(SEARCH_PARAM_NAMES.PERSONA_ID)) {
         newSearchParams.delete(SEARCH_PARAM_NAMES.PROJECT_ID);
@@ -265,7 +265,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
   const sources: SourceMetadata[] = useMemo(() => {
     const uniqueSources = Array.from(new Set(availableSources));
     const regularSources = uniqueSources.map((source) =>
-      getSourceMetadata(source)
+      getSourceMetadata(source),
     );
 
     // Add federated connectors as sources
@@ -294,7 +294,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
       toast.error(
         lastFailedFiles.length === 1
           ? `File failed and was removed: ${names}`
-          : `Files failed and were removed: ${names}`
+          : `Files failed and were removed: ${names}`,
       );
       clearLastFailedFiles();
     }
@@ -308,7 +308,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
     liveAgent,
     currentChatSessionId,
     currentChatSession ?? undefined,
-    disable_default_assistant ?? false
+    disable_default_assistant ?? false,
   );
 
   const scrollContainerRef = useRef<ChatScrollContainerHandle>(null);
@@ -362,7 +362,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
   }, []);
 
   const [selectedDocuments, setSelectedDocuments] = useState<OnyxDocument[]>(
-    []
+    [],
   );
 
   // Access chat state directly from the store
@@ -370,7 +370,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
   const isReady = useIsReady();
   const documentSidebarVisible = useDocumentSidebarVisible();
   const updateCurrentDocumentSidebarVisible = useChatSessionStore(
-    (state) => state.updateCurrentDocumentSidebarVisible
+    (state) => state.updateCurrentDocumentSidebarVisible,
   );
   const messageHistory = useCurrentMessageHistory();
   const messageTree = useCurrentMessageTree();
@@ -394,7 +394,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
         (m) =>
           m &&
           (m.type === "assistant" || m.type === "error") &&
-          (m.modelDisplayName || m.overridden_model)
+          (m.modelDisplayName || m.overridden_model),
       );
     if (multiModelChildren.length < 2) return false;
     // Check if a preferred response has been set on this user message
@@ -592,7 +592,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
       showOnboarding,
       onboardingDismissed,
       finishOnboarding,
-    ]
+    ],
   );
   const { submit: submitQuery, state, setAppMode } = useQueryController();
 
@@ -614,7 +614,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
 
   const handleSearchDocumentClick = useCallback(
     (doc: MinimalOnyxDocument) => setPresentingDocument(doc),
-    []
+    [],
   );
 
   const handleAppInputBarSubmit = useCallback(
@@ -658,7 +658,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
       finishOnboarding,
       multiModel.isMultiModelActive,
       multiModel.selectedModels,
-    ]
+    ],
   );
 
   // Memoized callbacks for DocumentsSidebar
@@ -739,7 +739,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
       <div
         className={cn(
           "transition-all duration-150 ease-in-out overflow-hidden",
-          isSearch ? "h-[14px]" : "h-0"
+          isSearch ? "h-[14px]" : "h-0",
         )}
       />
       {appFocus.isChat() && liveAgent && (
@@ -795,7 +795,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
       <div
         className={cn(
           "transition-all duration-150 ease-in-out overflow-hidden",
-          appFocus.isChat() ? "h-[14px]" : "h-0"
+          appFocus.isChat() ? "h-[14px]" : "h-0",
         )}
       />
     </div>
@@ -850,7 +850,7 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
             <div
               className={cn(
                 "overflow-hidden transition-all duration-300 ease-in-out h-full",
-                documentSidebarVisible ? "w-100" : "w-0"
+                documentSidebarVisible ? "w-100" : "w-0",
               )}
             >
               <DocumentsSidebar
@@ -870,12 +870,12 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
         <RootLayout.RightPanel>
           <div
             className={cn(
-              "overflow-hidden transition-all duration-300 ease-in-out h-full border-l border-border-01",
-              projectPanelCollapsed ? "w-12" : "w-96"
+              "h-full overflow-hidden border-l border-border-01 bg-background-neutral-00 transition-all duration-300 ease-in-out",
+              projectPanelCollapsed ? "w-11" : "w-80",
             )}
           >
             {projectPanelCollapsed ? (
-              <div className="flex h-full w-12 flex-col items-center pt-4">
+              <div className="flex h-full w-11 flex-col items-center pt-3">
                 <Button
                   icon={SvgSidebar}
                   aria-label="Show space details"
@@ -886,12 +886,14 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                 />
               </div>
             ) : (
-              <div className="w-96 h-full overflow-y-auto p-4">
+              <div className="h-full w-80 overflow-y-auto px-3 py-4">
                 <ProjectContextPanel
                   projectTokenCount={projectContextTokenCount}
                   availableContextTokens={availableContextTokens}
                   setPresentingDocument={setPresentingDocument}
                   onCollapsePanel={() => setProjectPanelCollapsed(true)}
+                  showIdentityHeader={false}
+                  compact
                 />
               </div>
             )}
@@ -1056,14 +1058,14 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                 <div
                   className={cn(
                     "row-start-2 flex flex-col items-center px-2 sm:px-4",
-                    sessionFetchError && "hidden"
+                    sessionFetchError && "hidden",
                   )}
                 >
                   <div
                     className={cn(
                       "relative w-full flex flex-col",
                       !fullWidthActive &&
-                        "max-w-(--app-page-main-content-width)"
+                        "max-w-(--app-page-main-content-width)",
                     )}
                   >
                     {/* Scroll to bottom button - positioned absolutely above AppInputBar */}
@@ -1129,7 +1131,9 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
                   {appFocus.isProject() && isProjectReady && (
                     <div className="mx-auto flex h-full min-h-0 w-full max-w-(--app-page-main-content-width) flex-col">
                       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-none">
-                        <ProjectChatSessionList />
+                        <ProjectChatSessionList
+                          showIdentityHeader={!isMobile}
+                        />
                       </div>
                       <div className="w-full pb-4 pt-2">{appInputBar}</div>
                     </div>

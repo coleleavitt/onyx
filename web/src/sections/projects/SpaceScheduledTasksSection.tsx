@@ -24,6 +24,7 @@ import {
 interface SpaceScheduledTasksSectionProps {
   projectId: number;
   canEdit: boolean;
+  compact?: boolean;
 }
 
 function TaskRow({ task }: { task: ScheduledTaskListItem }) {
@@ -55,13 +56,14 @@ function TaskRow({ task }: { task: ScheduledTaskListItem }) {
 export default function SpaceScheduledTasksSection({
   projectId,
   canEdit,
+  compact = false,
 }: SpaceScheduledTasksSectionProps) {
   const router = useRouter();
   const [showPaused, setShowPaused] = useState(false);
   const { data, isLoading } = useSWR<ScheduledTaskListResponse>(
     SWR_KEYS.scheduledTasks,
     errorHandlingFetcher,
-    { revalidateOnFocus: false }
+    { revalidateOnFocus: false },
   );
 
   const { active, paused } = useMemo(() => {
@@ -84,7 +86,11 @@ export default function SpaceScheduledTasksSection({
         sizePreset="main-ui"
         variant="section"
         title="Scheduled Tasks"
-        description="Recurring tasks that run on a schedule for this space."
+        description={
+          compact
+            ? undefined
+            : "Recurring tasks that run on a schedule for this space."
+        }
         padding="fit"
         center
         rightChildren={
@@ -92,9 +98,12 @@ export default function SpaceScheduledTasksSection({
             <Button
               icon={SvgPlusCircle}
               prominence="tertiary"
+              aria-label="Create scheduled task"
+              tooltip={compact ? "Create scheduled task" : undefined}
+              tooltipSide="bottom"
               onClick={createForSpace}
             >
-              Create scheduled task
+              {compact ? undefined : "Create scheduled task"}
             </Button>
           ) : undefined
         }
@@ -123,7 +132,7 @@ export default function SpaceScheduledTasksSection({
                 <SvgChevronRight
                   className={cn(
                     "h-3.5 w-3.5 shrink-0 stroke-text-03 transition-transform",
-                    showPaused && "rotate-90"
+                    showPaused && "rotate-90",
                   )}
                 />
                 <Text font="secondary-action" color="text-03">

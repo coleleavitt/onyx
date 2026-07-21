@@ -15,10 +15,15 @@ import {
 } from "@opal/icons";
 import { useUser } from "@/providers/UserProvider";
 import { useSpaceMeta } from "@/lib/projects/useSpaceMeta";
-import { addLink, isValidLinkUrl, removeLink } from "@/lib/projects/spaceMetadata";
+import {
+  addLink,
+  isValidLinkUrl,
+  removeLink,
+} from "@/lib/projects/spaceMetadata";
 
 interface SpaceLinksSectionProps {
   canEdit: boolean;
+  compact?: boolean;
 }
 
 /**
@@ -26,7 +31,10 @@ interface SpaceLinksSectionProps {
  * added with "Added by …" attribution and persists (via the space-metadata
  * channel), and can be removed. Replaces the previous "coming soon" placeholder.
  */
-export default function SpaceLinksSection({ canEdit }: SpaceLinksSectionProps) {
+export default function SpaceLinksSection({
+  canEdit,
+  compact = false,
+}: SpaceLinksSectionProps) {
   const { user } = useUser();
   const { meta, saveMeta } = useSpaceMeta();
   const [adding, setAdding] = useState(false);
@@ -51,7 +59,7 @@ export default function SpaceLinksSection({ canEdit }: SpaceLinksSectionProps) {
       setAdding(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add link."
+        error instanceof Error ? error.message : "Failed to add link.",
       );
     } finally {
       setBusy(false);
@@ -64,7 +72,7 @@ export default function SpaceLinksSection({ canEdit }: SpaceLinksSectionProps) {
       await saveMeta({ ...meta, links: removeLink(links, id) });
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove link."
+        error instanceof Error ? error.message : "Failed to remove link.",
       );
     } finally {
       setBusy(false);
@@ -78,7 +86,11 @@ export default function SpaceLinksSection({ canEdit }: SpaceLinksSectionProps) {
         sizePreset="main-ui"
         variant="section"
         title="Links"
-        description="Add websites this space should prioritize when running tasks."
+        description={
+          compact
+            ? undefined
+            : "Add websites this space should prioritize when running tasks."
+        }
         padding="fit"
         center
         rightChildren={
@@ -87,9 +99,12 @@ export default function SpaceLinksSection({ canEdit }: SpaceLinksSectionProps) {
               icon={SvgPlusCircle}
               prominence="tertiary"
               interaction={adding ? "active" : undefined}
+              aria-label="Add link"
+              tooltip={compact ? "Add link" : undefined}
+              tooltipSide="bottom"
               onClick={() => setAdding((prev) => !prev)}
             >
-              Add link
+              {compact ? undefined : "Add link"}
             </Button>
           ) : undefined
         }
@@ -144,9 +159,7 @@ export default function SpaceLinksSection({ canEdit }: SpaceLinksSectionProps) {
               {canEdit ? (
                 <Popover
                   open={menuOpenId === link.id}
-                  onOpenChange={(open) =>
-                    setMenuOpenId(open ? link.id : null)
-                  }
+                  onOpenChange={(open) => setMenuOpenId(open ? link.id : null)}
                 >
                   <Popover.Trigger asChild>
                     <Button

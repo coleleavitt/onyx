@@ -21,6 +21,7 @@ interface ProjectMemoryPanelProps {
   projectId: number;
   /** Whether the current user can add memories to this space. */
   canEdit: boolean;
+  compact?: boolean;
 }
 
 /**
@@ -34,6 +35,7 @@ interface ProjectMemoryPanelProps {
 export default function ProjectMemoryPanel({
   projectId,
   canEdit,
+  compact = false,
 }: ProjectMemoryPanelProps) {
   const { mutate } = useSWRConfig();
   const { memories, isLoading } = useSpaceMemories(projectId);
@@ -65,7 +67,7 @@ export default function ProjectMemoryPanel({
       await refresh();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add memory."
+        error instanceof Error ? error.message : "Failed to add memory.",
       );
     } finally {
       setBusy(false);
@@ -78,7 +80,11 @@ export default function ProjectMemoryPanel({
         sizePreset="main-ui"
         variant="section"
         title="Memory"
-        description="Notes the agent remembers and can reference in this space."
+        description={
+          compact
+            ? undefined
+            : "Notes the agent remembers and can reference in this space."
+        }
         padding="fit"
         center
         rightChildren={
@@ -87,9 +93,12 @@ export default function ProjectMemoryPanel({
               icon={SvgPlusCircle}
               prominence="tertiary"
               interaction={addOpen ? "active" : undefined}
+              aria-label="Add memory"
+              tooltip={compact ? "Add memory" : undefined}
+              tooltipSide="bottom"
               onClick={() => setAddOpen(true)}
             >
-              Add memory
+              {compact ? undefined : "Add memory"}
             </Button>
           ) : undefined
         }

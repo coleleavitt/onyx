@@ -38,6 +38,7 @@ import { noProp } from "@/lib/utils";
 import MoveCustomAgentChatModal from "@/sections/modals/MoveCustomAgentChatModal";
 import ConfirmationModalLayout from "@/refresh-components/layouts/ConfirmationModalLayout";
 import { PopoverSearchInput } from "@/sections/sidebar/ChatButton";
+import SpaceDetailHeader from "@/sections/projects/SpaceDetailHeader";
 
 const LS_HIDE_MOVE_CUSTOM_AGENT_MODAL_KEY = "onyx:hideMoveCustomAgentModal";
 
@@ -75,7 +76,7 @@ function ProjectChatItem({
 
   const lastUpdateTime = useMemo(
     () => timeAgo(chat.time_updated),
-    [chat.time_updated]
+    [chat.time_updated],
   );
 
   const { refreshChatSessions, removeSession } = useChatSessions();
@@ -84,7 +85,7 @@ function ProjectChatItem({
   const isChatUsingDefaultAgent = chat.persona_id === DEFAULT_AGENT_ID;
 
   const filteredProjects = projects.filter((project) =>
-    project.name.toLowerCase().includes(searchTerm.toLowerCase())
+    project.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleConfirmDelete = useCallback(
@@ -98,7 +99,7 @@ function ProjectChatItem({
       setPopoverOpen(false);
       afterRefresh();
     },
-    [chat, refreshChatSessions, removeSession, fetchProjects, afterRefresh]
+    [chat, refreshChatSessions, removeSession, fetchProjects, afterRefresh],
   );
 
   const performMove = useCallback(
@@ -109,7 +110,7 @@ function ProjectChatItem({
       setPopoverOpen(false);
       afterRefresh();
     },
-    [chat.id, fetchProjects, refreshChatSessions, afterRefresh]
+    [chat.id, fetchProjects, refreshChatSessions, afterRefresh],
   );
 
   const handleMoveChatSession = useCallback(
@@ -127,7 +128,7 @@ function ProjectChatItem({
 
       await performMove(item.id);
     },
-    [isChatUsingDefaultAgent, performMove]
+    [isChatUsingDefaultAgent, performMove],
   );
 
   const handleRemoveFromProject = useCallback(async () => {
@@ -185,7 +186,7 @@ function ProjectChatItem({
             icon={SvgFolder}
             title={target.name}
             onClick={noProp(() =>
-              handleMoveChatSession({ id: target.id, label: target.name })
+              handleMoveChatSession({ id: target.id, label: target.name }),
             )}
           />
         )),
@@ -227,7 +228,7 @@ function ProjectChatItem({
             if (doNotShowAgain && typeof window !== "undefined") {
               window.localStorage.setItem(
                 LS_HIDE_MOVE_CUSTOM_AGENT_MODAL_KEY,
-                "true"
+                "true",
               );
             }
             const target = pendingMoveProjectId;
@@ -283,12 +284,19 @@ function ProjectChatItem({
   );
 }
 
-export default function ProjectChatSessionList() {
+interface ProjectChatSessionListProps {
+  showIdentityHeader?: boolean;
+}
+
+export default function ProjectChatSessionList({
+  showIdentityHeader = true,
+}: ProjectChatSessionListProps) {
   const {
     currentProjectDetails,
     currentProjectId,
     refreshCurrentProjectDetails,
     isLoadingProjectDetails,
+    updateProjectMetadata,
   } = useProjectsContext();
   const { agents } = useAgents();
   const { user } = useUser();
@@ -300,7 +308,7 @@ export default function ProjectChatSessionList() {
     const sessions = currentProjectDetails?.project?.chat_sessions || [];
     return [...sessions].sort(
       (a, b) =>
-        new Date(b.time_updated).getTime() - new Date(a.time_updated).getTime()
+        new Date(b.time_updated).getTime() - new Date(a.time_updated).getTime(),
     );
   }, [currentProjectDetails?.project?.chat_sessions]);
 
@@ -308,7 +316,7 @@ export default function ProjectChatSessionList() {
     const normalized = query.trim().toLowerCase();
     const bySearch = normalized
       ? projectChats.filter((chat) =>
-          (chat.name || UNNAMED_CHAT).toLowerCase().includes(normalized)
+          (chat.name || UNNAMED_CHAT).toLowerCase().includes(normalized),
         )
       : projectChats;
 
@@ -317,7 +325,7 @@ export default function ProjectChatSessionList() {
     // Fall back to showing all when no chat exposes an owner id, so the
     // "Your sessions" filter stays no-op-safe until that data is available.
     const hasOwnerInfo = bySearch.some(
-      (chat) => getChatOwnerId(chat) !== undefined
+      (chat) => getChatOwnerId(chat) !== undefined,
     );
     if (!hasOwnerInfo) return bySearch;
 
@@ -326,8 +334,24 @@ export default function ProjectChatSessionList() {
 
   if (!currentProjectId) return null;
 
+  const currentProject = currentProjectDetails?.project ?? null;
+  const canEdit =
+    currentProject !== null && currentProject.user_permission !== "VIEWER";
+
   return (
-    <div className="flex flex-col gap-6 pt-6 mx-auto">
+    <div className="mx-auto flex flex-col gap-5 pt-5">
+      {showIdentityHeader && currentProject ? (
+        <div className="px-3 pb-2">
+          <SpaceDetailHeader
+            project={currentProject}
+            canEdit={canEdit}
+            onUpdate={(metadata) =>
+              updateProjectMetadata(currentProject.id, metadata)
+            }
+          />
+        </div>
+      ) : null}
+
       <div>
         {projectChats.length > 0 && (
           <div className="px-3 pb-1">
@@ -347,8 +371,8 @@ export default function ProjectChatSessionList() {
         )}
 
         <div className="flex items-center justify-between gap-2 px-3 py-2">
-          <Text as="p" font="secondary-body" color="text-inverted-03">
-            Recent Chats
+          <Text as="p" font="secondary-action" color="text-03">
+            Recent chats
           </Text>
           {projectChats.length > 0 && (
             <div className="w-48 shrink-0">
@@ -368,7 +392,7 @@ export default function ProjectChatSessionList() {
         ) : projectChats.length === 0 ? (
           <Card rounding="md" border="dashed" background="none" padding="sm">
             <div className="p-1">
-              <Text as="p" font="secondary-body" color="text-inverted-03">
+              <Text as="p" font="secondary-body" color="text-03">
                 No chats yet.
               </Text>
             </div>
@@ -376,7 +400,7 @@ export default function ProjectChatSessionList() {
         ) : filteredChats.length === 0 ? (
           <Card rounding="md" border="dashed" background="none" padding="sm">
             <div className="p-1">
-              <Text as="p" font="secondary-body" color="text-inverted-03">
+              <Text as="p" font="secondary-body" color="text-03">
                 No chats match your search.
               </Text>
             </div>

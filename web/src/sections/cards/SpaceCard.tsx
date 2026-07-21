@@ -62,7 +62,7 @@ export default function SpaceCard({
     <div
       className={cn(
         "group flex w-full cursor-pointer items-center gap-3 rounded-08 px-3 py-2.5",
-        "transition-colors hover:bg-background-tint-01"
+        "outline-none transition-colors hover:bg-background-tint-01 focus-visible:bg-background-tint-01",
       )}
       onClick={() => onOpen(project)}
       tabIndex={0}
@@ -116,7 +116,7 @@ export default function SpaceCard({
           <Text font="secondary-body" color="text-inverted-05" nowrap>
             {getUserInitials(
               project.owner.full_name ?? null,
-              project.owner.email
+              project.owner.email,
             ) ?? project.owner.email.charAt(0).toUpperCase()}
           </Text>
         </div>
@@ -147,7 +147,7 @@ export default function SpaceCard({
             className={cn(
               "pointer-events-none absolute h-3.5 w-3.5 stroke-text-03 transition-opacity",
               "group-hover:opacity-0",
-              menuOpen && "opacity-0"
+              menuOpen && "opacity-0",
             )}
           />
         ) : null}
@@ -157,7 +157,7 @@ export default function SpaceCard({
               "transition-opacity",
               !menuOpen &&
                 project.is_pinned &&
-                "opacity-0 group-hover:opacity-100"
+                "opacity-0 group-hover:opacity-100",
             )}
           >
             <Popover.Trigger asChild>
