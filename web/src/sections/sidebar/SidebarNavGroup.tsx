@@ -34,7 +34,6 @@ interface SidebarNavGroupProps {
   defaultExpanded?: boolean;
   /** Whether the group has nested children to reveal. */
   hasChildren?: boolean;
-  forceExpanded?: boolean;
   /** Extra hover-revealed action rendered on the right (e.g. "New"). */
   action?: React.ReactNode;
   children?: React.ReactNode;
@@ -55,7 +54,6 @@ export default function SidebarNavGroup({
   persistKey,
   defaultExpanded = false,
   hasChildren = false,
-  forceExpanded = false,
   action,
   children,
 }: SidebarNavGroupProps) {
@@ -84,7 +82,6 @@ export default function SidebarNavGroup({
   );
 
   const canToggle = !folded && hasChildren;
-  const isExpanded = forceExpanded || expanded;
 
   return (
     <div className="flex flex-col">
@@ -117,23 +114,23 @@ export default function SidebarNavGroup({
         {canToggle && (
           <button
             type="button"
-            aria-expanded={isExpanded}
-            aria-label={isExpanded ? `Collapse ${label}` : `Expand ${label}`}
+            aria-expanded={expanded}
+            aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
             onClick={toggle}
-            className="navgroup-reveal absolute left-1 top-0 bottom-0 z-[101] flex w-6 items-center justify-center opacity-0 pointer-events-none transition-opacity duration-100"
+            className="navgroup-reveal absolute left-1 top-0 bottom-0 z-[101] flex w-6 items-center justify-center opacity-0 transition-opacity duration-100 focus-visible:opacity-100"
           >
             <SvgChevronRight
               aria-hidden
               className={cn(
                 "h-4 w-4 stroke-text-03 transition-transform duration-150",
-                isExpanded && "rotate-90",
+                expanded && "rotate-90",
               )}
             />
           </button>
         )}
       </div>
 
-      {canToggle && isExpanded && (
+      {canToggle && expanded && (
         <div className="flex flex-col pl-2">{children}</div>
       )}
     </div>

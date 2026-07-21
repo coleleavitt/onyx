@@ -6,11 +6,15 @@ test.describe("Customize navigation", () => {
     await loginAs(page, "admin");
     await page.addInitScript(() => {
       window.localStorage.setItem("sidebarIsToggled", "false");
+      window.localStorage.setItem(
+        "opal-sidebar-group-expanded-customize",
+        "true",
+      );
       document.cookie = "sidebarIsToggled=false; path=/";
     });
   });
 
-  test("keeps route tabs visible and sidebar group expanded for customize routes", async ({
+  test("keeps route tabs visible while the sidebar group can collapse", async ({
     page,
   }) => {
     await page.goto("/app/customize/skills");
@@ -37,6 +41,19 @@ test.describe("Customize navigation", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("tab", { name: "Memory", exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Collapse Customize" }).click();
+    await expect(
+      customizeSidebar.getByText("Skills", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("tab", { name: "Skills", exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Expand Customize" }).click();
+    await expect(
+      customizeSidebar.getByText("Skills", { exact: true }),
     ).toBeVisible();
 
     await page.getByRole("tab", { name: "Workflows", exact: true }).click();

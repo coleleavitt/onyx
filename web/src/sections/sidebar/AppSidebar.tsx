@@ -715,7 +715,6 @@ export default function AppSidebar() {
                   folded={folded}
                   persistKey="agents"
                   hasChildren
-                  forceExpanded={isAgentsRoute}
                 >
                   <SortableContext
                     items={visibleAgentIds}
@@ -748,7 +747,6 @@ export default function AppSidebar() {
                   folded={folded}
                   persistKey="spaces"
                   hasChildren
-                  forceExpanded={isSpacesRoute}
                   action={
                     <OpalButton
                       icon={SvgFolderPlus}
@@ -775,7 +773,6 @@ export default function AppSidebar() {
                     folded={folded}
                     persistKey="artifacts"
                     hasChildren={pinnedArtifacts.length > 0}
-                    forceExpanded={isArtifactsRoute}
                   >
                     {pinnedArtifacts.map((artifact) => (
                       <SidebarTab
@@ -801,7 +798,6 @@ export default function AppSidebar() {
                     folded={folded}
                     persistKey="customize"
                     hasChildren
-                    forceExpanded={isCustomizeRoute}
                   >
                     <SidebarTab
                       icon={SvgBlocks}
