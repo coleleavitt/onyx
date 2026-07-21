@@ -98,14 +98,14 @@ import type { ArtifactLibraryItem } from "@/app/craft/v1/artifacts/types";
 // OR Visible-agents = pinned-agents (if current-agent in pinned-agents)
 function buildVisibleAgents(
   pinnedAgents: MinimalAgent[],
-  currentAgent: MinimalAgent | null
+  currentAgent: MinimalAgent | null,
 ): [MinimalAgent[], boolean] {
   /* NOTE: The unified agent (id = 0) is not visible in the sidebar,
   so we filter it out. */
   if (!currentAgent)
     return [pinnedAgents.filter((agent) => agent.id !== 0), false];
   const currentAgentIsPinned = pinnedAgents.some(
-    (pinnedAgent) => pinnedAgent.id === currentAgent.id
+    (pinnedAgent) => pinnedAgent.id === currentAgent.id,
   );
   const visibleAgents = (
     currentAgentIsPinned ? pinnedAgents : [...pinnedAgents, currentAgent]
@@ -160,7 +160,7 @@ function RecentsSection({
           onLoadMoreRef.current();
         }
       },
-      { threshold: 0 }
+      { threshold: 0 },
     );
 
     observer.observe(sentinel);
@@ -172,7 +172,7 @@ function RecentsSection({
       ref={setNodeRef}
       className={cn(
         "transition-colors duration-200 rounded-08 h-full",
-        isOver && "bg-background-tint-03"
+        isOver && "bg-background-tint-03",
       )}
     >
       <SidebarNavGroup
@@ -202,7 +202,7 @@ function RecentsSection({
                   ref={i === 0 ? sentinelRef : undefined}
                   className={cn(
                     "transition-opacity duration-300",
-                    isLoadingMore ? "opacity-100" : "opacity-40"
+                    isLoadingMore ? "opacity-100" : "opacity-40",
                   )}
                 >
                   <SidebarTabSkeleton textWidth={width} />
@@ -242,7 +242,7 @@ export default function AppSidebar() {
   const { data: pinnedArtifacts = [] } = useSWR<ArtifactLibraryItem[]>(
     isOnyxCraftEnabled ? PINNED_ARTIFACTS_URL : null,
     errorHandlingFetcher,
-    { revalidateOnFocus: false, dedupingInterval: 30_000 }
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
   );
   const currentAgent = useCurrentAgent();
   const {
@@ -282,7 +282,7 @@ export default function AppSidebar() {
         (n) =>
           n.notif_type === NotificationType.FEATURE_ANNOUNCEMENT &&
           n.additional_data?.feature === "build_mode" &&
-          !n.dismissed
+          !n.dismissed,
       )
     : undefined;
 
@@ -296,7 +296,7 @@ export default function AppSidebar() {
   // Gated by PostHog feature flag: if `craft-animation-disabled` is true (or
   // PostHog is unavailable), skip the auto-show entirely.
   const isCraftAnimationDisabled = usePHFeatureFlag(
-    PHFeatureFlag.CRAFT_ANIMATION_DISABLED
+    PHFeatureFlag.CRAFT_ANIMATION_DISABLED,
   );
   const hasTenantModal = !!(newTenantInfo || invitationInfo);
   useEffect(() => {
@@ -330,11 +330,11 @@ export default function AppSidebar() {
 
   const [visibleAgents, currentAgentIsPinned] = useMemo(
     () => buildVisibleAgents(pinnedAgents, currentAgent),
-    [pinnedAgents, currentAgent]
+    [pinnedAgents, currentAgent],
   );
   const visibleAgentIds = useMemo(
     () => visibleAgents.map((agent) => agent.id),
-    [visibleAgents]
+    [visibleAgents],
   );
 
   const sensors = useSensors(
@@ -345,7 +345,7 @@ export default function AppSidebar() {
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   // Handle agent drag and drop
@@ -356,10 +356,10 @@ export default function AppSidebar() {
       if (active.id === over.id) return;
 
       const activeIndex = visibleAgentIds.findIndex(
-        (agentId) => agentId === active.id
+        (agentId) => agentId === active.id,
       );
       const overIndex = visibleAgentIds.findIndex(
-        (agentId) => agentId === over.id
+        (agentId) => agentId === over.id,
       );
 
       let newPinnedAgents: MinimalAgent[];
@@ -372,7 +372,7 @@ export default function AppSidebar() {
           newPinnedAgents = arrayMove(
             pinnedWithCurrent,
             activeIndex,
-            overIndex
+            overIndex,
           );
         } else {
           // Use visibleAgents to ensure the indices match with `visibleAgentIds`
@@ -392,13 +392,13 @@ export default function AppSidebar() {
       updatePinnedAgents,
       currentAgent,
       currentAgentIsPinned,
-    ]
+    ],
   );
 
   // Perform the actual move
   async function performChatMove(
     targetProjectId: number,
-    chatSession: ChatSession
+    chatSession: ChatSession,
   ) {
     try {
       await handleMoveOperation({
@@ -487,13 +487,17 @@ export default function AppSidebar() {
       refreshChatSessions,
       refreshCurrentProjectDetails,
       refreshProjects,
-    ]
+    ],
   );
 
   const { isAdmin, isCurator, user } = useUser();
   const activeSidebarTab = useAppFocus();
   const createProjectModal = useCreateModal();
   const showLogoWhenFolded = useShowLogoWhenFolded();
+  const isAgentsRoute = pathname.startsWith("/app/agents");
+  const isSpacesRoute = pathname.startsWith("/app/spaces");
+  const isArtifactsRoute = pathname.startsWith("/app/artifacts");
+  const isCustomizeRoute = pathname.startsWith("/app/customize");
   const defaultAppMode =
     (user?.preferences?.default_app_mode?.toLowerCase() as "chat" | "search") ??
     "chat";
@@ -540,7 +544,7 @@ export default function AppSidebar() {
         </SidebarTab>
       </div>
     ),
-    [folded]
+    [folded],
   );
 
   const searchChatsButton = useMemo(
@@ -553,7 +557,7 @@ export default function AppSidebar() {
         }
       />
     ),
-    [folded]
+    [folded],
   );
   const moreAgentsButton = useMemo(
     () => (
@@ -573,7 +577,7 @@ export default function AppSidebar() {
         </SidebarTab>
       </div>
     ),
-    [folded, activeSidebarTab, visibleAgents]
+    [folded, activeSidebarTab, visibleAgents],
   );
   const newProjectButton = useMemo(
     () => (
@@ -587,7 +591,7 @@ export default function AppSidebar() {
         New Space
       </SidebarTab>
     ),
-    [folded, createProjectModal.toggle, createProjectModal.isOpen]
+    [folded, createProjectModal.toggle, createProjectModal.isOpen],
   );
   const handleShowBuildIntro = useCallback(() => {
     setShowIntroAnimation(true);
@@ -617,7 +621,7 @@ export default function AppSidebar() {
         />
       </div>
     ),
-    [folded, isAdmin, isCurator, handleShowBuildIntro, isOnyxCraftEnabled]
+    [folded, isAdmin, isCurator, handleShowBuildIntro, isOnyxCraftEnabled],
   );
 
   return (
@@ -637,7 +641,7 @@ export default function AppSidebar() {
             if (doNotShowAgain && typeof window !== "undefined") {
               window.localStorage.setItem(
                 LOCAL_STORAGE_KEYS.HIDE_MOVE_CUSTOM_AGENT_MODAL,
-                "true"
+                "true",
               );
             }
             const chat = pendingMoveChatSession;
@@ -707,10 +711,11 @@ export default function AppSidebar() {
                   icon={SvgOnyxOctagon}
                   label="Agents"
                   href="/app/agents"
-                  selected={false}
+                  selected={isAgentsRoute}
                   folded={folded}
                   persistKey="agents"
                   hasChildren
+                  forceExpanded={isAgentsRoute}
                 >
                   <SortableContext
                     items={visibleAgentIds}
@@ -739,10 +744,11 @@ export default function AppSidebar() {
                   icon={SvgFolder}
                   label="Spaces"
                   href="/app/spaces"
-                  selected={pathname === "/app/spaces"}
+                  selected={isSpacesRoute}
                   folded={folded}
                   persistKey="spaces"
                   hasChildren
+                  forceExpanded={isSpacesRoute}
                   action={
                     <OpalButton
                       icon={SvgFolderPlus}
@@ -765,10 +771,11 @@ export default function AppSidebar() {
                     icon={SvgFiles}
                     label="Artifacts"
                     href="/app/artifacts"
-                    selected={pathname === "/app/artifacts"}
+                    selected={isArtifactsRoute}
                     folded={folded}
                     persistKey="artifacts"
                     hasChildren={pinnedArtifacts.length > 0}
+                    forceExpanded={isArtifactsRoute}
                   >
                     {pinnedArtifacts.map((artifact) => (
                       <SidebarTab
@@ -785,42 +792,45 @@ export default function AppSidebar() {
                 ) : null}
 
                 {/* Customize */}
-                <SidebarNavGroup
-                  icon={SvgSliders}
-                  label="Customize"
-                  href="/app/customize/skills"
-                  selected={false}
-                  folded={folded}
-                  persistKey="customize"
-                  hasChildren
-                >
-                  <SidebarTab
-                    icon={SvgBlocks}
+                <div data-testid="AppSidebar/customize">
+                  <SidebarNavGroup
+                    icon={SvgSliders}
+                    label="Customize"
                     href="/app/customize/skills"
-                    selected={pathname === "/app/customize/skills"}
-                    variant="sidebar-light"
+                    selected={isCustomizeRoute}
+                    folded={folded}
+                    persistKey="customize"
+                    hasChildren
+                    forceExpanded={isCustomizeRoute}
                   >
-                    Skills
-                  </SidebarTab>
-                  {isOnyxCraftEnabled ? (
                     <SidebarTab
-                      icon={SvgWorkflow}
-                      href="/app/customize/workflows"
-                      selected={pathname === "/app/customize/workflows"}
+                      icon={SvgBlocks}
+                      href="/app/customize/skills"
+                      selected={pathname === "/app/customize/skills"}
                       variant="sidebar-light"
                     >
-                      Workflows
+                      Skills
                     </SidebarTab>
-                  ) : null}
-                  <SidebarTab
-                    icon={SvgBookOpen}
-                    href="/app/customize/memory"
-                    selected={pathname === "/app/customize/memory"}
-                    variant="sidebar-light"
-                  >
-                    Memory
-                  </SidebarTab>
-                </SidebarNavGroup>
+                    {isOnyxCraftEnabled ? (
+                      <SidebarTab
+                        icon={SvgWorkflow}
+                        href="/app/customize/workflows"
+                        selected={pathname === "/app/customize/workflows"}
+                        variant="sidebar-light"
+                      >
+                        Workflows
+                      </SidebarTab>
+                    ) : null}
+                    <SidebarTab
+                      icon={SvgBookOpen}
+                      href="/app/customize/memory"
+                      selected={pathname === "/app/customize/memory"}
+                      variant="sidebar-light"
+                    >
+                      Memory
+                    </SidebarTab>
+                  </SidebarNavGroup>
+                </div>
 
                 {/* Recents */}
                 <RecentsSection

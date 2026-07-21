@@ -11,11 +11,11 @@ const GROUP_EXPANDED_PREFIX = "opal-sidebar-group-expanded-";
 
 function readPersistedExpanded(
   persistKey: string | undefined,
-  defaultExpanded: boolean
+  defaultExpanded: boolean,
 ): boolean {
   if (!persistKey || typeof window === "undefined") return defaultExpanded;
   const stored = window.localStorage.getItem(
-    `${GROUP_EXPANDED_PREFIX}${persistKey}`
+    `${GROUP_EXPANDED_PREFIX}${persistKey}`,
   );
   if (stored === "true") return true;
   if (stored === "false") return false;
@@ -34,6 +34,7 @@ interface SidebarNavGroupProps {
   defaultExpanded?: boolean;
   /** Whether the group has nested children to reveal. */
   hasChildren?: boolean;
+  forceExpanded?: boolean;
   /** Extra hover-revealed action rendered on the right (e.g. "New"). */
   action?: React.ReactNode;
   children?: React.ReactNode;
@@ -54,11 +55,12 @@ export default function SidebarNavGroup({
   persistKey,
   defaultExpanded = false,
   hasChildren = false,
+  forceExpanded = false,
   action,
   children,
 }: SidebarNavGroupProps) {
   const [expanded, setExpanded] = useState<boolean>(() =>
-    readPersistedExpanded(persistKey, defaultExpanded)
+    readPersistedExpanded(persistKey, defaultExpanded),
   );
 
   const toggle = useCallback(
@@ -72,16 +74,17 @@ export default function SidebarNavGroup({
         if (persistKey && typeof window !== "undefined") {
           window.localStorage.setItem(
             `${GROUP_EXPANDED_PREFIX}${persistKey}`,
-            String(next)
+            String(next),
           );
         }
         return next;
       });
     },
-    [persistKey]
+    [persistKey],
   );
 
   const canToggle = !folded && hasChildren;
+  const isExpanded = forceExpanded || expanded;
 
   return (
     <div className="flex flex-col">
@@ -91,7 +94,7 @@ export default function SidebarNavGroup({
           // On row hover, fade the base icon out so the overlaid chevron reads
           // as the icon morphing into a toggle.
           canToggle &&
-            "[&_.opal-content-sm-icon]:transition-opacity [&_.opal-content-sm-icon]:duration-100 [&:hover_.opal-content-sm-icon]:opacity-0 [&:hover_.navgroup-reveal]:opacity-100 [&:hover_.navgroup-reveal]:pointer-events-auto"
+            "[&_.opal-content-sm-icon]:transition-opacity [&_.opal-content-sm-icon]:duration-100 [&:hover_.opal-content-sm-icon]:opacity-0 [&:hover_.navgroup-reveal]:opacity-100 [&:hover_.navgroup-reveal]:pointer-events-auto",
         )}
       >
         <SidebarTab
@@ -114,8 +117,8 @@ export default function SidebarNavGroup({
         {canToggle && (
           <button
             type="button"
-            aria-expanded={expanded}
-            aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? `Collapse ${label}` : `Expand ${label}`}
             onClick={toggle}
             className="navgroup-reveal absolute left-1 top-0 bottom-0 z-[101] flex w-6 items-center justify-center opacity-0 pointer-events-none transition-opacity duration-100"
           >
@@ -123,14 +126,14 @@ export default function SidebarNavGroup({
               aria-hidden
               className={cn(
                 "h-4 w-4 stroke-text-03 transition-transform duration-150",
-                expanded && "rotate-90"
+                isExpanded && "rotate-90",
               )}
             />
           </button>
         )}
       </div>
 
-      {canToggle && expanded && (
+      {canToggle && isExpanded && (
         <div className="flex flex-col pl-2">{children}</div>
       )}
     </div>

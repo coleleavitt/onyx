@@ -4,8 +4,6 @@ import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { useSettings } from "@/lib/settings/hooks";
 import { Tabs, Text } from "@opal/components";
-import { useSidebarState } from "@opal/layouts";
-import { cn } from "@opal/utils";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
 
 const CUSTOMIZE_TABS = [
@@ -21,7 +19,6 @@ interface CustomizeLayoutProps {
 export default function CustomizeLayout({ children }: CustomizeLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { folded } = useSidebarState();
   const settings = useSettings();
   const tabs =
     settings.onyx_craft_enabled === true
@@ -31,12 +28,7 @@ export default function CustomizeLayout({ children }: CustomizeLayoutProps) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col">
-      <nav
-        className={cn(
-          "shrink-0 border-b border-border-01 bg-background-tint-01 px-4 py-2 sm:px-6",
-          !folded && "sm:hidden"
-        )}
-      >
+      <nav className="shrink-0 border-b border-border-01 bg-background-neutral-00 px-4 py-2 sm:px-6">
         <div className="flex w-full justify-center">
           <div className="w-full max-w-[80rem]">
             <div className="hidden w-[28rem] max-w-full sm:block">
