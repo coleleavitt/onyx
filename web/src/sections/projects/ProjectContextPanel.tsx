@@ -424,6 +424,7 @@ export default function ProjectContextPanel({
                   selectedFileIds={(allCurrentProjectFiles || []).map(
                     (f) => f.id,
                   )}
+                  compact={compact}
                 />
               ) : undefined
             }
@@ -501,7 +502,9 @@ export default function ProjectContextPanel({
               {isDragActive
                 ? "Drop files here to add to this space"
                 : canEdit
-                  ? "Add documents, texts, or images to use in the space. Drag & drop supported."
+                  ? compact
+                    ? "Drop files here, or use + to add."
+                    : "Add documents, texts, or images to use in the space. Drag & drop supported."
                   : "No files have been added to this space."}
             </SectionPlaceholder>
           )}

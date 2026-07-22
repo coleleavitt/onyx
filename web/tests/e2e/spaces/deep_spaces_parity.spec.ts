@@ -39,13 +39,13 @@ test.describe("Deep Spaces parity", () => {
       const dialog = await spaceDetail.openShareDialog();
       await expect(dialog.getByText("Invite by email")).toBeVisible();
       await expect(
-        dialog.getByPlaceholder("teammate@example.com")
+        dialog.getByPlaceholder("teammate@example.com"),
       ).toBeVisible();
       await expect(
-        dialog.getByText("People with access", { exact: true })
+        dialog.getByText("People with access", { exact: true }),
       ).toBeVisible();
       await expect(
-        dialog.getByText("General access", { exact: true })
+        dialog.getByText("General access", { exact: true }),
       ).toBeVisible();
     } finally {
       await spaceDetail.setChatBackground(null);

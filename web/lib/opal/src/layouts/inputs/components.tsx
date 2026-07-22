@@ -11,7 +11,12 @@ import type {
 } from "@opal/types";
 import { Text, Divider, type TagProps } from "@opal/components";
 import { SvgXOctagon, SvgAlertCircle } from "@opal/icons";
-import { Content, ContentAction, Section } from "@opal/layouts";
+import {
+  Content,
+  ContentAction,
+  Section,
+  type AlignItems,
+} from "@opal/layouts";
 
 // ---------------------------------------------------------------------------
 // Label
@@ -64,6 +69,7 @@ interface InputLayoutProps {
   tag?: TagProps;
   description?: string | RichStr;
   suffix?: "optional" | (string & {});
+  alignItems?: AlignItems;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +93,7 @@ function Vertical({
   tag,
   description,
   suffix,
+  alignItems = "start",
 }: VerticalProps) {
   const fieldName =
     typeof withLabelProp === "string" ? withLabelProp : undefined;
@@ -120,7 +127,7 @@ function Vertical({
   );
 
   const content = (
-    <Section ref={ref} gap={0.25} alignItems="start">
+    <Section ref={ref} gap={0.25} alignItems={alignItems}>
       {titleRow}
       {children}
       {fieldName && <FormikInputError name={fieldName} />}
@@ -177,12 +184,13 @@ function Horizontal({
   suffix,
   responsive,
   fillInput,
+  alignItems = "start",
 }: HorizontalProps) {
   const fieldName =
     typeof withLabelProp === "string" ? withLabelProp : undefined;
 
   const content = (
-    <Section ref={ref} gap={0.25} alignItems="start">
+    <Section ref={ref} gap={0.25} alignItems={alignItems}>
       <ContentAction
         icon={icon}
         title={title}

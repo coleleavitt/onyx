@@ -28,14 +28,14 @@ const validationSchema = Yup.object({
     .trim()
     .max(
       SPACE_NAME_MAX_LENGTH,
-      `Space name must be ${SPACE_NAME_MAX_LENGTH} characters or fewer`
+      `Space name must be ${SPACE_NAME_MAX_LENGTH} characters or fewer`,
     )
     .required("Space name is required"),
   description: Yup.string()
     .trim()
     .max(
       SPACE_DESCRIPTION_MAX_LENGTH,
-      `Space description must be ${SPACE_DESCRIPTION_MAX_LENGTH} characters or fewer`
+      `Space description must be ${SPACE_DESCRIPTION_MAX_LENGTH} characters or fewer`,
     ),
 });
 
@@ -50,10 +50,10 @@ export default function EditSpaceDetailsModal({
 
   return (
     <Modal open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-      <Modal.Content width="sm">
+      <Modal.Content width="md">
         <Modal.Header
           icon={SvgEdit}
-          title="Edit Space Details"
+          title="Edit space details"
           description="Update the name and description shown to collaborators."
           onClose={onClose}
         />
@@ -79,7 +79,7 @@ export default function EditSpaceDetailsModal({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : "Failed to update space details."
+                  : "Failed to update space details.",
               );
             } finally {
               setSubmitting(false);
@@ -88,7 +88,7 @@ export default function EditSpaceDetailsModal({
         >
           {({ isSubmitting, isValid }) => (
             <Form>
-              <Modal.Body>
+              <Modal.Body alignItems="stretch">
                 <div className="flex flex-col gap-4">
                   <div className="flex items-end gap-2">
                     <div className="shrink-0">
@@ -100,7 +100,7 @@ export default function EditSpaceDetailsModal({
                       </InputVertical>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <InputVertical title="Space Name" withLabel="name">
+                      <InputVertical title="Space name" withLabel="name">
                         <InputTypeInField
                           name="name"
                           placeholder="What are you working on?"
@@ -109,11 +109,18 @@ export default function EditSpaceDetailsModal({
                       </InputVertical>
                     </div>
                   </div>
-                  <InputVertical title="Description" withLabel="description">
+                  <InputVertical
+                    title="Description"
+                    withLabel="description"
+                    alignItems="stretch"
+                  >
                     <InputTextAreaField
                       name="description"
                       placeholder="What should collaborators know about this space?"
                       autoResize
+                      rows={5}
+                      maxRows={8}
+                      resizable={false}
                     />
                   </InputVertical>
                 </div>

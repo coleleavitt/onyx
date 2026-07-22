@@ -38,7 +38,7 @@ export class SpaceDetailPage {
 
   async goto(route: SpaceRoute): Promise<void> {
     await this.page.goto(
-      `/app/spaces/${slugify(route.spaceName)}-${route.projectId}`
+      `/app/spaces/${slugify(route.spaceName)}-${route.projectId}`,
     );
     await this.page.waitForLoadState("networkidle");
   }
@@ -56,10 +56,10 @@ export class SpaceDetailPage {
 
   async expectMainColumnWithoutDuplicateTabs(): Promise<void> {
     await expect(this.page.getByRole("tab", { name: "Threads" })).toHaveCount(
-      0
+      0,
     );
     await expect(this.page.getByRole("tab", { name: "Customize" })).toHaveCount(
-      0
+      0,
     );
     await expect(this.inputBox).toBeVisible();
   }
@@ -76,24 +76,24 @@ export class SpaceDetailPage {
     });
     await expect(showDetails).toBeVisible();
     await expect(
-      this.page.getByText("Instructions", { exact: true })
+      this.page.getByText("Instructions", { exact: true }),
     ).toHaveCount(0);
 
     await showDetails.click();
     await expect(
-      this.page.getByText("Instructions", { exact: true }).first()
+      this.page.getByText("Instructions", { exact: true }).first(),
     ).toBeVisible();
   }
 
   async expectDetailSectionsVisible(): Promise<void> {
     await expect(
-      this.page.getByText("Links", { exact: true }).first()
+      this.page.getByText("Links", { exact: true }).first(),
     ).toBeVisible();
     await expect(
-      this.page.getByText("Skills", { exact: true }).first()
+      this.page.getByText("Skills", { exact: true }).first(),
     ).toBeVisible();
     await expect(
-      this.page.getByText("Scheduled Tasks", { exact: true }).first()
+      this.page.getByText("Scheduled Tasks", { exact: true }).first(),
     ).toBeVisible();
   }
 
@@ -135,14 +135,64 @@ export class SpaceDetailPage {
 
   async expectAddControlsEnabled(): Promise<void> {
     await expect(
-      this.page.getByRole("button", { name: "Add skills" }).first()
+      this.page.getByRole("button", { name: "Add skills" }).first(),
     ).toBeEnabled();
     await expect(
-      this.page.getByRole("button", { name: "Create scheduled task" }).first()
+      this.page.getByRole("button", { name: "Create scheduled task" }).first(),
     ).toBeEnabled();
     await expect(
-      this.page.getByText("Link support is coming soon")
+      this.page.getByText("Link support is coming soon"),
     ).toHaveCount(0);
+  }
+
+  async openAddFilesPopoverAndExpectCompact(): Promise<void> {
+    await this.page.getByRole("button", { name: "Add files" }).first().click();
+
+    const popover = this.page
+      .locator("[data-radix-popper-content-wrapper]")
+      .filter({ hasText: "Upload Files" })
+      .first();
+    await expect(
+      popover.getByText("Upload Files", { exact: true }).first(),
+    ).toBeVisible();
+
+    const popoverWidth = await popover.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    expect(popoverWidth).toBeLessThanOrEqual(224);
+
+    await this.page.keyboard.press("Escape");
+    await expect(popover).toHaveCount(0);
+  }
+
+  async updateDetailsDescription(description: string): Promise<void> {
+    await this.page.getByRole("button", { name: "Edit details" }).click();
+
+    const dialog = this.page.getByRole("dialog", {
+      name: /Edit space details/i,
+    });
+    await expect(dialog).toBeVisible();
+
+    const dialogWidth = await dialog.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    expect(dialogWidth).toBeGreaterThanOrEqual(560);
+
+    const descriptionInput = dialog.locator('textarea[name="description"]');
+    await expect(descriptionInput).toBeVisible();
+    const descriptionHeight = await descriptionInput.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    );
+    expect(descriptionHeight).toBeGreaterThanOrEqual(90);
+    const descriptionWidth = await descriptionInput.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    expect(descriptionWidth).toBeGreaterThanOrEqual(500);
+
+    await descriptionInput.fill(description);
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(this.page.getByText(description).first()).toBeVisible();
   }
 
   async openShareDialog(): Promise<Locator> {
@@ -158,8 +208,8 @@ export class SpaceDetailPage {
       .evaluateAll(
         (elements) =>
           elements.filter((element) =>
-            getComputedStyle(element).backgroundImage.includes("url(")
-          ).length
+            getComputedStyle(element).backgroundImage.includes("url("),
+          ).length,
       );
   }
 }
