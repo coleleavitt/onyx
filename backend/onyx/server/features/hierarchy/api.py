@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from fastapi import Query
 from sqlalchemy.orm import Session
 
@@ -18,6 +17,8 @@ from onyx.db.hierarchy import get_accessible_hierarchy_nodes_for_source
 from onyx.db.hierarchy import search_accessible_hierarchy_nodes
 from onyx.db.models import User
 from onyx.db.opensearch_migration import get_opensearch_retrieval_state
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.hierarchy.constants import DOCUMENT_PAGE_SIZE
 from onyx.server.features.hierarchy.constants import HIERARCHY_NODE_DOCUMENTS_PATH
 from onyx.server.features.hierarchy.constants import HIERARCHY_NODE_SEARCH_LIMIT
@@ -51,15 +52,9 @@ router = APIRouter(prefix=HIERARCHY_NODES_PREFIX)
 
 def _require_opensearch(db_session: Session) -> None:
     if not ENABLE_OPENSEARCH_INDEXING_FOR_ONYX:
-        raise HTTPException(
-            status_code=403,
-            detail=OPENSEARCH_NOT_ENABLED_MESSAGE,
-        )
+        raise OnyxError(OnyxErrorCode.ENV_VAR_GATED, OPENSEARCH_NOT_ENABLED_MESSAGE)
     if not get_opensearch_retrieval_state(db_session):
-        raise HTTPException(
-            status_code=403,
-            detail=MIGRATION_STATUS_MESSAGE,
-        )
+        raise OnyxError(OnyxErrorCode.ENV_VAR_GATED, MIGRATION_STATUS_MESSAGE)
 
 
 def _get_user_access_info(user: User, db_session: Session) -> tuple[str, list[str]]:
@@ -152,7 +147,10 @@ def list_accessible_hierarchy_node_documents(
         include_archived=True,
     )
     if documents_request.parent_hierarchy_node_id not in allowed_node_ids:
-        raise HTTPException(status_code=403, detail="Hierarchy node is not available")
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "Hierarchy node is not available",
+        )
 
     documents = get_accessible_documents_for_hierarchy_node_paginated(
         db_session=db_session,

@@ -189,6 +189,41 @@ test("hierarchy browser hides archive scopes until explicitly opted in and shows
 });
 
 
+test("hierarchy browser shows unavailable-folder message without console error", async () => {
+  const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  mockFetchHierarchyNodes.mockResolvedValue(response(false));
+  mockFetchHierarchyNodeDocuments.mockRejectedValue(
+    new Error("Hierarchy node is not available")
+  );
+
+  try {
+    render(
+      <SourceHierarchyBrowser
+        source={ValidSources.Sharepoint}
+        selectedDocumentIds={[]}
+        onToggleDocument={jest.fn()}
+        onSetDocumentIds={jest.fn()}
+        selectedFolderIds={[]}
+        onToggleFolder={jest.fn()}
+        onSetFolderIds={jest.fn()}
+        onDeselectAllDocuments={jest.fn()}
+        onDeselectAllFolders={jest.fn()}
+        initialNodeId={recommendedNode.id}
+      />
+    );
+
+    expect(
+      await screen.findByText(
+        "This folder is no longer available or you do not have access to it."
+      )
+    ).toBeVisible();
+    expect(consoleSpy).not.toHaveBeenCalled();
+  } finally {
+    consoleSpy.mockRestore();
+  }
+});
+
+
 test("hierarchy browser select-all ignores navigation-only folder scopes", async () => {
   const user = userEvent.setup();
   const onSetFolderIds = jest.fn();

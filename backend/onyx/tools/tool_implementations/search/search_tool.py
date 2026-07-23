@@ -1042,7 +1042,10 @@ class SearchTool(Tool[SearchToolOverrideKwargs]):
         except Exception as e:
             # Retrieval infrastructure failed (embedding model server or document
             # index unreachable). Surface a real error instead of letting the UI
-            # render a misleading "No results found" empty state.
+            # render a misleading "No results found" empty state. Log the real
+            # exception server-side so local/dev operators can see whether this
+            # is the embedding model server, OpenSearch, or another dependency.
+            logger.exception("Internal search retrieval failed")
             self.emitter.emit(
                 Packet(
                     placement=placement,

@@ -181,6 +181,15 @@ function HierarchyBreadcrumb({
 // SOURCE HIERARCHY BROWSER - Browsable folder/document hierarchy for a source
 // ============================================================================
 
+function documentFetchErrorMessage(error: unknown): string {
+  const message =
+    error instanceof Error ? error.message : "Failed to load documents";
+  if (message === "Hierarchy node is not available") {
+    return "This folder is no longer available or you do not have access to it.";
+  }
+  return message;
+}
+
 function buildPathToNode(
   targetId: number,
   nodes: HierarchyNodeSummary[],
@@ -236,6 +245,7 @@ export default function SourceHierarchyBrowser({
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<DocumentPageCursor | null>(null);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [hasMoreDocuments, setHasMoreDocuments] = useState(true);
 
   // Search state
@@ -293,6 +303,7 @@ export default function SourceHierarchyBrowser({
       setAllNodes([]);
       setPath([]);
       setDocuments([]);
+      setDocumentsError(null);
       setNextCursor(null);
       setHasMoreDocuments(true);
 
@@ -352,6 +363,7 @@ export default function SourceHierarchyBrowser({
 
       setIsLoadingDocuments(true);
       setDocuments([]);
+      setDocumentsError(null);
       setNextCursor(null);
       setHasMoreDocuments(true);
 
@@ -381,10 +393,13 @@ export default function SourceHierarchyBrowser({
         });
 
         setDocuments(response.documents);
+        setDocumentsError(null);
         setNextCursor(response.next_cursor);
         setHasMoreDocuments(response.next_cursor !== null);
       } catch (error) {
-        console.error("Failed to load documents:", error);
+        setDocuments([]);
+        setDocumentsError(documentFetchErrorMessage(error));
+        setHasMoreDocuments(false);
       } finally {
         setIsLoadingDocuments(false);
       }
@@ -417,10 +432,12 @@ export default function SourceHierarchyBrowser({
       });
 
       setDocuments((prev) => [...prev, ...response.documents]);
+      setDocumentsError(null);
       setNextCursor(response.next_cursor);
       setHasMoreDocuments(response.next_cursor !== null);
     } catch (error) {
-      console.error("Failed to load more documents:", error);
+      setDocumentsError(documentFetchErrorMessage(error));
+      setHasMoreDocuments(false);
     } finally {
       setIsLoadingDocuments(false);
     }
@@ -986,7 +1003,13 @@ export default function SourceHierarchyBrowser({
         onScroll={handleScroll}
         className="overflow-y-auto max-h-80"
       >
-        {filteredItems.length === 0 && !isLoadingDocuments ? (
+        {documentsError ? (
+          <GeneralLayouts.Section height="auto" padding={1}>
+            <Text text03 secondaryBody>
+              {documentsError}
+            </Text>
+          </GeneralLayouts.Section>
+        ) : filteredItems.length === 0 && !isLoadingDocuments ? (
           <GeneralLayouts.Section height="auto" padding={1}>
             <Text text03 secondaryBody>
               {path.length === 0
