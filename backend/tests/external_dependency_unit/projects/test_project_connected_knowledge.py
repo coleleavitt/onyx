@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from onyx.access.access import get_acl_for_user
+from onyx.auth.schemas import UserRole
 from onyx.access.utils import prefix_user_email
 from onyx.chat.models import SearchParams
 from onyx.chat.process_message import apply_project_connected_knowledge_to_search_params
@@ -510,6 +511,27 @@ def test_project_connected_knowledge_rejects_scope_outside_group_policy(
         db_session=db_session,
     )
     assert [node.id for node in allowed_project.hierarchy_nodes] == [governed_folder.id]
+
+    admin_user = create_test_user(
+        db_session,
+        "project_policy_admin_bypass",
+        role=UserRole.ADMIN,
+    )
+    governed_nodes = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[governed_folder],
+        user=admin_user,
+    )
+    assert [node.id for node in governed_nodes.nodes] == [governed_folder.id]
+    admin_project = _create_project(db_session, admin_user, "Admin Policy Space")
+    replace_project_connected_knowledge(
+        project=admin_project,
+        document_ids=[],
+        hierarchy_node_ids=[governed_folder.id],
+        user=admin_user,
+        db_session=db_session,
+    )
+    assert [node.id for node in admin_project.hierarchy_nodes] == [governed_folder.id]
 
 
 def test_project_connected_knowledge_applies_configured_excluded_child_scope(

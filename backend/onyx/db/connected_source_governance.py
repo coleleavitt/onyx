@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 
 from onyx.access.hierarchy_access import get_user_external_group_ids
+from onyx.auth.schemas import UserRole
 from onyx.configs.constants import DocumentSource
 from onyx.db.document_access import get_accessible_documents_by_ids
 from onyx.db.enums import ConnectedSourceAccessType
@@ -91,6 +92,16 @@ def get_user_group_ids(db_session: Session, user: User | None) -> set[int]:
             )
         ).all()
     )
+
+
+def user_bypasses_connected_source_group_policy(user: User | None) -> bool:
+    """Admins can manage/use restricted source scopes without group grants.
+
+    Group grants are still meaningful for non-admin users; this bypass only
+    skips the `RESTRICTED` scope membership gate. Curation status, exclusions,
+    and paused-connector hiding continue to apply normally.
+    """
+    return user is not None and user.role == UserRole.ADMIN
 
 
 def _node_paths(nodes: list[HierarchyNode]) -> dict[int, list[int]]:
@@ -354,6 +365,7 @@ def _evaluate_source_partition(
     scopes_by_node_id: dict[int, ConnectedSourceScope],
     metrics_by_node_id: dict[int, ConnectedSourceScopeMetrics],
     user_group_ids: set[int],
+    bypass_group_policy: bool,
     include_archived: bool,
     include_hidden: bool,
 ) -> dict[int, ConnectedSourceScopeMetadata]:
@@ -401,7 +413,10 @@ def _evaluate_source_partition(
             denial_reason = "connector_not_active"
 
         for scope in path_scopes:
-            if not _scope_is_allowed_for_groups(scope, user_group_ids):
+            if (
+                not bypass_group_policy
+                and not _scope_is_allowed_for_groups(scope, user_group_ids)
+            ):
                 visible = False
                 selectable = False
                 denial_reason = "group_not_allowed"
@@ -482,6 +497,7 @@ def build_metadata_for_nodes(
     user_group_ids: set[int],
     include_archived: bool,
     include_hidden: bool,
+    bypass_group_policy: bool = False,
 ) -> dict[int, ConnectedSourceScopeMetadata]:
     if not nodes:
         return {}
@@ -500,6 +516,7 @@ def build_metadata_for_nodes(
                 scopes_by_node_id=scopes_by_source.get(source, {}),
                 metrics_by_node_id=metrics_by_node_id,
                 user_group_ids=user_group_ids,
+                bypass_group_policy=bypass_group_policy,
                 include_archived=include_archived,
                 include_hidden=include_hidden,
             )
@@ -522,6 +539,7 @@ def get_governed_hierarchy_nodes_for_source(
         user_group_ids=user_group_ids,
         include_archived=include_archived,
         include_hidden=include_hidden,
+        bypass_group_policy=user_bypasses_connected_source_group_policy(user),
     )
     visible_nodes = [node for node in nodes if metadata[node.id].is_visible]
     return GovernedHierarchyNodes(nodes=visible_nodes, metadata_by_node_id=metadata)
@@ -552,6 +570,7 @@ def filter_governed_hierarchy_node_ids(
         user_group_ids=get_user_group_ids(db_session, user),
         include_archived=include_archived,
         include_hidden=include_hidden,
+        bypass_group_policy=user_bypasses_connected_source_group_policy(user),
     )
     return {
         node_id

@@ -21,7 +21,8 @@ import { apiLogin } from "@tests/e2e/utils/auth";
  *
  * Requires seed-openwebui-parity-e2e.py to have governed:
  * - HumanResourcesIntranet (Magellan) as PUBLIC / recommended.
- * - ComplianceIntranet as RESTRICTED to a group nobody here belongs to.
+ * - ComplianceIntranet as RESTRICTED to a group nobody here belongs to
+ *   (admins bypass that group gate; ordinary users do not).
  *
  * Adversarial posture: every ACL boundary is exercised from the outside —
  * non-members probing spaces, viewers attempting writes, editors attempting
@@ -126,10 +127,11 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
     const medical = byTitle.get("Medical");
     expect(companyWide && jfFolder && medical).toBeTruthy();
 
-    // ComplianceIntranet is RESTRICTED to a group nobody here belongs to:
-    // it must not even be visible to the admin's picker feed.
-    expect(byTitle.has("ComplianceIntranet")).toBe(false);
-    const complianceSiteId = Number(process.env.PARITY_COMPLIANCE_SITE_ID ?? "942");
+    // Admins have full connected-source access: RESTRICTED scopes are visible
+    // to the admin picker feed even before any group membership exists.
+    const complianceNode = byTitle.get("ComplianceIntranet");
+    expect(complianceNode, "admin must see restricted ComplianceIntranet").toBeTruthy();
+    const complianceSiteId = complianceNode!.id;
 
     const jessica = await registerAndLogin(browser, users.jessica);
     const jarrod = await registerAndLogin(browser, users.jarrod);
