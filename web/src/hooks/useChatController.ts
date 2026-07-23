@@ -266,14 +266,32 @@ export default function useChatController({
   };
 
   const handleNewSessionNavigation = (chatSessionId: string) => {
-    // Build URL with skip-reload parameter
-    const newUrl = buildChatUrl(
-      searchParams,
-      chatSessionId,
-      null,
-      false,
-      true // skipReload
-    );
+    const isOnSpaceRoute = pathname.startsWith("/app/spaces");
+
+    // Build the target URL. On a Space route we MUST keep the same pathname and
+    // just attach `?chatId=`, rather than routing to `/chat` (which Next
+    // redirects to `/app`). A pathname change fires the unmount cleanup below
+    // that aborts the in-flight stream, and with `skipReload=true` the resume
+    // fetch is suppressed — leaving the new thread stuck on "Thinking…".
+    // Staying on the Space pathname keeps the stream alive and renders the
+    // thread inline within the Space (Perplexity-style), because `useAppFocus`
+    // resolves `?chatId` to chat focus regardless of the underlying route.
+    let newUrl: string;
+    if (isOnSpaceRoute) {
+      const params = new URLSearchParams(searchParams?.toString() || "");
+      params.delete(SEARCH_PARAM_NAMES.PROJECT_ID);
+      params.set(SEARCH_PARAM_NAMES.CHAT_ID, chatSessionId);
+      params.set(SEARCH_PARAM_NAMES.SKIP_RELOAD, "true");
+      newUrl = `${pathname}?${params.toString()}`;
+    } else {
+      newUrl = buildChatUrl(
+        searchParams,
+        chatSessionId,
+        null,
+        false,
+        true // skipReload
+      );
+    }
 
     // Navigate immediately if still on a surface that hosts the composer.
     // This covers the main chat page (/app) and the pretty Space-detail path

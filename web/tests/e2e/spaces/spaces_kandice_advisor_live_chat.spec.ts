@@ -93,25 +93,34 @@ test.describe("Kandice Advisor Services live Space chat", () => {
         .chat_session_id as string;
       expect(chatSessionId).toBeTruthy();
 
-      // Poll the persisted session for the completed assistant answer. The live
-      // search tool + LLM answer takes ~15-25s; retrieval must actually run.
-      await expect
-        .poll(() => latestAssistantAnswer(page.request, chatSessionId), {
-          timeout: 240_000,
-          intervals: [2_000],
-        })
-        .toMatch(/TPMM vs SubAdvisors/i);
+      // Regression: submitting from a Space must keep the composer on the Space
+      // route and open the thread inline (Perplexity-style) rather than
+      // navigating to /app and stranding the stream on "Thinking…". Wait for
+      // the new chatId to attach, then assert the pathname is STILL the Space
+      // route (the bug navigated to /app instead).
+      await page.waitForURL(
+        (url) => url.searchParams.get("chatId") === chatSessionId,
+        { timeout: 30_000 },
+      );
+      expect(new URL(page.url()).pathname).toMatch(/^\/app\/spaces\//);
 
+      // The answer renders inline in the Space thread — not stuck thinking.
+      const latestAnswer = page.getByTestId("onyx-ai-message").last();
+      await expect(latestAnswer).toContainText(/TPMM vs SubAdvisors/i, {
+        timeout: 240_000,
+      });
+      await expect(latestAnswer).not.toContainText(
+        /internal search is temporarily unavailable|search infrastructure error|no results found/i,
+      );
+
+      // And the persisted session carries the internal citation (governance +
+      // internal semantic search + LLM answer, end to end).
       const finalAnswer = await latestAssistantAnswer(
         page.request,
         chatSessionId,
       );
-      // Answered from internal SharePoint knowledge, not the infra-failure fallback.
       expect(finalAnswer).toMatch(
         /AdvisorServicesIntranet|Advisor Services|\.pdf/i,
-      );
-      expect(finalAnswer).not.toMatch(
-        /internal search is temporarily unavailable|search infrastructure error|no results found/i,
       );
     } finally {
       await apiClient.deleteProject(projectId);
