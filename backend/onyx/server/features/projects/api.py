@@ -206,17 +206,7 @@ def create_project(
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
-    project = UserProject(
-        name=normalize_project_name(name),
-        description=normalize_project_description(description),
-        emoji=normalize_project_emoji(emoji),
-        user_id=user.id,
-        instructions=(instructions or "").strip(),
-    )
-    db_session.add(project)
-    db_session.commit()
-    db_session.refresh(project)
-
+    preset = None
     if connected_knowledge_preset_id is not None:
         visible_presets = get_visible_presets_for_user(
             db_session=db_session,
@@ -236,6 +226,23 @@ def create_project(
                 OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
                 "Connected knowledge preset is not available.",
             )
+
+    project = UserProject(
+        name=normalize_project_name(name),
+        description=normalize_project_description(description),
+        emoji=normalize_project_emoji(emoji),
+        user_id=user.id,
+        instructions=(instructions or "").strip(),
+    )
+    db_session.add(project)
+
+    if preset is None:
+        db_session.commit()
+        db_session.refresh(project)
+        return _project_snapshot(project, user=user, db_session=db_session)
+
+    try:
+        db_session.flush()
         if not project.instructions and preset.instructions:
             project.instructions = preset.instructions
         replace_project_connected_knowledge(
@@ -245,7 +252,11 @@ def create_project(
             user=user,
             db_session=db_session,
         )
+    except Exception:
+        db_session.rollback()
+        raise
 
+    db_session.refresh(project)
     return _project_snapshot(project, user=user, db_session=db_session)
 
 

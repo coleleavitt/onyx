@@ -9,7 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 
+from onyx.access.hierarchy_access import get_user_external_group_ids
 from onyx.configs.constants import DocumentSource
+from onyx.db.document_access import get_accessible_documents_by_ids
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import ConnectedSourceScope__UserGroup
@@ -424,25 +426,71 @@ def filter_governed_document_ids(
     }
 
 
+def _effective_exclusions_for_selected_node_ids(
+    *,
+    db_session: Session,
+    selected_node_ids: list[int],
+) -> set[int]:
+    if not selected_node_ids:
+        return set()
+
+    source_rows = db_session.execute(
+        select(HierarchyNode.id, HierarchyNode.source).where(
+            HierarchyNode.id.in_(selected_node_ids)
+        )
+    ).all()
+    selected_ids_by_source: dict[DocumentSource, set[int]] = defaultdict(set)
+    for node_id, source in source_rows:
+        selected_ids_by_source[source].add(node_id)
+
+    if not selected_ids_by_source:
+        return set()
+
+    nodes_by_source: dict[DocumentSource, list[HierarchyNode]] = defaultdict(list)
+    all_source_nodes = list(
+        db_session.scalars(
+            select(HierarchyNode).where(
+                HierarchyNode.source.in_(set(selected_ids_by_source))
+            )
+        ).all()
+    )
+    for node in all_source_nodes:
+        nodes_by_source[node.source].append(node)
+
+    scopes_by_source = _load_scopes_by_source(db_session, set(selected_ids_by_source))
+    exclusions: set[int] = set()
+    for source, selected_ids in selected_ids_by_source.items():
+        paths_by_node_id = _node_paths(nodes_by_source[source])
+        source_scopes = scopes_by_source.get(source, {})
+        for selected_id in selected_ids:
+            for ancestor_id in paths_by_node_id.get(selected_id, []):
+                scope = source_scopes.get(ancestor_id)
+                if not scope:
+                    continue
+                exclusions.update(
+                    link.excluded_hierarchy_node_id for link in scope.excluded_links
+                )
+    return exclusions
+
+
 def get_project_connected_excluded_hierarchy_node_ids(
     *,
     project_id: int,
     db_session: Session,
 ) -> list[int]:
-    rows = db_session.execute(
-        select(ConnectedSourceScopeExclusion.excluded_hierarchy_node_id)
-        .join(
-            ConnectedSourceScope,
-            ConnectedSourceScope.id == ConnectedSourceScopeExclusion.scope_id,
+    selected_node_ids = list(
+        db_session.scalars(
+            select(Project__HierarchyNode.hierarchy_node_id).where(
+                Project__HierarchyNode.project_id == project_id
+            )
+        ).all()
+    )
+    return sorted(
+        _effective_exclusions_for_selected_node_ids(
+            db_session=db_session,
+            selected_node_ids=selected_node_ids,
         )
-        .join(
-            Project__HierarchyNode,
-            Project__HierarchyNode.hierarchy_node_id
-            == ConnectedSourceScope.hierarchy_node_id,
-        )
-        .where(Project__HierarchyNode.project_id == project_id)
-    ).all()
-    return sorted({row[0] for row in rows})
+    )
 
 
 def upsert_connected_source_scope(
@@ -528,8 +576,30 @@ def get_visible_presets_for_user(
             user=user,
             include_archived=True,
         )
-        if set(selected_node_ids) == allowed_node_ids:
-            visible.append(preset)
+        if set(selected_node_ids) != allowed_node_ids:
+            continue
+
+        selected_document_ids = [document.id for document in preset.attached_documents]
+        if selected_document_ids:
+            external_group_ids = get_user_external_group_ids(db_session, user)
+            accessible_documents = get_accessible_documents_by_ids(
+                db_session=db_session,
+                document_ids=selected_document_ids,
+                user_email=user.email,
+                external_group_ids=external_group_ids,
+            )
+            accessible_document_ids = {document.id for document in accessible_documents}
+            governed_document_ids = filter_governed_document_ids(
+                db_session=db_session,
+                document_ids=selected_document_ids,
+                user=user,
+            )
+            if set(selected_document_ids) != accessible_document_ids:
+                continue
+            if set(selected_document_ids) != governed_document_ids:
+                continue
+
+        visible.append(preset)
     return visible
 
 

@@ -594,29 +594,41 @@ export default function SourceHierarchyBrowser({
     onSelectionCountChange?.(source, currentSourceSelectedCount);
   }, [source, currentSourceSelectedCount, onSelectionCountChange]);
 
-  // Header checkbox state: count how many visible items are selected
+  const selectableFilteredItems = useMemo(
+    () =>
+      filteredItems.filter(
+        (item) =>
+          item.type !== "folder" ||
+          (item.data as HierarchyNodeSummary).governance?.is_selectable !==
+            false,
+      ),
+    [filteredItems],
+  );
+
+  // Header checkbox state: count how many visible selectable items are selected
   const visibleSelectedCount = useMemo(() => {
-    return filteredItems.filter((item) => {
+    return selectableFilteredItems.filter((item) => {
       const isFolder = item.type === "folder";
       if (isFolder) {
         return selectedFolderIds.includes(item.data.id as number);
       }
       return selectedDocumentIds.includes(item.data.id as string);
     }).length;
-  }, [filteredItems, selectedFolderIds, selectedDocumentIds]);
+  }, [selectableFilteredItems, selectedFolderIds, selectedDocumentIds]);
 
   const allVisibleSelected =
-    filteredItems.length > 0 && visibleSelectedCount === filteredItems.length;
+    selectableFilteredItems.length > 0 &&
+    visibleSelectedCount === selectableFilteredItems.length;
   const someVisibleSelected =
-    visibleSelectedCount > 0 && visibleSelectedCount < filteredItems.length;
+    visibleSelectedCount > 0 && visibleSelectedCount < selectableFilteredItems.length;
 
   // Handler for header checkbox click
   const handleHeaderCheckboxClick = () => {
     // Get visible folders and documents
-    const visibleFolders = filteredItems.filter(
+    const visibleFolders = selectableFilteredItems.filter(
       (item) => item.type === "folder",
     );
-    const visibleDocs = filteredItems.filter(
+    const visibleDocs = selectableFilteredItems.filter(
       (item) => item.type === "document",
     );
     const visibleFolderIds = visibleFolders.map(
@@ -852,7 +864,7 @@ export default function SourceHierarchyBrowser({
       {/* Table header */}
       <TableLayouts.TableRow>
         <TableLayouts.CheckboxCell>
-          {filteredItems.length > 0 && (
+          {selectableFilteredItems.length > 0 && (
             <Checkbox
               checked={allVisibleSelected}
               indeterminate={someVisibleSelected}

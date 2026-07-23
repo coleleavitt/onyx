@@ -12,8 +12,10 @@ from onyx.configs.constants import PUBLIC_DOC_PAT
 from onyx.context.search.models import IndexFilters
 from onyx.context.search.models import InferenceChunk
 from onyx.context.search.models import PersonaSearchInfo
+from onyx.db.connected_source_governance import create_connected_knowledge_preset
 from onyx.db.connected_source_governance import filter_governed_hierarchy_node_ids
 from onyx.db.connected_source_governance import get_governed_hierarchy_nodes_for_source
+from onyx.db.connected_source_governance import get_visible_presets_for_user
 from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
@@ -31,6 +33,7 @@ from onyx.db.models import UserProject
 from onyx.db.projects import fetch_project_by_id
 from onyx.db.projects import replace_project_connected_knowledge
 from onyx.error_handling.exceptions import OnyxError
+from onyx.server.features.projects.api import create_project as create_project_api
 from onyx.server.features.projects.api import get_project_connected_knowledge
 from onyx.server.features.projects.api import update_project_connected_knowledge
 from onyx.server.features.projects.models import ProjectConnectedKnowledgeRequest
@@ -734,3 +737,116 @@ def test_governance_evaluation_is_source_partitioned_for_mixed_source_selections
         db_session=db_session,
     )
     assert [node.id for node in project.hierarchy_nodes] == [sharepoint_node.id]
+
+
+def test_selected_child_inherits_governed_parent_exclusions(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_child_exclusion")
+    project = _create_project(db_session, user, "Child Exclusion Space")
+    parent = _create_hierarchy_node(
+        db_session,
+        raw_id=f"bd-parent-{uuid4().hex}",
+        name="Business Development Intranet",
+    )
+    transitions = _create_hierarchy_node(
+        db_session,
+        raw_id=f"bd-transitions-{uuid4().hex}",
+        name="Transitions",
+        parent_id=parent.id,
+    )
+    archive = _create_hierarchy_node(
+        db_session,
+        raw_id=f"bd-archive-{uuid4().hex}",
+        name="z.Completed Transitions",
+        parent_id=transitions.id,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=parent.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[archive.id],
+    )
+
+    replace_project_connected_knowledge(
+        project=project,
+        document_ids=[],
+        hierarchy_node_ids=[transitions.id],
+        user=user,
+        db_session=db_session,
+    )
+    params = apply_project_connected_knowledge_to_search_params(
+        SearchParams(
+            project_id_filter=None,
+            persona_id_filter=None,
+            search_usage=SearchToolUsage.DISABLED,
+        ),
+        project.id,
+        db_session,
+    )
+
+    assert params.project_hierarchy_node_ids == [transitions.id]
+    assert params.project_excluded_hierarchy_node_ids == [archive.id]
+
+
+def test_visible_presets_filter_inaccessible_attached_documents(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_preset_acl_user")
+    other_user = create_test_user(db_session, "project_preset_acl_other")
+    governed_folder = _create_hierarchy_node(
+        db_session,
+        raw_id=f"preset-folder-{uuid4().hex}",
+        name="Advisor Services Intranet",
+    )
+    private_document = _create_indexed_document(
+        db_session,
+        document_id=f"preset-private-doc-{uuid4().hex}",
+        title="Private preset document",
+        parent=governed_folder,
+        is_public=False,
+        external_user_emails=[other_user.email],
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=governed_folder.id,
+        curation_status=ConnectedSourceCurationStatus.DEFAULT_SAFE,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+    preset = create_connected_knowledge_preset(
+        db_session=db_session,
+        name=f"Preset With Private Doc {uuid4().hex}",
+        hierarchy_node_ids=[governed_folder.id],
+        document_ids=[private_document.id],
+    )
+
+    visible_presets = get_visible_presets_for_user(
+        db_session=db_session,
+        user=user,
+    )
+
+    assert preset.id not in {visible.id for visible in visible_presets}
+
+
+def test_create_project_with_unavailable_preset_is_atomic(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_preset_atomic_user")
+    before_count = (
+        db_session.query(UserProject).filter(UserProject.user_id == user.id).count()
+    )
+
+    with pytest.raises(OnyxError):
+        create_project_api(
+            name="Should Not Persist",
+            connected_knowledge_preset_id=987654321,
+            user=user,
+            db_session=db_session,
+        )
+
+    after_count = (
+        db_session.query(UserProject).filter(UserProject.user_id == user.id).count()
+    )
+    assert after_count == before_count
