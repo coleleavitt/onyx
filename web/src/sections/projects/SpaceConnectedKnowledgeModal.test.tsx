@@ -5,6 +5,12 @@ import { ValidSources } from "@/lib/types";
 import type { ProjectConnectedKnowledge } from "@/lib/projects/types";
 
 const mockUseCCPairs = jest.fn();
+const mockFetchHierarchyNodes = jest.fn();
+const lastHierarchyBrowserProps: Record<string, unknown> = {};
+
+jest.mock("@/lib/hierarchy/svc", () => ({
+  fetchHierarchyNodes: (...args: unknown[]) => mockFetchHierarchyNodes(...args),
+}));
 
 jest.mock("@/hooks/useCCPairs", () => ({
   __esModule: true,
@@ -13,22 +19,24 @@ jest.mock("@/hooks/useCCPairs", () => ({
 
 jest.mock("@/sections/knowledge/SourceHierarchyBrowser", () => ({
   __esModule: true,
-  default: ({
-    onToggleDocument,
-    onToggleFolder,
-  }: {
+  default: (props: {
     onToggleDocument: (id: string) => void;
     onToggleFolder: (id: number) => void;
-  }) => (
-    <div aria-label="mock hierarchy browser">
-      <button type="button" onClick={() => onToggleDocument("doc-new")}>
-        Toggle mock document
-      </button>
-      <button type="button" onClick={() => onToggleFolder(7)}>
-        Toggle mock folder
-      </button>
-    </div>
-  ),
+    initialNodeId?: number;
+  }) => {
+    Object.assign(lastHierarchyBrowserProps, props);
+    return (
+      <div aria-label="mock hierarchy browser">
+        <div>initial-node:{props.initialNodeId ?? "root"}</div>
+        <button type="button" onClick={() => props.onToggleDocument("doc-new")}>
+          Toggle mock document
+        </button>
+        <button type="button" onClick={() => props.onToggleFolder(7)}>
+          Toggle mock folder
+        </button>
+      </div>
+    );
+  },
 }));
 
 const baseKnowledge: ProjectConnectedKnowledge = {
@@ -55,11 +63,46 @@ const baseKnowledge: ProjectConnectedKnowledge = {
 };
 
 beforeEach(() => {
+  for (const key of Object.keys(lastHierarchyBrowserProps)) {
+    delete lastHierarchyBrowserProps[key];
+  }
   mockUseCCPairs.mockReturnValue({
     ccPairs: [{ id: 1, source: ValidSources.Sharepoint, name: "SharePoint" }],
     isLoading: false,
     error: undefined,
     refetch: jest.fn(),
+  });
+  mockFetchHierarchyNodes.mockResolvedValue({
+    nodes: [
+      {
+        id: 10,
+        title: "AdvisorServicesIntranet",
+        link: "https://fiwealth.sharepoint.com/sites/AdvisorServicesIntranet",
+        parent_id: 1,
+        governance: {
+          curation_status: "DEFAULT_SAFE",
+          is_default: true,
+          is_archived: false,
+          is_hidden: false,
+          is_diagnostic: false,
+          is_selectable: true,
+          denial_reason: null,
+          display_label: "Advisor Services Intranet",
+          tenant_label: "Foundations",
+          department_label: "Advisor Services",
+          sort_order: 1,
+          size_bytes: null,
+          document_count_estimate: null,
+          indexed_document_count: 0,
+          indexed_chunk_count: 0,
+          indexing_status: null,
+          last_synced_at: null,
+          warning: null,
+          allowed_group_ids: [],
+          excluded_hierarchy_node_ids: [],
+        },
+      },
+    ],
   });
 });
 
@@ -78,10 +121,10 @@ test("space knowledge modal keeps uploads distinct from connected source selecti
   );
 
   expect(screen.getByRole("tab", { name: "Connected sources" })).toBeVisible();
-  expect(screen.getByText("SharePoint intranets")).toBeVisible();
-  expect(
-    screen.getByText("Browse Foundations and Magellan departments"),
-  ).toBeVisible();
+  expect(await screen.findByText("Foundations")).toBeVisible();
+  expect(screen.getByText("Advisor Services Intranet")).toBeVisible();
+  await user.click(screen.getByText("Advisor Services Intranet"));
+  expect(lastHierarchyBrowserProps.initialNodeId).toBe(10);
   await user.click(screen.getByRole("tab", { name: "Uploaded files" }));
   expect(
     screen.getByText("Uploaded files are copied into this space"),

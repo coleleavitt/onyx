@@ -6,6 +6,8 @@ import * as TableLayouts from "@/layouts/table-layouts";
 import useCCPairs from "@/hooks/useCCPairs";
 import SourceHierarchyBrowser from "@/sections/knowledge/SourceHierarchyBrowser";
 import { getSourceMetadata } from "@/lib/sources";
+import { fetchHierarchyNodes } from "@/lib/hierarchy/svc";
+import type { HierarchyNodeSummary } from "@/lib/hierarchy/interfaces";
 import type {
   ProjectConnectedDocument,
   ProjectConnectedHierarchyNode,
@@ -55,6 +57,51 @@ function selectedSourceCounts(
   return counts;
 }
 
+interface SharePointDepartmentGroup {
+  tenant: string;
+  nodes: HierarchyNodeSummary[];
+}
+
+function sharePointNodeLabel(node: HierarchyNodeSummary): string {
+  return node.governance?.display_label ?? node.title;
+}
+
+function sharePointNodeDescription(node: HierarchyNodeSummary): string | undefined {
+  const parts = [
+    node.governance?.department_label,
+    node.governance?.is_archived ? "Archive" : null,
+    node.governance?.is_default ? "Recommended" : null,
+    node.governance?.warning,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+function groupSharePointDepartments(
+  nodes: HierarchyNodeSummary[],
+): SharePointDepartmentGroup[] {
+  const groups = new Map<string, HierarchyNodeSummary[]>();
+  for (const node of nodes) {
+    const governance = node.governance;
+    if (!governance?.is_selectable) continue;
+    if (!governance.tenant_label && !governance.department_label) continue;
+    const tenant = governance.tenant_label ?? "SharePoint";
+    const current = groups.get(tenant) ?? [];
+    current.push(node);
+    groups.set(tenant, current);
+  }
+  return Array.from(groups.entries())
+    .map(([tenant, groupNodes]) => ({
+      tenant,
+      nodes: groupNodes.sort((left, right) => {
+        const leftOrder = left.governance?.sort_order ?? 0;
+        const rightOrder = right.governance?.sort_order ?? 0;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        return sharePointNodeLabel(left).localeCompare(sharePointNodeLabel(right));
+      }),
+    }))
+    .sort((left, right) => left.tenant.localeCompare(right.tenant));
+}
+
 export default function SpaceConnectedKnowledgeModal({
   open,
   canEdit,
@@ -81,6 +128,8 @@ export default function SpaceConnectedKnowledgeModal({
   >([]);
   const [sourceCounts, setSourceCounts] =
     useState<Map<ValidSources, number>>(initialSourceCounts);
+  const [sharePointNodes, setSharePointNodes] = useState<HierarchyNodeSummary[]>([]);
+  const [activeSharePointNodeId, setActiveSharePointNodeId] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -104,6 +153,29 @@ export default function SpaceConnectedKnowledgeModal({
     );
     setActiveSource(selectedSource ?? connectedSources[0] ?? null);
   }, [activeSource, connectedSources, initialSourceCounts, open]);
+
+  useEffect(() => {
+    if (!open || !connectedSources.includes(ValidSources.Sharepoint)) {
+      setSharePointNodes([]);
+      return;
+    }
+    let cancelled = false;
+    fetchHierarchyNodes(ValidSources.Sharepoint)
+      .then((response) => {
+        if (!cancelled) setSharePointNodes(response.nodes);
+      })
+      .catch(() => {
+        if (!cancelled) setSharePointNodes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectedSources, open]);
+
+  const sharePointDepartmentGroups = useMemo(
+    () => groupSharePointDepartments(sharePointNodes),
+    [sharePointNodes],
+  );
 
   const initialAttachedDocuments = useMemo(
     () => knowledge.documents.map(toAgentAttachedDocument),
@@ -214,25 +286,75 @@ export default function SpaceConnectedKnowledgeModal({
                     {connectedSources.map((source) => {
                       const metadata = getSourceMetadata(source);
                       const count = sourceCounts.get(source) ?? 0;
+                      if (source === ValidSources.Sharepoint) {
+                        return (
+                          <div key={source} className="flex flex-col gap-1">
+                            {sharePointDepartmentGroups.length > 0 ? (
+                              sharePointDepartmentGroups.map((group) => (
+                                <div key={group.tenant} className="flex flex-col gap-1">
+                                  <Text font="secondary-body" color="text-03">
+                                    {group.tenant}
+                                  </Text>
+                                  {group.nodes.map((node) => (
+                                    <LineItemButton
+                                      key={node.id}
+                                      icon={metadata.icon}
+                                      title={sharePointNodeLabel(node)}
+                                      description={sharePointNodeDescription(node)}
+                                      width="full"
+                                      variant="section"
+                                      selectVariant="select-light"
+                                      state={
+                                        activeSource === source &&
+                                        activeSharePointNodeId === node.id
+                                          ? "selected"
+                                          : "empty"
+                                      }
+                                      onClick={() => {
+                                        setActiveSource(source);
+                                        setActiveSharePointNodeId(node.id);
+                                      }}
+                                    />
+                                  ))}
+                                </div>
+                              ))
+                            ) : (
+                              <LineItemButton
+                                icon={metadata.icon}
+                                title={metadata.displayName}
+                                width="full"
+                                variant="section"
+                                selectVariant="select-light"
+                                state={activeSource === source ? "selected" : "empty"}
+                                onClick={() => {
+                                  setActiveSource(source);
+                                  setActiveSharePointNodeId(null);
+                                }}
+                                rightChildren={
+                                  count > 0 ? (
+                                    <Text font="main-ui-action" color="text-04">
+                                      {String(count)}
+                                    </Text>
+                                  ) : undefined
+                                }
+                              />
+                            )}
+                          </div>
+                        );
+                      }
                       return (
                         <LineItemButton
                           key={source}
                           icon={metadata.icon}
-                          title={
-                            source === ValidSources.Sharepoint
-                              ? "SharePoint intranets"
-                              : metadata.displayName
-                          }
-                          description={
-                            source === ValidSources.Sharepoint
-                              ? "Browse Foundations and Magellan departments"
-                              : undefined
-                          }
+                          title={metadata.displayName}
                           width="full"
                           variant="section"
                           selectVariant="select-light"
                           state={activeSource === source ? "selected" : "empty"}
-                          onClick={() => setActiveSource(source)}
+                          onClick={() => {
+                            setActiveSource(source);
+                            setActiveSharePointNodeId(null);
+                          }}
                           rightChildren={
                             count > 0 ? (
                               <Text font="main-ui-action" color="text-04">
@@ -261,6 +383,11 @@ export default function SpaceConnectedKnowledgeModal({
                           setSelectedHierarchyNodeIds([])
                         }
                         initialAttachedDocuments={initialAttachedDocuments}
+                        initialNodeId={
+                          activeSource === ValidSources.Sharepoint
+                            ? activeSharePointNodeId ?? undefined
+                            : undefined
+                        }
                         onSelectionCountChange={handleSelectionCountChange}
                       />
                     )}
