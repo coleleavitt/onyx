@@ -67,6 +67,7 @@ from onyx.db.enums import ApprovalDecision
 from onyx.db.enums import ArtifactType
 from onyx.db.enums import BuildSessionStatus
 from onyx.db.enums import ChatSessionSharedStatus
+from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import ConnectorCredentialPairStatus
 from onyx.db.enums import DefaultAppMode
@@ -5448,6 +5449,12 @@ class ConnectedSourceScope(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     hierarchy_node_id: Mapped[int] = mapped_column(
         ForeignKey("hierarchy_node.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    access_type: Mapped[ConnectedSourceAccessType] = mapped_column(
+        Enum(ConnectedSourceAccessType, native_enum=False),
+        nullable=False,
+        default=ConnectedSourceAccessType.PUBLIC,
+        server_default=ConnectedSourceAccessType.PUBLIC.value,
     )
     curation_status: Mapped[ConnectedSourceCurationStatus] = mapped_column(
         Enum(ConnectedSourceCurationStatus, native_enum=False),

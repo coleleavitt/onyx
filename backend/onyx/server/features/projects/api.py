@@ -327,6 +327,7 @@ def upsert_connected_source_scope_policy(
         hierarchy_node_id=hierarchy_node_id,
         curation_status=body.curation_status,
         group_ids=body.group_ids,
+        access_type=body.access_type,
         excluded_hierarchy_node_ids=body.excluded_hierarchy_node_ids,
         display_label=body.display_label,
         tenant_label=body.tenant_label,

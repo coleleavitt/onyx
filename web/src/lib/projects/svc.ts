@@ -117,6 +117,7 @@ export async function updateConnectedSourceScope(
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        access_type: scope.access_type,
         curation_status: scope.curation_status,
         display_label: scope.display_label,
         tenant_label: scope.tenant_label,

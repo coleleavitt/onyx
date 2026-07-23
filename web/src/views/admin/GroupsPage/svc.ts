@@ -225,7 +225,11 @@ async function updateConnectedSourceScopeGroupSharing(
     const groupIds = shouldInclude
       ? Array.from(new Set([...scope.group_ids, groupId]))
       : scope.group_ids.filter((id) => id !== groupId);
-    await updateConnectedSourceScope({ ...scope, group_ids: groupIds });
+    await updateConnectedSourceScope({
+      ...scope,
+      access_type: "RESTRICTED",
+      group_ids: groupIds,
+    });
   }
 }
 

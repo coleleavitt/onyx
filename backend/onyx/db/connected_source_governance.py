@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 from onyx.access.hierarchy_access import get_user_external_group_ids
 from onyx.configs.constants import DocumentSource
 from onyx.db.document_access import get_accessible_documents_by_ids
+from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
+from onyx.db.enums import ConnectorCredentialPairStatus
 from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import ConnectedSourceScope__UserGroup
 from onyx.db.models import ConnectedSourceScopeExclusion
@@ -33,11 +35,26 @@ class ConnectedSourceScopeMetrics:
     chunk_count: int = 0
     latest_index_status: str | None = None
     last_successful_index_time: datetime | None = None
+    connector_statuses: tuple[str, ...] = ()
+
+    @property
+    def has_connector_backing(self) -> bool:
+        return bool(self.connector_statuses)
+
+    @property
+    def has_active_connector(self) -> bool:
+        active_statuses = {
+            ConnectorCredentialPairStatus.SCHEDULED.value,
+            ConnectorCredentialPairStatus.INITIAL_INDEXING.value,
+            ConnectorCredentialPairStatus.ACTIVE.value,
+        }
+        return any(status in active_statuses for status in self.connector_statuses)
 
 
 @dataclass(frozen=True)
 class ConnectedSourceScopeMetadata:
     hierarchy_node_id: int
+    access_type: ConnectedSourceAccessType
     curation_status: ConnectedSourceCurationStatus | None
     is_default: bool
     is_archived: bool
@@ -131,8 +148,10 @@ def _scope_is_allowed_for_groups(
     scope: ConnectedSourceScope,
     user_group_ids: set[int],
 ) -> bool:
+    if scope.access_type == ConnectedSourceAccessType.PUBLIC:
+        return True
     allowed_group_ids = {link.user_group_id for link in scope.group_links}
-    return not allowed_group_ids or bool(allowed_group_ids & user_group_ids)
+    return bool(allowed_group_ids & user_group_ids)
 
 
 def _scope_is_visible_by_status(
@@ -233,6 +252,7 @@ def _build_metrics_by_node_id(
         select(
             HierarchyNodeByConnectorCredentialPair.hierarchy_node_id,
             ConnectorCredentialPair.id,
+            ConnectorCredentialPair.status,
             ConnectorCredentialPair.last_successful_index_time,
         )
         .join(
@@ -248,8 +268,15 @@ def _build_metrics_by_node_id(
         )
         .where(HierarchyNodeByConnectorCredentialPair.hierarchy_node_id.in_(node_ids))
     ).all()
-    for node_id, cc_pair_id, last_successful_index_time in association_rows:
+    cc_pair_status_by_id: dict[int, str] = {}
+    for (
+        node_id,
+        cc_pair_id,
+        cc_pair_status,
+        last_successful_index_time,
+    ) in association_rows:
         cc_pair_ids_by_node[node_id].add(cc_pair_id)
+        cc_pair_status_by_id[cc_pair_id] = _status_value(cc_pair_status)
         if last_successful_index_time is not None:
             current = last_successful_sync_by_cc_pair.get(cc_pair_id)
             if current is None or last_successful_index_time > current:
@@ -307,6 +334,15 @@ def _build_metrics_by_node_id(
             chunk_count=chunk_count,
             latest_index_status=status,
             last_successful_index_time=last_successful_index_time,
+            connector_statuses=tuple(
+                sorted(
+                    {
+                        cc_pair_status_by_id[cc_pair_id]
+                        for cc_pair_id in effective_cc_pair_ids
+                        if cc_pair_id in cc_pair_status_by_id
+                    }
+                )
+            ),
         )
 
     return raw_metrics
@@ -338,6 +374,7 @@ def _evaluate_source_partition(
             if node_id in scopes_by_node_id
         ]
         own_scope = scopes_by_node_id.get(node.id)
+        node_metrics = metrics_by_node_id.get(node.id, ConnectedSourceScopeMetrics())
         visible = True
         selectable = True
         denial_reason: str | None = None
@@ -367,6 +404,18 @@ def _evaluate_source_partition(
                 visible = False
                 selectable = False
                 denial_reason = "hidden_by_curation_status"
+            scope_metrics = metrics_by_node_id.get(
+                scope.hierarchy_node_id,
+                ConnectedSourceScopeMetrics(),
+            )
+            if (
+                scope_metrics.has_connector_backing
+                and not scope_metrics.has_active_connector
+                and not include_hidden
+            ):
+                visible = False
+                selectable = False
+                denial_reason = "connector_not_active"
             excluded_ids = {
                 link.excluded_hierarchy_node_id for link in scope.excluded_links
             }
@@ -375,6 +424,9 @@ def _evaluate_source_partition(
                 selectable = False
                 denial_reason = "excluded_by_parent_scope"
 
+        access_type = (
+            own_scope.access_type if own_scope else ConnectedSourceAccessType.PUBLIC
+        )
         status = own_scope.curation_status if own_scope else None
         is_default, is_archived, is_hidden, is_diagnostic = _scope_status_flags(status)
         allowed_group_ids = tuple(
@@ -389,6 +441,7 @@ def _evaluate_source_partition(
         )
         metadata[node.id] = ConnectedSourceScopeMetadata(
             hierarchy_node_id=node.id,
+            access_type=access_type,
             curation_status=status,
             is_default=is_default,
             is_archived=is_archived,
@@ -408,7 +461,7 @@ def _evaluate_source_partition(
             warning=own_scope.warning if own_scope else None,
             allowed_group_ids=allowed_group_ids,
             excluded_hierarchy_node_ids=excluded_ids,
-            metrics=metrics_by_node_id.get(node.id, ConnectedSourceScopeMetrics()),
+            metrics=node_metrics,
         )
     return metadata
 
@@ -598,6 +651,7 @@ def upsert_connected_source_scope(
     hierarchy_node_id: int,
     curation_status: ConnectedSourceCurationStatus,
     group_ids: list[int],
+    access_type: ConnectedSourceAccessType | None = None,
     excluded_hierarchy_node_ids: list[int],
     display_label: str | None = None,
     tenant_label: str | None = None,
@@ -616,6 +670,15 @@ def upsert_connected_source_scope(
         scope = ConnectedSourceScope(hierarchy_node_id=hierarchy_node_id)
         db_session.add(scope)
         db_session.flush()
+    scope.access_type = (
+        access_type
+        if access_type is not None
+        else (
+            ConnectedSourceAccessType.RESTRICTED
+            if group_ids
+            else ConnectedSourceAccessType.PUBLIC
+        )
+    )
     scope.curation_status = curation_status
     scope.display_label = display_label
     scope.tenant_label = tenant_label

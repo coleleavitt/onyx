@@ -20,7 +20,9 @@ from onyx.db.connected_source_governance import get_governed_hierarchy_nodes_for
 from onyx.db.connected_source_governance import get_visible_presets_for_user
 from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
+from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
+from onyx.db.enums import ConnectorCredentialPairStatus
 from onyx.db.enums import HierarchyNodeType
 from onyx.db.enums import IndexingStatus
 from onyx.db.enums import ProjectSharePermission
@@ -902,3 +904,94 @@ def test_governance_metrics_include_indexing_status_and_last_sync(
 
     assert metrics.latest_index_status == IndexingStatus.IN_PROGRESS.value
     assert metrics.last_successful_index_time == last_successful_sync
+
+
+def test_restricted_empty_scope_grants_no_access(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_restricted_empty")
+    project = _create_project(db_session, user, "Restricted Empty Space")
+    node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"restricted-empty-{uuid4().hex}",
+        name="Restricted Empty Intranet",
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        access_type=ConnectedSourceAccessType.RESTRICTED,
+        excluded_hierarchy_node_ids=[],
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[node],
+        user=user,
+    )
+    assert governed.nodes == []
+    assert governed.metadata_by_node_id[node.id].is_selectable is False
+    assert governed.metadata_by_node_id[node.id].denial_reason == "group_not_allowed"
+    assert (
+        filter_governed_hierarchy_node_ids(
+            db_session=db_session,
+            node_ids=[node.id],
+            user=user,
+        )
+        == set()
+    )
+    with pytest.raises(OnyxError):
+        replace_project_connected_knowledge(
+            project=project,
+            document_ids=[],
+            hierarchy_node_ids=[node.id],
+            user=user,
+            db_session=db_session,
+        )
+
+
+def test_paused_connector_backed_scope_is_hidden_by_default(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_paused_connector")
+    node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"paused-scope-{uuid4().hex}",
+        name="Paused Intranet",
+    )
+    cc_pair = make_cc_pair(db_session, source=node.source, commit=False)
+    cc_pair.status = ConnectorCredentialPairStatus.PAUSED
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=node.id,
+            connector_id=cc_pair.connector_id,
+            credential_id=cc_pair.credential_id,
+        )
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[node],
+        user=user,
+    )
+    assert governed.nodes == []
+    assert governed.metadata_by_node_id[node.id].denial_reason == "connector_not_active"
+
+    governed_with_hidden = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[node],
+        user=user,
+        include_hidden=True,
+    )
+    assert [visible.id for visible in governed_with_hidden.nodes] == [node.id]
+    assert governed_with_hidden.metadata_by_node_id[
+        node.id
+    ].metrics.connector_statuses == (ConnectorCredentialPairStatus.PAUSED.value,)

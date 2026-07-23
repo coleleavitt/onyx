@@ -167,6 +167,7 @@ export interface ConnectedSourceScope {
   source: ValidSources;
   link: string | null;
   parent_id: number | null;
+  access_type: "PUBLIC" | "RESTRICTED";
   curation_status: "DEFAULT_SAFE" | "STANDARD" | "ARCHIVE" | "HIDDEN" | "DIAGNOSTIC";
   display_label: string | null;
   tenant_label: string | null;

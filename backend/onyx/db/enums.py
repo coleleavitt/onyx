@@ -651,6 +651,11 @@ class ProjectSharePermission(str, PyEnum):
     VIEWER = "VIEWER"
 
 
+class ConnectedSourceAccessType(str, PyEnum):
+    PUBLIC = "PUBLIC"
+    RESTRICTED = "RESTRICTED"
+
+
 class ConnectedSourceCurationStatus(str, PyEnum):
     """Business curation status for connector hierarchy scopes in Spaces."""
 

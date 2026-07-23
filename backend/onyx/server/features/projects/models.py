@@ -6,6 +6,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 
 from onyx.configs.constants import DocumentSource
+from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import ProjectAccessLevel
 from onyx.db.enums import ProjectJoinRequestStatus
@@ -174,6 +175,7 @@ class ConnectedSourceScopeSnapshot(BaseModel):
     source: DocumentSource
     link: str | None = None
     parent_id: int | None = None
+    access_type: ConnectedSourceAccessType
     curation_status: ConnectedSourceCurationStatus
     display_label: str | None = None
     tenant_label: str | None = None
@@ -195,6 +197,7 @@ class ConnectedSourceScopeSnapshot(BaseModel):
             source=node.source,
             link=node.link,
             parent_id=node.parent_id,
+            access_type=model.access_type,
             curation_status=model.curation_status,
             display_label=model.display_label,
             tenant_label=model.tenant_label,
@@ -213,6 +216,7 @@ class ConnectedSourceScopeSnapshot(BaseModel):
 class ConnectedSourceScopeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    access_type: ConnectedSourceAccessType = ConnectedSourceAccessType.PUBLIC
     curation_status: ConnectedSourceCurationStatus = (
         ConnectedSourceCurationStatus.STANDARD
     )
