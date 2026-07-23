@@ -144,7 +144,7 @@ test("space knowledge modal keeps uploads distinct from connected source selecti
   await user.click(screen.getByRole("button", { name: "Save" }));
 
   await waitFor(() => {
-    expect(onSave).toHaveBeenCalledWith(["doc-existing", "doc-new"], [3, 7]);
+    expect(onSave).toHaveBeenCalledWith(["doc-existing", "doc-new"], [3, 10, 7]);
   });
 });
 

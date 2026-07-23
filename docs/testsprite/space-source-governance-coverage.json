@@ -1,0 +1,118 @@
+{
+  "meta": {
+    "project": "Onyx Space Source Governance",
+    "source_prd": "docs/testsprite/space-source-governance-prd.json",
+    "test_plan": "docs/testsprite/space-source-governance-test-plan.json",
+    "testsprite_inventory": "docs/testsprite/space-source-governance-testsprite-tests.json"
+  },
+  "summary": {
+    "requirements_total": 8,
+    "requirements_covered": 8,
+    "coverage_percent": 100.0,
+    "uncovered_requirements": []
+  },
+  "requirements": [
+    {
+      "id": "GOV-REQ-001",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-001",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    },
+    {
+      "id": "GOV-REQ-002",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-001",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    },
+    {
+      "id": "GOV-REQ-003",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-001",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    },
+    {
+      "id": "GOV-REQ-004",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-001",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    },
+    {
+      "id": "GOV-REQ-005",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-002",
+        "GOV-TC-003",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "75195df3-3cbd-448f-96bd-473b237406e6",
+        "170a760a-fb14-4086-b033-55788cdc9dc1",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    },
+    {
+      "id": "GOV-REQ-006",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-001",
+        "GOV-TC-002",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+        "75195df3-3cbd-448f-96bd-473b237406e6",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    },
+    {
+      "id": "GOV-REQ-007",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-001",
+        "GOV-TC-002",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+        "75195df3-3cbd-448f-96bd-473b237406e6",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    },
+    {
+      "id": "GOV-REQ-008",
+      "coverage_status": "covered",
+      "tests": [
+        "GOV-TC-003",
+        "GOV-TC-004"
+      ],
+      "stored_test_ids": [
+        "170a760a-fb14-4086-b033-55788cdc9dc1",
+        "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18"
+      ]
+    }
+  ]
+}

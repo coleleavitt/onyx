@@ -1,0 +1,174 @@
+{
+  "meta": {
+    "project": "Onyx Space Source Governance",
+    "prepared_by": "TestSprite local",
+    "scope": "Governed, curated SharePoint connected-source selection for Onyx Spaces",
+    "generated_on": "2026-07-23",
+    "coverage_definition": "100% means every requirement in this scoped PRD maps to at least one tracked local TestSprite command/browser test or explicit static/unit fallback. It is not whole-repository line or branch coverage."
+  },
+  "product_overview": "Spaces let editors attach already-indexed SharePoint connector scopes as retrieval context. Governance adds an admin-controlled curation and source-visibility layer so users browse intentional tenant/department/site scopes, archive-heavy sources are opt-in, group policies restrict who can browse/select scopes, and retrieval remains Onyx-native with normal ACL filtering.",
+  "source_context": {
+    "josh_summary": [
+      "Use SharePoint/intranet files only; avoid uncontrolled OneDrive/user-drive content.",
+      "Allow folder-level or department-site-level selection and automatic background updates from indexed connectors.",
+      "Show departments, not hundreds of raw drives, and keep selected folders summarized as folders.",
+      "Let admins restrict users/groups to certain intranet departments such as Advisor Services.",
+      "Prioritize recall/chat reliability and avoid noisy giant archive/client folders by default."
+    ],
+    "research_artifact": "Deep-research synthesis in session subagent 019f9055-d9b7-7640-a090-fe1266e52054"
+  },
+  "requirements": [
+    {
+      "id": "GOV-REQ-001",
+      "title": "Admin-governed source scopes",
+      "description": "Admins can create governance rows for indexed connector hierarchy nodes, including curation status, explicit PUBLIC/RESTRICTED access mode, tenant/department labels, warnings, size/count metadata, allowed groups, and excluded child scopes.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "Governance schema exists in Alembic and ORM models.",
+        "Connected source scopes distinguish PUBLIC from RESTRICTED.",
+        "RESTRICTED with zero groups grants no browse/select access."
+      ],
+      "implementation_files": [
+        "backend/alembic/versions/ab12cd34ef56_add_connected_source_governance.py",
+        "backend/alembic/versions/ac23de45fa67_add_connected_source_access_type.py",
+        "backend/onyx/db/models.py",
+        "backend/onyx/db/connected_source_governance.py"
+      ]
+    },
+    {
+      "id": "GOV-REQ-002",
+      "title": "Policy-filtered hierarchy browsing",
+      "description": "Hierarchy browse/search/document-list endpoints return only scopes visible to the requesting user, keep governed ancestors navigation-only, hide archive/hidden/diagnostic/paused scopes by default, and never rely on frontend hiding as the only enforcement.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "Unallowed scopes are not returned as visible/selectable.",
+        "Source roots are visible for navigation but not selectable when child policies exist.",
+        "Paused connector-backed nodes are hidden by default even without curation rows.",
+        "Collection routes are not shadowed by /{project_id}."
+      ],
+      "implementation_files": [
+        "backend/onyx/server/features/hierarchy/api.py",
+        "backend/onyx/server/features/hierarchy/models.py",
+        "backend/tests/unit/onyx/server/features/projects/test_projects_route_order.py",
+        "backend/tests/external_dependency_unit/projects/test_project_connected_knowledge.py"
+      ]
+    },
+    {
+      "id": "GOV-REQ-003",
+      "title": "Governed connected knowledge save path",
+      "description": "Space connected-knowledge updates reject documents or hierarchy nodes outside the editor's effective governance and ACL policy while allowing valid public or group-allowed scopes.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "Group-allowed users can attach allowed scopes.",
+        "Denied users cannot attach restricted scopes.",
+        "Broad root, mixed-source denied, hidden/archive, and inaccessible document selections are rejected."
+      ],
+      "implementation_files": [
+        "backend/onyx/db/projects.py",
+        "backend/onyx/db/connected_source_governance.py",
+        "backend/tests/external_dependency_unit/projects/test_project_connected_knowledge.py"
+      ]
+    },
+    {
+      "id": "GOV-REQ-004",
+      "title": "Retrieval applies selected descendants minus exclusions with ACLs",
+      "description": "Space retrieval uses selected documents and hierarchy scopes, excludes configured child scopes inherited from governed ancestors, and still intersects with normal per-user ACL filters.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "Selected hierarchy node IDs flow into SearchParams and SearchTool.",
+        "Excluded child hierarchy node IDs flow into IndexFilters.",
+        "Owner-selected private documents are not retrieved by viewers without ACL access."
+      ],
+      "implementation_files": [
+        "backend/onyx/chat/models.py",
+        "backend/onyx/chat/process_message.py",
+        "backend/onyx/context/search/models.py",
+        "backend/onyx/context/search/pipeline.py",
+        "backend/onyx/document_index/opensearch/search.py",
+        "backend/onyx/tools/tool_constructor.py"
+      ]
+    },
+    {
+      "id": "GOV-REQ-005",
+      "title": "Tenant and department-first SharePoint picker UX",
+      "description": "The connected-source modal presents SharePoint through backend governance tenant/department/site rows rather than a hard-coded flat source-only entry, supports archive opt-in, and keeps selected folders/sites summarized as folders/sites.",
+      "priority": "P1",
+      "observable_behaviors": [
+        "SharePoint sidebar rows come from fetchHierarchyNodes governance metadata.",
+        "Tenant labels and department labels render in the modal/browser.",
+        "Archive scopes are hidden until Show archives is clicked.",
+        "Header select-all ignores navigation-only scopes."
+      ],
+      "implementation_files": [
+        "web/src/sections/projects/SpaceConnectedKnowledgeModal.tsx",
+        "web/src/sections/projects/SpaceConnectedSourcesSection.tsx",
+        "web/src/sections/knowledge/SourceHierarchyBrowser.tsx",
+        "web/src/sections/knowledge/SourceHierarchyBrowser.test.tsx"
+      ]
+    },
+    {
+      "id": "GOV-REQ-006",
+      "title": "Curated Space defaults and templates",
+      "description": "Admins can define connected-knowledge presets, users only see presets whose scopes/documents they can access, and Space creation from a preset atomically stores the same references as manual selection.",
+      "priority": "P1",
+      "observable_behaviors": [
+        "Preset list filters inaccessible attached documents and scopes.",
+        "Create Space sends connected_knowledge_preset_id and applies references atomically.",
+        "Unavailable preset creation leaves no orphan Space."
+      ],
+      "implementation_files": [
+        "backend/onyx/db/connected_source_governance.py",
+        "backend/onyx/server/features/projects/api.py",
+        "web/src/sections/modals/CreateProjectModal.tsx",
+        "web/src/lib/projects/svc.ts",
+        "web/src/lib/projects/svc.test.ts"
+      ]
+    },
+    {
+      "id": "GOV-REQ-007",
+      "title": "Group admin source visibility management",
+      "description": "Current Onyx group admin surfaces can assign governed source scopes to groups without changing connector ACL semantics, and removing the last group from a restricted scope does not widen access.",
+      "priority": "P1",
+      "observable_behaviors": [
+        "Group editor exposes Space Connected Sources as shared resources.",
+        "Source-scope sharing updates governance group_ids.",
+        "Last group removal preserves RESTRICTED access_type."
+      ],
+      "implementation_files": [
+        "backend/ee/onyx/server/user_group/models.py",
+        "web/src/views/admin/GroupsPage/SharedGroupResources/index.tsx",
+        "web/src/views/admin/GroupsPage/svc.ts",
+        "web/src/lib/projects/svc.test.ts"
+      ]
+    },
+    {
+      "id": "GOV-REQ-008",
+      "title": "Real-user E2E smoke for governed Spaces",
+      "description": "A Playwright/TestSprite smoke drives the real Space right-rail connected-source modal, upload tab, save/reload branch when governed SharePoint rows exist, and sharing invite affordance. If local hierarchy is absent, the test records an honest empty-state branch.",
+      "priority": "P1",
+      "observable_behaviors": [
+        "Authenticated admin user opens a real Space.",
+        "Connected sources modal opens from the right rail.",
+        "Uploaded files controls remain available and separate.",
+        "Governed SharePoint department rows are selected/saved/reloaded when present.",
+        "Share dialog invite controls are visible."
+      ],
+      "implementation_files": [
+        "web/tests/e2e/spaces/spaces_connected_source_governance.spec.ts",
+        "web/tests/e2e/pages/SpaceDetailPage.ts"
+      ]
+    }
+  ],
+  "test_credentials": {
+    "admin_username": "admin_user@example.com",
+    "admin_password": "TestPassword123!",
+    "secondary_username": "admin2_user@example.com",
+    "secondary_password": "TestPassword123!",
+    "role": "admin"
+  },
+  "test_environment": {
+    "frontend_url": "http://localhost:3000",
+    "api_url": "http://localhost:3000/api",
+    "runner": "local testsprite-rs command inventory plus Playwright admin project"
+  }
+}

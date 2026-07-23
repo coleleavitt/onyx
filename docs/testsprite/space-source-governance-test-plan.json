@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "project": "Onyx Space Source Governance",
+    "source_prd": "docs/testsprite/space-source-governance-prd.json",
+    "testsprite_inventory": "docs/testsprite/space-source-governance-testsprite-tests.json",
+    "generated_on": "2026-07-23"
+  },
+  "tests": [
+    {
+      "id": "GOV-TC-001",
+      "test_id": "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+      "title": "Governed connected-source backend policy and retrieval matrix",
+      "kind": "command",
+      "source_file": "backend/tests/external_dependency_unit/projects/test_project_connected_knowledge.py",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-backend.sh",
+      "requirements": [
+        "GOV-REQ-001",
+        "GOV-REQ-002",
+        "GOV-REQ-003",
+        "GOV-REQ-004",
+        "GOV-REQ-006",
+        "GOV-REQ-007"
+      ],
+      "steps": [
+        {
+          "type": "action",
+          "description": "Run route-order, OpenSearch filter, and DB-backed connected-source governance tests."
+        },
+        {
+          "type": "assertion",
+          "description": "Group allow/deny, restricted-empty, root navigation-only, mixed-source, paused connector, preset ACL, atomic create, exclusions, retrieval ACL, and status metrics pass."
+        }
+      ]
+    },
+    {
+      "id": "GOV-TC-002",
+      "test_id": "75195df3-3cbd-448f-96bd-473b237406e6",
+      "title": "Governed connected-source frontend picker and preset regression",
+      "kind": "command",
+      "source_file": "web/src/sections/knowledge/SourceHierarchyBrowser.test.tsx",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-frontend.sh",
+      "requirements": [
+        "GOV-REQ-005",
+        "GOV-REQ-006",
+        "GOV-REQ-007"
+      ],
+      "steps": [
+        {
+          "type": "action",
+          "description": "Run focused Jest tests for project service preset path, connected-source modal, and hierarchy browser."
+        },
+        {
+          "type": "assertion",
+          "description": "Modal uses backend tenant/department labels, archive opt-in works, status/freshness badges render, select-all ignores non-selectable folders, and last group removal keeps scopes restricted."
+        }
+      ]
+    },
+    {
+      "id": "GOV-TC-003",
+      "test_id": "170a760a-fb14-4086-b033-55788cdc9dc1",
+      "title": "Real-user governed Spaces Playwright smoke",
+      "kind": "command",
+      "source_file": "web/tests/e2e/spaces/spaces_connected_source_governance.spec.ts",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-playwright.sh",
+      "requirements": [
+        "GOV-REQ-005",
+        "GOV-REQ-008"
+      ],
+      "steps": [
+        {
+          "type": "action",
+          "description": "Start from an authenticated admin browser, create a Space, open the connected-source modal from the right rail, verify upload controls, and use governed SharePoint department rows when present."
+        },
+        {
+          "type": "assertion",
+          "description": "Connected-source and upload surfaces stay separate; governed department row selection persists when local hierarchy exists; sharing invite affordance is visible; empty hierarchy is recorded honestly when no indexed rows exist."
+        }
+      ]
+    },
+    {
+      "id": "GOV-TC-004",
+      "test_id": "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18",
+      "title": "Governance TestSprite artifact and static validation",
+      "kind": "command",
+      "source_file": "docs/testsprite/validate_space_connected_source_governance_artifacts.py",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-static.sh",
+      "requirements": [
+        "GOV-REQ-001",
+        "GOV-REQ-002",
+        "GOV-REQ-003",
+        "GOV-REQ-004",
+        "GOV-REQ-005",
+        "GOV-REQ-006",
+        "GOV-REQ-007",
+        "GOV-REQ-008"
+      ],
+      "steps": [
+        {
+          "type": "action",
+          "description": "Validate PRD, code summary, test plan, coverage, inventory, tracked scripts, and key source/test artifacts."
+        },
+        {
+          "type": "assertion",
+          "description": "Every scoped requirement maps to a tracked runnable test; artifacts are durable and scripts exist/executable."
+        }
+      ]
+    }
+  ],
+  "requirement_coverage": {
+    "GOV-REQ-001": [
+      "GOV-TC-001",
+      "GOV-TC-004"
+    ],
+    "GOV-REQ-002": [
+      "GOV-TC-001",
+      "GOV-TC-004"
+    ],
+    "GOV-REQ-003": [
+      "GOV-TC-001",
+      "GOV-TC-004"
+    ],
+    "GOV-REQ-004": [
+      "GOV-TC-001",
+      "GOV-TC-004"
+    ],
+    "GOV-REQ-005": [
+      "GOV-TC-002",
+      "GOV-TC-003",
+      "GOV-TC-004"
+    ],
+    "GOV-REQ-006": [
+      "GOV-TC-001",
+      "GOV-TC-002",
+      "GOV-TC-004"
+    ],
+    "GOV-REQ-007": [
+      "GOV-TC-001",
+      "GOV-TC-002",
+      "GOV-TC-004"
+    ],
+    "GOV-REQ-008": [
+      "GOV-TC-003",
+      "GOV-TC-004"
+    ]
+  }
+}

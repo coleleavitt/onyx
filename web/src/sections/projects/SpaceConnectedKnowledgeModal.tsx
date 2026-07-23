@@ -305,14 +305,18 @@ export default function SpaceConnectedKnowledgeModal({
                                       variant="section"
                                       selectVariant="select-light"
                                       state={
-                                        activeSource === source &&
-                                        activeSharePointNodeId === node.id
+                                        selectedHierarchyNodeIds.includes(node.id)
                                           ? "selected"
                                           : "empty"
                                       }
                                       onClick={() => {
                                         setActiveSource(source);
                                         setActiveSharePointNodeId(node.id);
+                                        setSelectedHierarchyNodeIds((current) =>
+                                          current.includes(node.id)
+                                            ? current
+                                            : [...current, node.id],
+                                        );
                                       }}
                                     />
                                   ))}

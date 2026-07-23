@@ -1,0 +1,69 @@
+{
+  "meta": {
+    "project": "Onyx Space Source Governance",
+    "source_prd": "docs/testsprite/space-source-governance-prd.json",
+    "test_plan": "docs/testsprite/space-source-governance-test-plan.json",
+    "purpose": "Durable local TestSprite command-test inventory for governed SharePoint/Spaces QA."
+  },
+  "tests": [
+    {
+      "id": "12cd0c99-fd82-430f-a2fc-5f02491bd388",
+      "plan_id": "GOV-TC-001",
+      "title": "Governed connected-source backend policy and retrieval matrix",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-backend.sh",
+      "code": "bash docs/testsprite/space-connected-source-governance-tests/governance-backend.sh",
+      "requirements": [
+        "GOV-REQ-001",
+        "GOV-REQ-002",
+        "GOV-REQ-003",
+        "GOV-REQ-004",
+        "GOV-REQ-006",
+        "GOV-REQ-007"
+      ]
+    },
+    {
+      "id": "75195df3-3cbd-448f-96bd-473b237406e6",
+      "plan_id": "GOV-TC-002",
+      "title": "Governed connected-source frontend picker and preset regression",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-frontend.sh",
+      "code": "bash docs/testsprite/space-connected-source-governance-tests/governance-frontend.sh",
+      "requirements": [
+        "GOV-REQ-005",
+        "GOV-REQ-006",
+        "GOV-REQ-007"
+      ]
+    },
+    {
+      "id": "170a760a-fb14-4086-b033-55788cdc9dc1",
+      "plan_id": "GOV-TC-003",
+      "title": "Real-user governed Spaces Playwright smoke",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-playwright.sh",
+      "code": "bash docs/testsprite/space-connected-source-governance-tests/governance-playwright.sh",
+      "requirements": [
+        "GOV-REQ-005",
+        "GOV-REQ-008"
+      ]
+    },
+    {
+      "id": "4ab93905-b65b-41f0-a1f1-5df8f8a5ca18",
+      "plan_id": "GOV-TC-004",
+      "title": "Governance TestSprite artifact and static validation",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-source-governance-tests/governance-static.sh",
+      "code": "bash docs/testsprite/space-connected-source-governance-tests/governance-static.sh",
+      "requirements": [
+        "GOV-REQ-001",
+        "GOV-REQ-002",
+        "GOV-REQ-003",
+        "GOV-REQ-004",
+        "GOV-REQ-005",
+        "GOV-REQ-006",
+        "GOV-REQ-007",
+        "GOV-REQ-008"
+      ]
+    }
+  ]
+}
