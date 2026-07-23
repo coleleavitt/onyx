@@ -12,11 +12,13 @@ from onyx.configs.constants import PUBLIC_DOC_PAT
 from onyx.context.search.models import IndexFilters
 from onyx.context.search.models import InferenceChunk
 from onyx.context.search.models import PersonaSearchInfo
+from onyx.db.connected_source_governance import get_governed_hierarchy_nodes_for_source
 from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import HierarchyNodeType
 from onyx.db.enums import ProjectSharePermission
+from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import Document
 from onyx.db.models import HierarchyNode
 from onyx.db.models import KGStage
@@ -35,6 +37,12 @@ from onyx.tools.models import SearchToolUsage
 from onyx.tools.tool_implementations.search.search_tool import SearchTool
 from tests.external_dependency_unit.conftest import create_test_user
 from tests.external_dependency_unit.indexing_helpers import make_cc_pair
+
+
+@pytest.fixture(autouse=True)
+def _clear_connected_source_governance(db_session: Session) -> None:
+    db_session.query(ConnectedSourceScope).delete()
+    db_session.commit()
 
 
 class _FilteringDocumentIndex:
@@ -595,3 +603,59 @@ def test_project_connected_knowledge_applies_configured_excluded_child_scope(
     assert {chunk.document_id for chunk in chunks} == {active_doc.id}
     assert fake_index.last_filters is not None
     assert fake_index.last_filters.excluded_hierarchy_node_ids == [archive.id]
+
+
+def test_governed_source_root_is_browsable_but_not_selectable(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_root_bypass")
+    group = _create_group_for_user(db_session, user, "root-bypass-group")
+    project = _create_project(db_session, user, "Root Bypass Space")
+    source_root = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sharepoint-root-{uuid4().hex}",
+        name="SharePoint",
+    )
+    department = _create_hierarchy_node(
+        db_session,
+        raw_id=f"advisor-services-root-bypass-{uuid4().hex}",
+        name="Advisor Services Intranet",
+        parent_id=source_root.id,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=department.id,
+        curation_status=ConnectedSourceCurationStatus.DEFAULT_SAFE,
+        group_ids=[group.id],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    # The broad root is visible for navigation but cannot be attached to bypass
+    # department-level governance.
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[source_root, department],
+        user=user,
+    )
+    assert {node.id for node in governed.nodes} == {source_root.id, department.id}
+    assert governed.metadata_by_node_id[source_root.id].is_visible is True
+    assert governed.metadata_by_node_id[source_root.id].is_selectable is False
+    assert governed.metadata_by_node_id[department.id].is_selectable is True
+
+    with pytest.raises(OnyxError):
+        replace_project_connected_knowledge(
+            project=project,
+            document_ids=[],
+            hierarchy_node_ids=[source_root.id],
+            user=user,
+            db_session=db_session,
+        )
+
+    replace_project_connected_knowledge(
+        project=project,
+        document_ids=[],
+        hierarchy_node_ids=[department.id],
+        user=user,
+        db_session=db_session,
+    )
+    assert [node.id for node in project.hierarchy_nodes] == [department.id]

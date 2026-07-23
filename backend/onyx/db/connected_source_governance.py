@@ -219,6 +219,10 @@ def build_metadata_for_nodes(
     paths_by_node_id = _node_paths(nodes)
     metrics_by_node_id = _build_metrics_by_node_id(db_session, nodes)
     any_policy = bool(scopes_by_node_id)
+    governed_path_node_ids: set[int] = set()
+    if any_policy:
+        for scoped_node_id in scopes_by_node_id:
+            governed_path_node_ids.update(paths_by_node_id.get(scoped_node_id, []))
     metadata: dict[int, ConnectedSourceScopeMetadata] = {}
 
     for node in nodes:
@@ -232,9 +236,15 @@ def build_metadata_for_nodes(
         visible = True
         selectable = True
 
-        if any_policy and not path_scopes and node.parent_id is not None:
-            visible = False
-            selectable = False
+        if any_policy and not path_scopes:
+            # Keep ungoverned ancestors of governed scopes visible so users can
+            # browse from the source root to allowed departments, but never let
+            # those broad ancestors be selected as a shortcut around policy.
+            if node.id in governed_path_node_ids:
+                selectable = False
+            else:
+                visible = False
+                selectable = False
 
         for scope in path_scopes:
             if not _scope_is_allowed_for_groups(scope, user_group_ids):
