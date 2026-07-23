@@ -293,6 +293,77 @@ def upload_user_files(
         )
 
 
+@router.get("/connected-source-scopes", tags=PUBLIC_API_TAGS)
+def list_connected_source_scope_policies(
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[ConnectedSourceScopeSnapshot]:
+    return [
+        ConnectedSourceScopeSnapshot.from_model(scope)
+        for scope in list_connected_source_scopes(db_session)
+    ]
+
+
+@router.put("/connected-source-scopes/{hierarchy_node_id}", tags=PUBLIC_API_TAGS)
+def upsert_connected_source_scope_policy(
+    hierarchy_node_id: int,
+    body: ConnectedSourceScopeRequest,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ConnectedSourceScopeSnapshot:
+    scope = upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=hierarchy_node_id,
+        curation_status=body.curation_status,
+        group_ids=body.group_ids,
+        excluded_hierarchy_node_ids=body.excluded_hierarchy_node_ids,
+        display_label=body.display_label,
+        tenant_label=body.tenant_label,
+        department_label=body.department_label,
+        sort_order=body.sort_order,
+        size_bytes=body.size_bytes,
+        document_count_estimate=body.document_count_estimate,
+        warning=body.warning,
+    )
+    return ConnectedSourceScopeSnapshot.from_model(scope)
+
+
+@router.get("/connected-knowledge-presets", tags=PUBLIC_API_TAGS)
+def list_connected_knowledge_presets(
+    include_archived: bool = False,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[ProjectConnectedKnowledgePresetSnapshot]:
+    return [
+        ProjectConnectedKnowledgePresetSnapshot.from_model(preset)
+        for preset in get_visible_presets_for_user(
+            db_session=db_session,
+            user=user,
+            include_archived=include_archived,
+        )
+    ]
+
+
+@router.post("/connected-knowledge-presets", tags=PUBLIC_API_TAGS)
+def create_connected_knowledge_preset_endpoint(
+    body: ProjectConnectedKnowledgePresetRequest,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectConnectedKnowledgePresetSnapshot:
+    preset = create_connected_knowledge_preset(
+        db_session=db_session,
+        name=body.name,
+        description=body.description,
+        emoji=body.emoji,
+        instructions=body.instructions,
+        document_ids=body.document_ids,
+        hierarchy_node_ids=body.hierarchy_node_ids,
+        is_default=body.is_default,
+        is_archived=body.is_archived,
+    )
+    return ProjectConnectedKnowledgePresetSnapshot.from_model(preset)
+
+
 @router.get("/{project_id}", tags=PUBLIC_API_TAGS)
 def get_project(
     project_id: int,
@@ -477,77 +548,6 @@ class ProjectPayload(BaseModel):
     files: list[UserFileSnapshot] | None = None
     connected_knowledge: ProjectConnectedKnowledgeSnapshot | None = None
     persona_id_to_is_featured: dict[int, bool] | None = None
-
-
-@router.get("/connected-source-scopes", tags=PUBLIC_API_TAGS)
-def list_connected_source_scope_policies(
-    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
-    db_session: Session = Depends(get_session),
-) -> list[ConnectedSourceScopeSnapshot]:
-    return [
-        ConnectedSourceScopeSnapshot.from_model(scope)
-        for scope in list_connected_source_scopes(db_session)
-    ]
-
-
-@router.put("/connected-source-scopes/{hierarchy_node_id}", tags=PUBLIC_API_TAGS)
-def upsert_connected_source_scope_policy(
-    hierarchy_node_id: int,
-    body: ConnectedSourceScopeRequest,
-    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
-    db_session: Session = Depends(get_session),
-) -> ConnectedSourceScopeSnapshot:
-    scope = upsert_connected_source_scope(
-        db_session=db_session,
-        hierarchy_node_id=hierarchy_node_id,
-        curation_status=body.curation_status,
-        group_ids=body.group_ids,
-        excluded_hierarchy_node_ids=body.excluded_hierarchy_node_ids,
-        display_label=body.display_label,
-        tenant_label=body.tenant_label,
-        department_label=body.department_label,
-        sort_order=body.sort_order,
-        size_bytes=body.size_bytes,
-        document_count_estimate=body.document_count_estimate,
-        warning=body.warning,
-    )
-    return ConnectedSourceScopeSnapshot.from_model(scope)
-
-
-@router.get("/connected-knowledge-presets", tags=PUBLIC_API_TAGS)
-def list_connected_knowledge_presets(
-    include_archived: bool = False,
-    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
-    db_session: Session = Depends(get_session),
-) -> list[ProjectConnectedKnowledgePresetSnapshot]:
-    return [
-        ProjectConnectedKnowledgePresetSnapshot.from_model(preset)
-        for preset in get_visible_presets_for_user(
-            db_session=db_session,
-            user=user,
-            include_archived=include_archived,
-        )
-    ]
-
-
-@router.post("/connected-knowledge-presets", tags=PUBLIC_API_TAGS)
-def create_connected_knowledge_preset_endpoint(
-    body: ProjectConnectedKnowledgePresetRequest,
-    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
-    db_session: Session = Depends(get_session),
-) -> ProjectConnectedKnowledgePresetSnapshot:
-    preset = create_connected_knowledge_preset(
-        db_session=db_session,
-        name=body.name,
-        description=body.description,
-        emoji=body.emoji,
-        instructions=body.instructions,
-        document_ids=body.document_ids,
-        hierarchy_node_ids=body.hierarchy_node_ids,
-        is_default=body.is_default,
-        is_archived=body.is_archived,
-    )
-    return ProjectConnectedKnowledgePresetSnapshot.from_model(preset)
 
 
 @router.get(
