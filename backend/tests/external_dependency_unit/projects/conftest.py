@@ -12,6 +12,7 @@ from collections.abc import Generator
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
@@ -23,8 +24,15 @@ from onyx.db.models import Document
 from onyx.db.models import DocumentByConnectorCredentialPair
 from onyx.db.models import HierarchyNodeByConnectorCredentialPair
 from onyx.db.models import IndexAttempt
+from onyx.db.models import UserGroup
 
 _TEST_CONNECTOR_PATTERN = "test-connector-%"
+_TEST_GROUP_PATTERNS = (
+    "advisor-services-policy-%",
+    "mixed-source-allowed-%",
+    "mixed-source-denied-%",
+    "root-bypass-group-%",
+)
 
 
 def _test_connector_ids(db_session: Session) -> set[int]:
@@ -35,21 +43,31 @@ def _test_connector_ids(db_session: Session) -> set[int]:
     )
 
 
+def _test_group_ids(db_session: Session) -> set[int]:
+    group_ids: set[int] = set()
+    for pattern in _TEST_GROUP_PATTERNS:
+        group_ids.update(
+            db_session.scalars(
+                select(UserGroup.id).where(UserGroup.name.like(pattern))
+            ).all()
+        )
+    return group_ids
+
+
 @pytest.fixture(autouse=True)
-def cleanup_test_connectors(
+def cleanup_test_resources(
     tenant_context: None,
 ) -> Generator[None, None, None]:
-    """Delete any test-connector rows a test leaves behind (commit-leak guard)."""
+    """Delete committed test connector/group rows left behind by a test."""
     SqlEngine.init_engine(pool_size=10, max_overflow=5)
     with get_session_with_current_tenant() as before_session:
-        pre_existing_ids = _test_connector_ids(before_session)
+        pre_existing_connector_ids = _test_connector_ids(before_session)
+        pre_existing_group_ids = _test_group_ids(before_session)
 
     yield
 
     with get_session_with_current_tenant() as session:
-        leaked_ids = _test_connector_ids(session) - pre_existing_ids
-        if not leaked_ids:
-            return
+        leaked_ids = _test_connector_ids(session) - pre_existing_connector_ids
 
         leaked_pairs = list(
             session.scalars(
@@ -117,4 +135,33 @@ def cleanup_test_connectors(
                 session.query(Credential).filter(
                     Credential.id.in_(orphan_credential_ids)
                 ).delete(synchronize_session=False)
+
+        leaked_group_ids = _test_group_ids(session) - pre_existing_group_ids
+        if leaked_group_ids:
+            group_ids = list(leaked_group_ids)
+            # Delete from every known group-sharing join table before removing
+            # the groups themselves. The project governance tests only create
+            # user memberships and connected-source scope links, but keeping the
+            # cleanup broad prevents future committed test rows from leaking.
+            for statement in (
+                "UPDATE persona SET owner_group_id = NULL WHERE owner_group_id = ANY(:group_ids)",
+                "DELETE FROM connected_source_scope__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM user__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM user_group__connector_credential_pair WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM document_set__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM persona__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM token_rate_limit__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM llm_provider__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM credential__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM mcp_server__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM scim_group_mapping WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM permission_grant WHERE group_id = ANY(:group_ids)",
+                "DELETE FROM skill__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM project__user_group WHERE user_group_id = ANY(:group_ids)",
+                "DELETE FROM artifact_library_item__user_group WHERE user_group_id = ANY(:group_ids)",
+            ):
+                session.execute(text(statement), {"group_ids": group_ids})
+            session.query(UserGroup).filter(UserGroup.id.in_(group_ids)).delete(
+                synchronize_session=False
+            )
         session.commit()

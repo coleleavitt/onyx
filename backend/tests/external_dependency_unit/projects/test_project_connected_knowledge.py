@@ -1,3 +1,4 @@
+from collections.abc import Generator
 from datetime import datetime
 from datetime import timezone
 from uuid import uuid4
@@ -53,7 +54,12 @@ from tests.external_dependency_unit.indexing_helpers import make_cc_pair
 
 
 @pytest.fixture(autouse=True)
-def _clear_connected_source_governance(db_session: Session) -> None:
+def _clear_connected_source_governance(
+    db_session: Session,
+) -> Generator[None, None, None]:
+    db_session.query(ConnectedSourceScope).delete()
+    db_session.commit()
+    yield
     db_session.query(ConnectedSourceScope).delete()
     db_session.commit()
 
