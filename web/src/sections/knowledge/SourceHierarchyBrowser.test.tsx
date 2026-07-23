@@ -24,6 +24,7 @@ const rootNode = {
     is_hidden: false,
     is_diagnostic: false,
     is_selectable: true,
+    denial_reason: null,
     display_label: null,
     tenant_label: null,
     department_label: null,

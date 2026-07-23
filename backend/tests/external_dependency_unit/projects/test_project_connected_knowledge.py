@@ -12,6 +12,7 @@ from onyx.configs.constants import PUBLIC_DOC_PAT
 from onyx.context.search.models import IndexFilters
 from onyx.context.search.models import InferenceChunk
 from onyx.context.search.models import PersonaSearchInfo
+from onyx.db.connected_source_governance import filter_governed_hierarchy_node_ids
 from onyx.db.connected_source_governance import get_governed_hierarchy_nodes_for_source
 from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
@@ -659,3 +660,77 @@ def test_governed_source_root_is_browsable_but_not_selectable(
         db_session=db_session,
     )
     assert [node.id for node in project.hierarchy_nodes] == [department.id]
+
+
+@pytest.mark.parametrize("denied_first", [False, True])
+def test_governance_evaluation_is_source_partitioned_for_mixed_source_selections(
+    db_session: Session,
+    denied_first: bool,
+) -> None:
+    user = create_test_user(
+        db_session,
+        f"project_policy_mixed_source_{'denied_first' if denied_first else 'allowed_first'}",
+    )
+    allowed_group = _create_group_for_user(db_session, user, "mixed-source-allowed")
+    denied_group = UserGroup(name=f"mixed-source-denied-{uuid4().hex}")
+    db_session.add(denied_group)
+    db_session.commit()
+    db_session.refresh(denied_group)
+
+    sharepoint_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sp-mixed-{uuid4().hex}",
+        name="Advisor Services Intranet",
+        source=DocumentSource.SHAREPOINT,
+    )
+    drive_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"drive-mixed-{uuid4().hex}",
+        name="Restricted Drive Folder",
+        source=DocumentSource.GOOGLE_DRIVE,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=sharepoint_node.id,
+        curation_status=ConnectedSourceCurationStatus.DEFAULT_SAFE,
+        group_ids=[allowed_group.id],
+        excluded_hierarchy_node_ids=[],
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=drive_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[denied_group.id],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    requested_ids = (
+        [drive_node.id, sharepoint_node.id]
+        if denied_first
+        else [sharepoint_node.id, drive_node.id]
+    )
+    assert filter_governed_hierarchy_node_ids(
+        db_session=db_session,
+        node_ids=requested_ids,
+        user=user,
+        include_archived=True,
+    ) == {sharepoint_node.id}
+
+    project = _create_project(db_session, user, "Mixed Source Policy Space")
+    with pytest.raises(OnyxError):
+        replace_project_connected_knowledge(
+            project=project,
+            document_ids=[],
+            hierarchy_node_ids=requested_ids,
+            user=user,
+            db_session=db_session,
+        )
+
+    replace_project_connected_knowledge(
+        project=project,
+        document_ids=[],
+        hierarchy_node_ids=[sharepoint_node.id],
+        user=user,
+        db_session=db_session,
+    )
+    assert [node.id for node in project.hierarchy_nodes] == [sharepoint_node.id]

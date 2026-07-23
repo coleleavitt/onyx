@@ -76,6 +76,7 @@ def _governance_snapshot(
         is_hidden=metadata.is_hidden,
         is_diagnostic=metadata.is_diagnostic,
         is_selectable=metadata.is_selectable,
+        denial_reason=metadata.denial_reason,
         display_label=metadata.display_label,
         tenant_label=metadata.tenant_label,
         department_label=metadata.department_label,

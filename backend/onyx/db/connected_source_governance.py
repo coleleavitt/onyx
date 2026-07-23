@@ -40,6 +40,7 @@ class ConnectedSourceScopeMetadata:
     is_diagnostic: bool
     is_visible: bool
     is_selectable: bool
+    denial_reason: str | None = None
     display_label: str | None = None
     tenant_label: str | None = None
     department_label: str | None = None
@@ -145,20 +146,26 @@ def _scope_is_visible_by_status(
     return True
 
 
-def _load_scopes_for_source(
+def _load_scopes_by_source(
     db_session: Session,
-    source: DocumentSource,
-) -> dict[int, ConnectedSourceScope]:
+    sources: set[DocumentSource],
+) -> dict[DocumentSource, dict[int, ConnectedSourceScope]]:
+    if not sources:
+        return {}
     scopes = db_session.scalars(
         select(ConnectedSourceScope)
         .join(HierarchyNode, HierarchyNode.id == ConnectedSourceScope.hierarchy_node_id)
-        .where(HierarchyNode.source == source)
+        .where(HierarchyNode.source.in_(sources))
         .options(
             selectinload(ConnectedSourceScope.group_links),
             selectinload(ConnectedSourceScope.excluded_links),
+            selectinload(ConnectedSourceScope.hierarchy_node),
         )
     ).all()
-    return {scope.hierarchy_node_id: scope for scope in scopes}
+    grouped: dict[DocumentSource, dict[int, ConnectedSourceScope]] = defaultdict(dict)
+    for scope in scopes:
+        grouped[scope.hierarchy_node.source][scope.hierarchy_node_id] = scope
+    return grouped
 
 
 def _build_metrics_by_node_id(
@@ -204,29 +211,26 @@ def _build_metrics_by_node_id(
     return raw_metrics
 
 
-def build_metadata_for_nodes(
+def _evaluate_source_partition(
     *,
-    db_session: Session,
     nodes: list[HierarchyNode],
+    scopes_by_node_id: dict[int, ConnectedSourceScope],
+    metrics_by_node_id: dict[int, ConnectedSourceScopeMetrics],
     user_group_ids: set[int],
     include_archived: bool,
     include_hidden: bool,
 ) -> dict[int, ConnectedSourceScopeMetadata]:
-    if not nodes:
-        return {}
-    source = nodes[0].source
-    scopes_by_node_id = _load_scopes_for_source(db_session, source)
     paths_by_node_id = _node_paths(nodes)
-    metrics_by_node_id = _build_metrics_by_node_id(db_session, nodes)
     any_policy = bool(scopes_by_node_id)
     governed_path_node_ids: set[int] = set()
     if any_policy:
         for scoped_node_id in scopes_by_node_id:
             governed_path_node_ids.update(paths_by_node_id.get(scoped_node_id, []))
-    metadata: dict[int, ConnectedSourceScopeMetadata] = {}
 
+    metadata: dict[int, ConnectedSourceScopeMetadata] = {}
     for node in nodes:
         path = paths_by_node_id[node.id]
+        path_node_ids = set(path)
         path_scopes = [
             scopes_by_node_id[node_id]
             for node_id in path
@@ -235,6 +239,7 @@ def build_metadata_for_nodes(
         own_scope = scopes_by_node_id.get(node.id)
         visible = True
         selectable = True
+        denial_reason: str | None = None
 
         if any_policy and not path_scopes:
             # Keep ungoverned ancestors of governed scopes visible so users can
@@ -242,14 +247,17 @@ def build_metadata_for_nodes(
             # those broad ancestors be selected as a shortcut around policy.
             if node.id in governed_path_node_ids:
                 selectable = False
+                denial_reason = "navigation_only"
             else:
                 visible = False
                 selectable = False
+                denial_reason = "outside_policy"
 
         for scope in path_scopes:
             if not _scope_is_allowed_for_groups(scope, user_group_ids):
                 visible = False
                 selectable = False
+                denial_reason = "group_not_allowed"
             if not _scope_is_visible_by_status(
                 scope,
                 include_archived=include_archived,
@@ -257,12 +265,14 @@ def build_metadata_for_nodes(
             ):
                 visible = False
                 selectable = False
+                denial_reason = "hidden_by_curation_status"
             excluded_ids = {
                 link.excluded_hierarchy_node_id for link in scope.excluded_links
             }
-            if excluded_ids & set(path):
+            if excluded_ids & path_node_ids:
                 visible = False
                 selectable = False
+                denial_reason = "excluded_by_parent_scope"
 
         status = own_scope.curation_status if own_scope else None
         is_default, is_archived, is_hidden, is_diagnostic = _scope_status_flags(status)
@@ -285,6 +295,7 @@ def build_metadata_for_nodes(
             is_diagnostic=is_diagnostic,
             is_visible=visible,
             is_selectable=selectable,
+            denial_reason=denial_reason,
             display_label=own_scope.display_label if own_scope else None,
             tenant_label=own_scope.tenant_label if own_scope else None,
             department_label=own_scope.department_label if own_scope else None,
@@ -297,6 +308,38 @@ def build_metadata_for_nodes(
             allowed_group_ids=allowed_group_ids,
             excluded_hierarchy_node_ids=excluded_ids,
             metrics=metrics_by_node_id.get(node.id, ConnectedSourceScopeMetrics()),
+        )
+    return metadata
+
+
+def build_metadata_for_nodes(
+    *,
+    db_session: Session,
+    nodes: list[HierarchyNode],
+    user_group_ids: set[int],
+    include_archived: bool,
+    include_hidden: bool,
+) -> dict[int, ConnectedSourceScopeMetadata]:
+    if not nodes:
+        return {}
+
+    nodes_by_source: dict[DocumentSource, list[HierarchyNode]] = defaultdict(list)
+    for node in nodes:
+        nodes_by_source[node.source].append(node)
+
+    scopes_by_source = _load_scopes_by_source(db_session, set(nodes_by_source))
+    metrics_by_node_id = _build_metrics_by_node_id(db_session, nodes)
+    metadata: dict[int, ConnectedSourceScopeMetadata] = {}
+    for source, source_nodes in nodes_by_source.items():
+        metadata.update(
+            _evaluate_source_partition(
+                nodes=source_nodes,
+                scopes_by_node_id=scopes_by_source.get(source, {}),
+                metrics_by_node_id=metrics_by_node_id,
+                user_group_ids=user_group_ids,
+                include_archived=include_archived,
+                include_hidden=include_hidden,
+            )
         )
     return metadata
 

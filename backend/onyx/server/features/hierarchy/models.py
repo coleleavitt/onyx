@@ -35,6 +35,7 @@ class HierarchyNodeGovernanceSnapshot(BaseModel):
     is_hidden: bool = False
     is_diagnostic: bool = False
     is_selectable: bool = True
+    denial_reason: str | None = None
     display_label: str | None = None
     tenant_label: str | None = None
     department_label: str | None = None

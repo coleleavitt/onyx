@@ -19,6 +19,7 @@ export interface HierarchyNodeGovernance {
   is_hidden: boolean;
   is_diagnostic: boolean;
   is_selectable: boolean;
+  denial_reason: string | null;
   display_label: string | null;
   tenant_label: string | null;
   department_label: string | null;
