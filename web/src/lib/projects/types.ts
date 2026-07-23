@@ -1,5 +1,5 @@
 import { ChatFileType, ChatSession } from "@/app/app/interfaces";
-import type { MinimalUserSnapshot } from "@/lib/types";
+import type { MinimalUserSnapshot, ValidSources } from "@/lib/types";
 
 export type ProjectSharePermission = "EDITOR" | "VIEWER";
 export type ProjectAccessLevel = "OWNER" | ProjectSharePermission;
@@ -131,8 +131,37 @@ export enum UserFileStatus {
   DELETING = "DELETING",
 }
 
+export interface ProjectConnectedDocument {
+  id: string;
+  title: string;
+  link: string | null;
+  source: ValidSources | null;
+  parent_hierarchy_node_id: number | null;
+  last_modified: string | null;
+  last_synced: string | null;
+}
+
+export interface ProjectConnectedHierarchyNode {
+  id: number;
+  title: string;
+  link: string | null;
+  source: ValidSources;
+  parent_id: number | null;
+}
+
+export interface ProjectConnectedKnowledge {
+  documents: ProjectConnectedDocument[];
+  hierarchy_nodes: ProjectConnectedHierarchyNode[];
+}
+
+export interface ProjectConnectedKnowledgeUpdate {
+  document_ids: string[];
+  hierarchy_node_ids: number[];
+}
+
 export type ProjectDetails = {
   project: Project;
   files?: ProjectFile[];
+  connected_knowledge?: ProjectConnectedKnowledge;
   persona_id_to_is_featured?: Record<number, boolean>;
 };

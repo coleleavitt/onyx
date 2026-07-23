@@ -1,0 +1,417 @@
+from uuid import uuid4
+
+import pytest
+from sqlalchemy.orm import Session
+
+from onyx.access.access import get_acl_for_user
+from onyx.access.utils import prefix_user_email
+from onyx.chat.models import SearchParams
+from onyx.chat.process_message import apply_project_connected_knowledge_to_search_params
+from onyx.configs.constants import DocumentSource
+from onyx.configs.constants import PUBLIC_DOC_PAT
+from onyx.context.search.models import IndexFilters
+from onyx.context.search.models import InferenceChunk
+from onyx.context.search.models import PersonaSearchInfo
+from onyx.db.enums import AccessType
+from onyx.db.enums import HierarchyNodeType
+from onyx.db.enums import ProjectSharePermission
+from onyx.db.models import Document
+from onyx.db.models import HierarchyNode
+from onyx.db.models import KGStage
+from onyx.db.models import Project__User
+from onyx.db.models import User
+from onyx.db.models import UserProject
+from onyx.db.projects import fetch_project_by_id
+from onyx.db.projects import replace_project_connected_knowledge
+from onyx.error_handling.exceptions import OnyxError
+from onyx.server.features.projects.api import get_project_connected_knowledge
+from onyx.server.features.projects.api import update_project_connected_knowledge
+from onyx.server.features.projects.models import ProjectConnectedKnowledgeRequest
+from onyx.tools.models import SearchToolUsage
+from onyx.tools.tool_implementations.search.search_tool import SearchTool
+from tests.external_dependency_unit.conftest import create_test_user
+from tests.external_dependency_unit.indexing_helpers import make_cc_pair
+
+
+class _FilteringDocumentIndex:
+    def __init__(self, chunks: list[InferenceChunk]) -> None:
+        self.chunks = chunks
+        self.last_filters: IndexFilters | None = None
+
+    def keyword_retrieval(
+        self,
+        query: str,  # noqa: ARG002
+        filters: IndexFilters,
+        num_to_retrieve: int,
+        include_hidden: bool = False,  # noqa: ARG002
+    ) -> list[InferenceChunk]:
+        self.last_filters = filters
+        selected_doc_ids = set(filters.attached_document_ids or [])
+        selected_node_ids = {str(node_id) for node_id in (filters.hierarchy_node_ids or [])}
+        acl_entries = set(filters.access_control_list or [])
+        results: list[InferenceChunk] = []
+        for chunk in self.chunks:
+            chunk_nodes = set(chunk.metadata.get("ancestor_hierarchy_node_ids", []))
+            in_scope = chunk.document_id in selected_doc_ids or bool(
+                chunk_nodes & selected_node_ids
+            )
+            if not in_scope:
+                continue
+            chunk_acl = set(chunk.metadata.get("acl", []))
+            if acl_entries and not (chunk_acl & acl_entries):
+                continue
+            results.append(chunk)
+        return results[:num_to_retrieve]
+
+
+def _chunk(
+    document_id: str,
+    *,
+    title: str,
+    acl: list[str],
+    ancestor_node_ids: list[int],
+) -> InferenceChunk:
+    return InferenceChunk(
+        chunk_id=0,
+        blurb=title,
+        content=f"content for {title}",
+        source_links=None,
+        image_file_id=None,
+        section_continuation=False,
+        document_id=document_id,
+        source_type=DocumentSource.SHAREPOINT,
+        semantic_identifier=title,
+        title=title,
+        boost=0,
+        score=1.0,
+        hidden=False,
+        metadata={
+            "acl": acl,
+            "ancestor_hierarchy_node_ids": [str(node_id) for node_id in ancestor_node_ids],
+        },
+        match_highlights=[],
+        doc_summary="",
+        chunk_context="",
+        updated_at=None,
+    )
+
+
+def _create_project(db_session: Session, user: User, name: str) -> UserProject:
+    project = UserProject(user_id=user.id, name=name, instructions="")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    return project
+
+
+def _create_hierarchy_node(
+    db_session: Session,
+    *,
+    raw_id: str,
+    name: str,
+    source: DocumentSource = DocumentSource.SHAREPOINT,
+    is_public: bool = True,
+) -> HierarchyNode:
+    node = HierarchyNode(
+        raw_node_id=raw_id,
+        display_name=name,
+        source=source,
+        node_type=HierarchyNodeType.FOLDER,
+        is_public=is_public,
+    )
+    db_session.add(node)
+    db_session.commit()
+    db_session.refresh(node)
+    return node
+
+
+def _create_indexed_document(
+    db_session: Session,
+    *,
+    document_id: str,
+    title: str,
+    parent: HierarchyNode,
+    is_public: bool = True,
+    external_user_emails: list[str] | None = None,
+) -> Document:
+    pair = make_cc_pair(db_session, source=parent.source, commit=False)
+    pair.access_type = AccessType.PUBLIC if is_public else AccessType.PRIVATE
+    document = Document(
+        id=document_id,
+        semantic_id=title,
+        link=f"https://example.com/{document_id}",
+        parent_hierarchy_node_id=parent.id,
+        is_public=is_public,
+        external_user_emails=external_user_emails,
+        kg_stage=KGStage.NOT_STARTED,
+    )
+    db_session.add(document)
+    db_session.flush()
+    from onyx.db.models import DocumentByConnectorCredentialPair
+
+    db_session.add(
+        DocumentByConnectorCredentialPair(
+            id=document.id,
+            connector_id=pair.connector_id,
+            credential_id=pair.credential_id,
+            has_been_indexed=True,
+        )
+    )
+    db_session.commit()
+    db_session.refresh(document)
+    return document
+
+
+def test_project_connected_knowledge_persists_and_reloads(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_knowledge_owner")
+    project = _create_project(db_session, user, "Connected Knowledge Space")
+    folder = _create_hierarchy_node(
+        db_session,
+        raw_id=f"folder-{uuid4().hex}",
+        name="SharePoint Policies",
+    )
+    document = _create_indexed_document(
+        db_session,
+        document_id=f"doc-{uuid4().hex}",
+        title="Employee Handbook",
+        parent=folder,
+    )
+
+    replace_project_connected_knowledge(
+        project=project,
+        document_ids=[document.id],
+        hierarchy_node_ids=[folder.id],
+        user=user,
+        db_session=db_session,
+    )
+
+    reloaded = fetch_project_by_id(project.id, db_session=db_session)
+    assert reloaded is not None
+    assert [doc.id for doc in reloaded.attached_documents] == [document.id]
+    assert [node.id for node in reloaded.hierarchy_nodes] == [folder.id]
+
+    snapshot = get_project_connected_knowledge(project.id, user, db_session)
+    assert [doc.id for doc in snapshot.documents] == [document.id]
+    assert [node.id for node in snapshot.hierarchy_nodes] == [folder.id]
+
+    updated = update_project_connected_knowledge(
+        project.id,
+        ProjectConnectedKnowledgeRequest(document_ids=[], hierarchy_node_ids=[]),
+        user,
+        db_session,
+    )
+    assert updated.documents == []
+    assert updated.hierarchy_nodes == []
+
+
+def test_project_connected_knowledge_enables_search_params(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_knowledge_search")
+    project = _create_project(db_session, user, "Searchable Connected Knowledge")
+    folder = _create_hierarchy_node(
+        db_session,
+        raw_id=f"search-folder-{uuid4().hex}",
+        name="Search Folder",
+    )
+    document = _create_indexed_document(
+        db_session,
+        document_id=f"search-doc-{uuid4().hex}",
+        title="Search Doc",
+        parent=folder,
+    )
+    replace_project_connected_knowledge(
+        project=project,
+        document_ids=[document.id],
+        hierarchy_node_ids=[folder.id],
+        user=user,
+        db_session=db_session,
+    )
+
+    params = apply_project_connected_knowledge_to_search_params(
+        SearchParams(
+            project_id_filter=None,
+            persona_id_filter=None,
+            search_usage=SearchToolUsage.DISABLED,
+        ),
+        project.id,
+        db_session,
+    )
+
+    assert params.search_usage == SearchToolUsage.ENABLED
+    assert params.project_attached_document_ids == [document.id]
+    assert params.project_hierarchy_node_ids == [folder.id]
+
+
+def test_search_tool_project_connected_knowledge_excludes_unauthorized_selected_docs(
+    db_session: Session,
+) -> None:
+    owner = create_test_user(db_session, "project_knowledge_owner_search")
+    viewer = create_test_user(db_session, "project_knowledge_viewer_search")
+    project = _create_project(db_session, owner, "Shared Search Space")
+    db_session.add(
+        Project__User(
+            project_id=project.id,
+            user_id=viewer.id,
+            permission=ProjectSharePermission.VIEWER,
+        )
+    )
+    folder = _create_hierarchy_node(
+        db_session,
+        raw_id=f"retrieval-folder-{uuid4().hex}",
+        name="Retrieval Folder",
+    )
+    public_exact = _create_indexed_document(
+        db_session,
+        document_id=f"public-exact-{uuid4().hex}",
+        title="Public exact selected document",
+        parent=folder,
+        is_public=True,
+    )
+    public_folder_doc = _create_indexed_document(
+        db_session,
+        document_id=f"public-folder-{uuid4().hex}",
+        title="Public document inherited from selected folder",
+        parent=folder,
+        is_public=True,
+    )
+    private_owner_exact = _create_indexed_document(
+        db_session,
+        document_id=f"owner-private-{uuid4().hex}",
+        title="Owner private selected document",
+        parent=folder,
+        is_public=False,
+        external_user_emails=[owner.email],
+    )
+    db_session.commit()
+
+    replace_project_connected_knowledge(
+        project=project,
+        document_ids=[public_exact.id, private_owner_exact.id],
+        hierarchy_node_ids=[folder.id],
+        user=owner,
+        db_session=db_session,
+    )
+    params = apply_project_connected_knowledge_to_search_params(
+        SearchParams(
+            project_id_filter=None,
+            persona_id_filter=None,
+            search_usage=SearchToolUsage.DISABLED,
+        ),
+        project.id,
+        db_session,
+    )
+    fake_index = _FilteringDocumentIndex(
+        [
+            _chunk(
+                public_exact.id,
+                title="Public exact selected document",
+                acl=[PUBLIC_DOC_PAT],
+                ancestor_node_ids=[folder.id],
+            ),
+            _chunk(
+                public_folder_doc.id,
+                title="Public folder document",
+                acl=[PUBLIC_DOC_PAT],
+                ancestor_node_ids=[folder.id],
+            ),
+            _chunk(
+                private_owner_exact.id,
+                title="Owner private selected document",
+                acl=[prefix_user_email(owner.email)],
+                ancestor_node_ids=[folder.id],
+            ),
+        ]
+    )
+    search_tool = SearchTool(
+        tool_id=1,
+        emitter=None,  # type: ignore[arg-type]
+        user=viewer,
+        persona_search_info=PersonaSearchInfo(
+            document_set_names=[],
+            search_start_date=None,
+            attached_document_ids=params.project_attached_document_ids,
+            hierarchy_node_ids=params.project_hierarchy_node_ids,
+        ),
+        llm=None,  # type: ignore[arg-type]
+        document_index=fake_index,  # type: ignore[arg-type]
+        user_selected_filters=None,
+        project_id_filter=params.project_id_filter,
+        persona_id_filter=params.persona_id_filter,
+    )
+
+    chunks = search_tool._run_search_for_query(
+        query="policy",
+        hybrid_alpha=0.0,
+        num_hits=10,
+        acl_filters=list(get_acl_for_user(viewer, db_session)),
+        embedding_model=None,  # type: ignore[arg-type]
+        federated_retrieval_infos=[],
+        effective_filters=None,
+    )
+
+    assert {chunk.document_id for chunk in chunks} == {
+        public_exact.id,
+        public_folder_doc.id,
+    }
+    assert fake_index.last_filters is not None
+    assert private_owner_exact.id in fake_index.last_filters.attached_document_ids
+    assert folder.id in fake_index.last_filters.hierarchy_node_ids
+    assert prefix_user_email(viewer.email) in fake_index.last_filters.access_control_list
+
+
+def test_project_connected_knowledge_requires_edit_access(
+    db_session: Session,
+) -> None:
+    owner = create_test_user(db_session, "project_knowledge_owner_edit")
+    viewer = create_test_user(db_session, "project_knowledge_viewer")
+    project = _create_project(db_session, owner, "Viewer Shared Space")
+    db_session.add(
+        Project__User(
+            project_id=project.id,
+            user_id=viewer.id,
+            permission=ProjectSharePermission.VIEWER,
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(OnyxError):
+        update_project_connected_knowledge(
+            project.id,
+            ProjectConnectedKnowledgeRequest(document_ids=[], hierarchy_node_ids=[]),
+            viewer,
+            db_session,
+        )
+
+
+@pytest.mark.parametrize("field", ["document", "hierarchy_node"])
+def test_project_connected_knowledge_rejects_inaccessible_selection(
+    db_session: Session,
+    field: str,
+) -> None:
+    user = create_test_user(db_session, f"project_knowledge_inaccessible_{field}")
+    project = _create_project(db_session, user, "Permissioned Space")
+    private_folder = _create_hierarchy_node(
+        db_session,
+        raw_id=f"private-folder-{uuid4().hex}",
+        name="Private Folder",
+        is_public=False,
+    )
+    private_document = _create_indexed_document(
+        db_session,
+        document_id=f"private-doc-{uuid4().hex}",
+        title="Private Doc",
+        parent=private_folder,
+        is_public=False,
+    )
+
+    with pytest.raises(OnyxError):
+        replace_project_connected_knowledge(
+            project=project,
+            document_ids=[private_document.id] if field == "document" else [],
+            hierarchy_node_ids=[private_folder.id] if field == "hierarchy_node" else [],
+            user=user,
+            db_session=db_session,
+        )

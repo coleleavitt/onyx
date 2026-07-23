@@ -3,6 +3,7 @@ import uuid
 from enum import Enum
 from typing import List
 from typing import Mapping
+from typing import TypeVar
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -19,16 +20,23 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTasks
 
+from onyx.access.hierarchy_access import get_user_external_group_ids
 from onyx.configs.app_configs import DISABLE_VECTOR_DB
 from onyx.configs.constants import CELERY_USER_FILE_PROCESSING_TASK_EXPIRES
 from onyx.configs.constants import FileOrigin
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
+from onyx.db.document_access import get_accessible_documents_by_ids
 from onyx.db.enums import ProjectAccessLevel
 from onyx.db.enums import ProjectJoinRequestStatus
 from onyx.db.enums import ProjectSharePermission
 from onyx.db.enums import UserFileStatus
+from onyx.db.hierarchy import filter_accessible_hierarchy_node_ids
+from onyx.db.models import Document
+from onyx.db.models import HierarchyNode
+from onyx.db.models import Project__Document
+from onyx.db.models import Project__HierarchyNode
 from onyx.db.models import Project__User
 from onyx.db.models import Project__UserFile
 from onyx.db.models import Project__UserGroup
@@ -48,6 +56,8 @@ from onyx.utils.logger import setup_logger
 from shared_configs.contextvars import get_current_tenant_id
 
 logger = setup_logger()
+
+T = TypeVar("T")
 
 
 class ProjectAccessPolicy(str, Enum):
@@ -99,6 +109,10 @@ def _project_base_select() -> Select[tuple[UserProject]]:
             ProjectJoinRequest.requester
         ),
         selectinload(UserProject.chat_sessions),
+        selectinload(UserProject.hierarchy_nodes),
+        selectinload(UserProject.attached_documents).selectinload(
+            Document.parent_hierarchy_node
+        ),
     )
 
 
@@ -309,6 +323,117 @@ def get_project_access_level(
     )
     return (
         ProjectAccessLevel.EDITOR if editable is not None else ProjectAccessLevel.VIEWER
+    )
+
+
+def _dedupe_preserving_order(values: list[T]) -> list[T]:
+    seen: set[T] = set()
+    result: list[T] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def fetch_project_connected_knowledge(
+    *,
+    project_id: int,
+    db_session: Session,
+) -> tuple[list[Document], list[HierarchyNode]]:
+    project = fetch_project_by_id(project_id, db_session=db_session)
+    if project is None:
+        return [], []
+    documents = sorted(project.attached_documents, key=lambda doc: doc.semantic_id)
+    hierarchy_nodes = sorted(project.hierarchy_nodes, key=lambda node: node.display_name)
+    return documents, hierarchy_nodes
+
+
+def replace_project_connected_knowledge(
+    *,
+    project: UserProject,
+    document_ids: list[str],
+    hierarchy_node_ids: list[int],
+    user: User,
+    db_session: Session,
+) -> UserProject:
+    requested_document_ids = _dedupe_preserving_order(document_ids)
+    requested_node_ids = _dedupe_preserving_order(hierarchy_node_ids)
+
+    external_group_ids = get_user_external_group_ids(db_session, user)
+
+    documents: list[Document] = []
+    if requested_document_ids:
+        documents = get_accessible_documents_by_ids(
+            db_session=db_session,
+            document_ids=requested_document_ids,
+            user_email=user.email,
+            external_group_ids=external_group_ids,
+        )
+        accessible_document_ids = {document.id for document in documents}
+        if set(requested_document_ids) - accessible_document_ids:
+            raise OnyxError(
+                OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+                "Cannot attach documents you do not have access to.",
+            )
+
+    hierarchy_nodes: list[HierarchyNode] = []
+    if requested_node_ids:
+        hierarchy_nodes = (
+            db_session.query(HierarchyNode)
+            .filter(HierarchyNode.id.in_(requested_node_ids))
+            .all()
+        )
+        existing_node_ids = {node.id for node in hierarchy_nodes}
+        if set(requested_node_ids) - existing_node_ids:
+            raise OnyxError(OnyxErrorCode.NOT_FOUND, "Hierarchy node not found.")
+        accessible_node_ids = filter_accessible_hierarchy_node_ids(
+            db_session,
+            requested_node_ids,
+            user.email,
+            external_group_ids,
+        )
+        if set(requested_node_ids) - accessible_node_ids:
+            raise OnyxError(
+                OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+                "Cannot attach hierarchy nodes you do not have access to.",
+            )
+
+    project.attached_documents.clear()
+    project.attached_documents = documents
+    project.hierarchy_nodes.clear()
+    project.hierarchy_nodes = hierarchy_nodes
+    db_session.commit()
+    db_session.refresh(project)
+    return project
+
+
+def get_project_connected_document_ids(
+    *,
+    project_id: int,
+    db_session: Session,
+) -> list[str]:
+    return list(
+        db_session.scalars(
+            select(Project__Document.document_id).where(
+                Project__Document.project_id == project_id
+            )
+        ).all()
+    )
+
+
+def get_project_connected_hierarchy_node_ids(
+    *,
+    project_id: int,
+    db_session: Session,
+) -> list[int]:
+    return list(
+        db_session.scalars(
+            select(Project__HierarchyNode.hierarchy_node_id).where(
+                Project__HierarchyNode.project_id == project_id
+            )
+        ).all()
     )
 
 

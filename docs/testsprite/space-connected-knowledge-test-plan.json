@@ -1,0 +1,219 @@
+{
+  "meta": {
+    "project": "Onyx Space Connected Knowledge",
+    "source_prd": "docs/testsprite/space-connected-knowledge-prd.json",
+    "code_summary": "docs/testsprite/space-connected-knowledge-code-summary.yaml",
+    "coverage_report": "docs/testsprite/space-connected-knowledge-coverage.json",
+    "coverage_definition": "TestSprite requirement coverage for the scoped PRD",
+    "testsprite_inventory": "docs/testsprite/space-connected-knowledge-testsprite-tests.json"
+  },
+  "tests": [
+    {
+      "id": "SK-TC-001",
+      "title": "Space connected knowledge backend and retrieval coverage",
+      "test_id": "6da9c452-847d-4ed6-8eca-6f16e3ee45f8",
+      "kind": "command",
+      "source_file": "backend/tests/external_dependency_unit/projects/test_project_connected_knowledge.py; backend/tests/unit/onyx/document_index/test_project_connected_knowledge_filters.py",
+      "requirements": [
+        "SK-REQ-001",
+        "SK-REQ-002",
+        "SK-REQ-003",
+        "SK-REQ-004",
+        "SK-REQ-005"
+      ],
+      "command": "bash docs/testsprite/space-connected-knowledge-tests/space-connected-backend-retrieval.sh",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create users, a space, hierarchy nodes, and indexed connector documents in the real test database."
+        },
+        {
+          "type": "action",
+          "description": "Attach accessible exact document IDs and hierarchy node IDs to the space through shipped DB/API helper paths."
+        },
+        {
+          "type": "assertion",
+          "description": "Reload connected knowledge and project detail snapshots and verify the selected docs/nodes persist."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify viewer users cannot update connected knowledge and inaccessible document/node selections are rejected."
+        },
+        {
+          "type": "action",
+          "description": "Run SearchTool._run_search_for_query with the project's connected-source SearchParams and ACL filters."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify selected public docs/folder docs return, but owner-only selected docs do not return for a viewer."
+        }
+      ],
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/space-connected-backend-retrieval.sh"
+    },
+    {
+      "id": "SK-TC-002",
+      "title": "Space connected knowledge frontend modal and upload regression",
+      "test_id": "2f2e3f97-3c32-49ec-a65d-e57848140f48",
+      "kind": "command",
+      "source_file": "web/src/sections/projects/SpaceConnectedKnowledgeModal.test.tsx; web/src/providers/__tests__/ProjectsContext.test.tsx",
+      "requirements": [
+        "SK-REQ-006"
+      ],
+      "command": "bash docs/testsprite/space-connected-knowledge-tests/space-connected-frontend-modal-upload.sh",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Render SpaceConnectedKnowledgeModal and SpaceConnectedSourcesSection through React Testing Library."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify Connected sources and Uploaded files are distinct tabs/sections."
+        },
+        {
+          "type": "action",
+          "description": "Toggle a mocked shipped SourceHierarchyBrowser document and folder selection and click Save."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the real onSave handler receives exact document IDs and hierarchy node IDs."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the connected-source rail renders connector selections separately from Space Files."
+        },
+        {
+          "type": "action",
+          "description": "Run existing ProjectsContext upload regression tests."
+        }
+      ],
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/space-connected-frontend-modal-upload.sh"
+    },
+    {
+      "id": "SK-TC-003",
+      "title": "Deep Spaces parity UI smoke (Playwright)",
+      "test_id": "029e2284-ddb1-470e-a79e-8271481c6a9f",
+      "kind": "command",
+      "source_file": "web/tests/e2e/spaces/deep_spaces_parity.spec.ts; web/tests/e2e/pages/SpaceDetailPage.ts",
+      "requirements": [
+        "SK-REQ-006",
+        "SK-REQ-007"
+      ],
+      "command": "bash docs/testsprite/space-connected-knowledge-tests/deep-spaces-parity-browser.sh",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create a real temporary Space through the app API and open /app/spaces/{slug}-{id} as an authenticated admin."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify no duplicated Threads/Customize tabs, details rail sections, and pinned ask-question input."
+        },
+        {
+          "type": "action",
+          "description": "Open the connected-source picker from the right rail."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify Connected sources and Uploaded files tabs render with local upload controls."
+        },
+        {
+          "type": "action",
+          "description": "If selectable connector hierarchy rows exist, select one, save, reload, and verify the selected label in the rail; otherwise log the honest empty-state branch."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify links, skills, scheduled tasks, and sharing affordances still work in the same real Space flow."
+        }
+      ],
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/deep-spaces-parity-browser.sh"
+    },
+    {
+      "id": "SK-TC-004",
+      "title": "Spaces right rail add files and edit details regression",
+      "test_id": "f7d03d16-0bb9-4969-aa95-fb7af858471b",
+      "kind": "command",
+      "source_file": "web/tests/e2e/spaces/spaces_right_rail_controls.spec.ts",
+      "requirements": [
+        "SK-REQ-006",
+        "SK-REQ-007"
+      ],
+      "command": "bash docs/testsprite/space-connected-knowledge-tests/spaces-right-rail-controls.sh",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Create/open a real Space detail page as admin."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify detail sections render in the compact right rail."
+        },
+        {
+          "type": "action",
+          "description": "Open the compact Add files popover."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify compact add-files controls remain usable after connected-source rail additions."
+        },
+        {
+          "type": "action",
+          "description": "Edit details and save a description."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify the edited description is visible."
+        }
+      ],
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/spaces-right-rail-controls.sh"
+    },
+    {
+      "id": "SK-TC-005",
+      "title": "Deep Spaces pure helper suite",
+      "test_id": "7b72a8f0-0272-4653-9f8f-e70245ab7888",
+      "kind": "command",
+      "source_file": "web/src/lib/projects/spaceMetadata.test.ts; web/src/lib/projects/spaceGrouping.test.ts; web/src/lib/projects/spaceScheduledTasks.test.ts; web/src/lib/projects/spaceAccent.test.ts; web/src/lib/projects/slug.test.ts; web/src/sections/modals/shareAccessConstants.test.ts",
+      "requirements": [
+        "SK-REQ-007"
+      ],
+      "command": "bash docs/testsprite/space-connected-knowledge-tests/deep-spaces-helper-suite.sh",
+      "steps": [
+        {
+          "type": "action",
+          "description": "Run existing pure helper tests for the Deep Spaces surface that the connected-source flow shares."
+        },
+        {
+          "type": "assertion",
+          "description": "Verify link, skill, grouping, scheduled task, accent, slug, and share constants continue to pass."
+        }
+      ],
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/deep-spaces-helper-suite.sh"
+    }
+  ],
+  "requirement_coverage": {
+    "SK-REQ-001": [
+      "SK-TC-001"
+    ],
+    "SK-REQ-002": [
+      "SK-TC-001"
+    ],
+    "SK-REQ-003": [
+      "SK-TC-001"
+    ],
+    "SK-REQ-004": [
+      "SK-TC-001"
+    ],
+    "SK-REQ-005": [
+      "SK-TC-001"
+    ],
+    "SK-REQ-006": [
+      "SK-TC-002",
+      "SK-TC-003",
+      "SK-TC-004"
+    ],
+    "SK-REQ-007": [
+      "SK-TC-003",
+      "SK-TC-004",
+      "SK-TC-005"
+    ]
+  }
+}

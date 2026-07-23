@@ -20,6 +20,7 @@ test.describe("Deep Spaces parity", () => {
       await spaceDetail.expectMainColumnWithoutDuplicateTabs();
       await spaceDetail.collapseAndExpandDetailsPanel();
       await spaceDetail.expectDetailSectionsVisible();
+      await spaceDetail.openConnectedSourcesPickerAndExpectRealState();
 
       // Functional Links flow: add, persist through reload, then remove.
       const linkUrl = `example-${stamp}.com`;

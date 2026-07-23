@@ -1,0 +1,125 @@
+meta:
+  project: Onyx Space Connected Knowledge
+  scope: Space detail connected-source knowledge selection for indexed Onyx connectors
+  generated_on: '2026-07-22'
+  branch: feat/spaces-file-source-picker
+
+summary: >-
+  Adds space-scoped connected-source knowledge selection. Spaces can reference
+  already-indexed connector documents and hierarchy nodes without copying them as
+  uploaded files. Backend persistence, APIs, search wiring, right-rail UI, and
+  E2E/browser coverage keep uploaded files separate from connected-source scopes
+  and preserve ACL filtering for each requesting user.
+
+backend:
+  schema:
+    - file: backend/alembic/versions/9b1c2d3e4f5a_add_project_connected_knowledge.py
+      changes:
+        - creates project__document(project_id, document_id, created_at)
+        - creates project__hierarchy_node(project_id, hierarchy_node_id, created_at)
+        - adds indexes for reverse lookups by document_id and hierarchy_node_id
+    - file: backend/onyx/db/models.py
+      changes:
+        - adds Project__Document and Project__HierarchyNode association models
+        - adds UserProject.attached_documents and UserProject.hierarchy_nodes relationships
+  db_helpers:
+    - file: backend/onyx/db/projects.py
+      functions:
+        - replace_project_connected_knowledge: validates edit-time document/node access and replaces project selections
+        - fetch_project_connected_knowledge: returns sorted attached docs/nodes
+        - get_project_connected_document_ids: feeds chat/search path
+        - get_project_connected_hierarchy_node_ids: feeds chat/search path
+  api:
+    - file: backend/onyx/server/features/projects/api.py
+      endpoints:
+        - GET /api/user/projects/{project_id}/connected-knowledge
+        - PUT /api/user/projects/{project_id}/connected-knowledge
+        - GET /api/user/projects/{project_id}/details now includes connected_knowledge
+      notes:
+        - endpoints intentionally omit FastAPI response_model per repo convention
+        - update endpoint requires ProjectAccessPolicy.EDIT
+  models:
+    - file: backend/onyx/server/features/projects/models.py
+      snapshots:
+        - ProjectConnectedDocumentSnapshot
+        - ProjectConnectedHierarchyNodeSnapshot
+        - ProjectConnectedKnowledgeSnapshot
+        - ProjectConnectedKnowledgeRequest
+  retrieval:
+    - file: backend/onyx/chat/process_message.py
+      changes:
+        - apply_project_connected_knowledge_to_search_params adds project docs/nodes to SearchParams
+        - project connected knowledge enables SearchTool for default-persona space chats
+    - file: backend/onyx/tools/tool_constructor.py
+      changes:
+        - merges project-selected document/node ids into SearchTool PersonaSearchInfo
+    - file: backend/onyx/chat/models.py
+      changes:
+        - SearchParams carries project_attached_document_ids and project_hierarchy_node_ids
+
+frontend:
+  state_and_services:
+    - file: web/src/lib/projects/types.ts
+      changes:
+        - ProjectConnectedDocument
+        - ProjectConnectedHierarchyNode
+        - ProjectConnectedKnowledge
+        - ProjectConnectedKnowledgeUpdate
+        - ProjectDetails.connected_knowledge
+    - file: web/src/lib/projects/svc.ts
+      functions:
+        - getProjectConnectedKnowledge
+        - updateProjectConnectedKnowledge
+    - file: web/src/providers/ProjectsContext.tsx
+      changes:
+        - exposes updateProjectConnectedKnowledge
+        - keeps currentProjectDetails.connected_knowledge in sync after save
+  ui:
+    - file: web/src/sections/projects/ProjectContextPanel.tsx
+      changes:
+        - renders SpaceConnectedKnowledgeModal
+        - renders SpaceConnectedSourcesSection below Files
+        - keeps existing FilePickerPopover/UserFilesModal local upload path intact
+    - file: web/src/sections/projects/SpaceConnectedKnowledgeModal.tsx
+      behaviors:
+        - Connected sources tab uses SourceHierarchyBrowser for indexed connector folder/document selection
+        - Uploaded files tab exposes local file and local folder upload
+        - local folder upload preserves relative paths by wrapping File objects with webkitRelativePath filenames
+    - file: web/src/sections/projects/SpaceConnectedSourcesSection.tsx
+      behaviors:
+        - groups selected connected-source documents/folders by source
+        - displays individual selected folders/documents separately from uploaded Space Files
+  e2e:
+    - file: web/tests/e2e/pages/SpaceDetailPage.ts
+      helpers:
+        - openConnectedSourcesPickerAndExpectRealState
+        - if selectable hierarchy exists, select/save/reload/assert rail selection
+        - if no indexed hierarchy exists, assert honest empty-state branch and local upload controls
+    - file: web/tests/e2e/spaces/deep_spaces_parity.spec.ts
+      changes:
+        - drives connected-source picker in the real authenticated Space detail flow
+
+testsprite_inventory:
+  durable_inventory: docs/testsprite/space-connected-knowledge-testsprite-tests.json
+  durable_scripts:
+    - docs/testsprite/space-connected-knowledge-tests/space-connected-backend-retrieval.sh
+    - docs/testsprite/space-connected-knowledge-tests/space-connected-frontend-modal-upload.sh
+    - docs/testsprite/space-connected-knowledge-tests/deep-spaces-parity-browser.sh
+    - docs/testsprite/space-connected-knowledge-tests/spaces-right-rail-controls.sh
+    - docs/testsprite/space-connected-knowledge-tests/deep-spaces-helper-suite.sh
+  stored_tests:
+    - id: 029e2284-ddb1-470e-a79e-8271481c6a9f
+      title: Deep Spaces parity UI smoke (Playwright)
+      coverage: browser route, right rail, connected-source picker, save/reload branch or empty-state fallback
+    - id: f7d03d16-0bb9-4969-aa95-fb7af858471b
+      title: Spaces right rail add files and edit details regression
+      coverage: compact Files popover and edit details controls
+    - id: 6da9c452-847d-4ed6-8eca-6f16e3ee45f8
+      title: Space connected knowledge backend and retrieval coverage
+      coverage: project DB/API access validation and SearchTool/search_pipeline ACL filtering
+    - id: 2f2e3f97-3c32-49ec-a65d-e57848140f48
+      title: Space connected knowledge frontend modal and upload regression
+      coverage: modal tabs, source selection state, right-rail separation, upload regression
+    - id: 7b72a8f0-0272-4653-9f8f-e70245ab7888
+      title: Deep Spaces pure helper suite (links skills grouping scheduled access)
+      coverage: pre-existing deep Spaces helper behaviors preserved by the new scope

@@ -21,6 +21,8 @@ import {
   type CreateProjectInput,
   type Project,
   type ProjectAccessState,
+  type ProjectConnectedKnowledge,
+  type ProjectConnectedKnowledgeUpdate,
   type ProjectDetails,
   type ProjectFile,
   type ProjectMetadataUpdate,
@@ -40,6 +42,7 @@ import {
   requestProjectAccess as svcRequestProjectAccess,
   cancelProjectAccessRequest as svcCancelProjectAccessRequest,
   updateProjectMetadata as svcUpdateProjectMetadata,
+  updateProjectConnectedKnowledge as svcUpdateProjectConnectedKnowledge,
   renameProject as svcRenameProject,
   deleteProject as svcDeleteProject,
   deleteUserFile as svcDeleteUserFile,
@@ -128,6 +131,10 @@ interface ProjectsContextType {
     projectId: number,
     metadata: ProjectMetadataUpdate
   ) => Promise<Project>;
+  updateProjectConnectedKnowledge: (
+    projectId: number,
+    knowledge: ProjectConnectedKnowledgeUpdate
+  ) => Promise<ProjectConnectedKnowledge>;
   renameProject: (projectId: number, name: string) => Promise<Project>;
   requestProjectAccess: (projectId: number) => Promise<void>;
   cancelProjectAccessRequest: (projectId: number) => Promise<void>;
@@ -336,6 +343,33 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       }
     },
     [fetchProjects, currentProjectId, refreshCurrentProjectDetails]
+  );
+
+  const updateProjectConnectedKnowledge = useCallback(
+    async (
+      projectId: number,
+      knowledge: ProjectConnectedKnowledgeUpdate
+    ): Promise<ProjectConnectedKnowledge> => {
+      const updated = await svcUpdateProjectConnectedKnowledge(
+        projectId,
+        knowledge
+      );
+      if (currentProjectId === projectId) {
+        setCurrentProjectState((previous) =>
+          previous.status === "ready"
+            ? {
+                status: "ready",
+                details: {
+                  ...previous.details,
+                  connected_knowledge: updated,
+                },
+              }
+            : previous
+        );
+      }
+      return updated;
+    },
+    [currentProjectId]
   );
 
   const renameProject = useCallback(
@@ -830,6 +864,7 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       fetchProjects,
       createProject,
       updateProjectMetadata,
+      updateProjectConnectedKnowledge,
       renameProject,
       requestProjectAccess,
       cancelProjectAccessRequest,
@@ -909,6 +944,7 @@ export function ProjectsProvider({ children }: ProjectsProviderProps) {
       fetchProjects,
       createProject,
       updateProjectMetadata,
+      updateProjectConnectedKnowledge,
       renameProject,
       requestProjectAccess,
       cancelProjectAccessRequest,

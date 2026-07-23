@@ -1,8 +1,10 @@
 from collections import Counter
 from typing import cast
+from typing import TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel
+from pydantic import Field
 from sqlalchemy.orm import Session
 
 from onyx.auth.oauth_token_manager import OAuthTokenManager
@@ -52,6 +54,8 @@ from onyx.utils.logger import setup_logger
 
 logger = setup_logger()
 
+T = TypeVar("T")
+
 
 def _disambiguate_mcp_tool_names(tools: list[Tool]) -> None:
     tool_name_counts = Counter(tool.name for tool in tools)
@@ -62,12 +66,17 @@ def _disambiguate_mcp_tool_names(tools: list[Tool]) -> None:
 
 class SearchToolConfig(BaseModel):
     user_selected_filters: BaseFilters | None = None
-    # Vespa metadata filters for overflowing user files.  These are NOT the
-    # IDs of the current project/persona — they are only set when the
-    # project's/persona's user files didn't fit in the LLM context window and
-    # must be found via vector DB search instead.
+    # Vespa/OpenSearch metadata filters for overflowing user files.  These are
+    # NOT the raw IDs of the current project/persona — they are only set when
+    # uploaded user files did not fit in the LLM context window and must be
+    # found via vector DB search instead.
     project_id_filter: int | None = None
     persona_id_filter: int | None = None
+    # Indexed connector knowledge selected directly on the current space.
+    # These widen the persona's explicit knowledge scope to include the space's
+    # chosen folders/sites/documents while retrieval still applies ACL filters.
+    project_attached_document_ids: list[str] = Field(default_factory=list)
+    project_hierarchy_node_ids: list[int] = Field(default_factory=list)
     bypass_acl: bool = False
     additional_context: str | None = None
     slack_context: SlackContext | None = None
@@ -155,6 +164,17 @@ def construct_tools(
         )
 
 
+def _dedupe_preserving_order(values: list[T]) -> list[T]:
+    seen: set[T] = set()
+    result: list[T] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
 def _construct_tools_impl(
     persona: Persona,
     db_session: Session,
@@ -189,11 +209,19 @@ def _construct_tools_impl(
     document_index = get_default_document_index(search_settings, None, db_session)
 
     def _build_search_tool(tool_id: int, config: SearchToolConfig) -> SearchTool:
+        attached_document_ids = _dedupe_preserving_order(
+            [doc.id for doc in persona.attached_documents]
+            + config.project_attached_document_ids
+        )
+        hierarchy_node_ids = _dedupe_preserving_order(
+            [node.id for node in persona.hierarchy_nodes]
+            + config.project_hierarchy_node_ids
+        )
         persona_search_info = PersonaSearchInfo(
             document_set_names=[ds.name for ds in persona.document_sets],
             search_start_date=persona.search_start_date,
-            attached_document_ids=[doc.id for doc in persona.attached_documents],
-            hierarchy_node_ids=[node.id for node in persona.hierarchy_nodes],
+            attached_document_ids=attached_document_ids,
+            hierarchy_node_ids=hierarchy_node_ids,
         )
         return SearchTool(
             tool_id=tool_id,

@@ -12,6 +12,8 @@ import type {
   CreateProjectInput,
   ProjectMetadataUpdate,
   ProjectAccessState,
+  ProjectConnectedKnowledge,
+  ProjectConnectedKnowledgeUpdate,
   ProjectJoinRequest,
 } from "@/lib/projects/types";
 
@@ -297,6 +299,36 @@ export async function getProjectDetails(
   const response = await fetch(`/api/user/projects/${projectId}/details`);
   if (!response.ok) {
     await handleRequestError("Fetch project details", response);
+  }
+  return response.json();
+}
+
+export async function getProjectConnectedKnowledge(
+  projectId: number
+): Promise<ProjectConnectedKnowledge> {
+  const response = await fetch(
+    `/api/user/projects/${encodeURIComponent(projectId)}/connected-knowledge`
+  );
+  if (!response.ok) {
+    await handleRequestError("Fetch project connected knowledge", response);
+  }
+  return response.json();
+}
+
+export async function updateProjectConnectedKnowledge(
+  projectId: number,
+  knowledge: ProjectConnectedKnowledgeUpdate
+): Promise<ProjectConnectedKnowledge> {
+  const response = await fetch(
+    `/api/user/projects/${encodeURIComponent(projectId)}/connected-knowledge`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(knowledge),
+    }
+  );
+  if (!response.ok) {
+    await handleRequestError("Update project connected knowledge", response);
   }
   return response.json();
 }

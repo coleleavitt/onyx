@@ -1,0 +1,104 @@
+{
+  "meta": {
+    "project": "Onyx Space Connected Knowledge",
+    "source_prd": "docs/testsprite/space-connected-knowledge-prd.json",
+    "test_plan": "docs/testsprite/space-connected-knowledge-test-plan.json",
+    "coverage_type": "TestSprite scoped requirement coverage",
+    "generated_on": "2026-07-22",
+    "testsprite_inventory": "docs/testsprite/space-connected-knowledge-testsprite-tests.json"
+  },
+  "summary": {
+    "requirements_total": 7,
+    "requirements_covered": 7,
+    "coverage_percent": 100.0,
+    "uncovered_requirements": [],
+    "fallback_requirements": []
+  },
+  "requirements": [
+    {
+      "id": "SK-REQ-001",
+      "title": "Persist space connected-source exact documents",
+      "coverage_status": "covered",
+      "tests": [
+        "SK-TC-001"
+      ],
+      "stored_test_ids": [
+        "6da9c452-847d-4ed6-8eca-6f16e3ee45f8"
+      ]
+    },
+    {
+      "id": "SK-REQ-002",
+      "title": "Persist space connected-source hierarchy nodes",
+      "coverage_status": "covered",
+      "tests": [
+        "SK-TC-001"
+      ],
+      "stored_test_ids": [
+        "6da9c452-847d-4ed6-8eca-6f16e3ee45f8"
+      ]
+    },
+    {
+      "id": "SK-REQ-003",
+      "title": "Require space edit access for connected-source updates",
+      "coverage_status": "covered",
+      "tests": [
+        "SK-TC-001"
+      ],
+      "stored_test_ids": [
+        "6da9c452-847d-4ed6-8eca-6f16e3ee45f8"
+      ]
+    },
+    {
+      "id": "SK-REQ-004",
+      "title": "Validate connector document and hierarchy access before attaching",
+      "coverage_status": "covered",
+      "tests": [
+        "SK-TC-001"
+      ],
+      "stored_test_ids": [
+        "6da9c452-847d-4ed6-8eca-6f16e3ee45f8"
+      ]
+    },
+    {
+      "id": "SK-REQ-005",
+      "title": "Use space connected-source selections in retrieval without bypassing ACLs",
+      "coverage_status": "covered",
+      "tests": [
+        "SK-TC-001"
+      ],
+      "stored_test_ids": [
+        "6da9c452-847d-4ed6-8eca-6f16e3ee45f8"
+      ]
+    },
+    {
+      "id": "SK-REQ-006",
+      "title": "Expose connected sources distinctly from uploaded files in the space right rail",
+      "coverage_status": "covered",
+      "tests": [
+        "SK-TC-002",
+        "SK-TC-003",
+        "SK-TC-004"
+      ],
+      "stored_test_ids": [
+        "2f2e3f97-3c32-49ec-a65d-e57848140f48",
+        "029e2284-ddb1-470e-a79e-8271481c6a9f",
+        "f7d03d16-0bb9-4969-aa95-fb7af858471b"
+      ]
+    },
+    {
+      "id": "SK-REQ-007",
+      "title": "Provide real browser E2E coverage for the space connected-source picker",
+      "coverage_status": "covered",
+      "tests": [
+        "SK-TC-003",
+        "SK-TC-004",
+        "SK-TC-005"
+      ],
+      "stored_test_ids": [
+        "029e2284-ddb1-470e-a79e-8271481c6a9f",
+        "f7d03d16-0bb9-4969-aa95-fb7af858471b",
+        "7b72a8f0-0272-4653-9f8f-e70245ab7888"
+      ]
+    }
+  ]
+}

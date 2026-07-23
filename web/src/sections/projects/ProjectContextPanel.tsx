@@ -4,7 +4,11 @@ import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import FilePickerPopover from "@/refresh-components/popovers/FilePickerPopover";
-import { UserFileStatus, type ProjectFile } from "@/lib/projects/types";
+import {
+  UserFileStatus,
+  type ProjectConnectedKnowledge,
+  type ProjectFile,
+} from "@/lib/projects/types";
 import { MinimalOnyxDocument } from "@/lib/search/interfaces";
 import { Button, Divider, LineItemButton, Text } from "@opal/components";
 import { timeAgo } from "@opal/time";
@@ -18,6 +22,8 @@ import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
 import { FileCard } from "@/sections/cards/FileCard";
 import SpaceDetailHeader from "@/sections/projects/SpaceDetailHeader";
 import ProjectMemoryPanel from "@/sections/projects/ProjectMemoryPanel";
+import SpaceConnectedKnowledgeModal from "@/sections/projects/SpaceConnectedKnowledgeModal";
+import SpaceConnectedSourcesSection from "@/sections/projects/SpaceConnectedSourcesSection";
 import SpaceLinksSection from "@/sections/projects/SpaceLinksSection";
 import SpaceSkillsSection from "@/sections/projects/SpaceSkillsSection";
 import SpaceScheduledTasksSection from "@/sections/projects/SpaceScheduledTasksSection";
@@ -50,6 +56,11 @@ interface SectionPlaceholderProps {
   children: string;
   dragActive?: boolean;
 }
+
+const EMPTY_CONNECTED_KNOWLEDGE: ProjectConnectedKnowledge = {
+  documents: [],
+  hierarchy_nodes: [],
+};
 
 function SectionPlaceholder({
   children,
@@ -84,6 +95,7 @@ export default function ProjectContextPanel({
   const projectFilesModal = useCreateModal();
   const shareProjectModal = useCreateModal();
   const [viewInstructionsOpen, setViewInstructionsOpen] = useState(false);
+  const [connectedKnowledgeOpen, setConnectedKnowledgeOpen] = useState(false);
   // Convert ProjectFile to MinimalOnyxDocument format for viewing
   const handleOnView = useCallback(
     (file: ProjectFile) => {
@@ -110,6 +122,7 @@ export default function ProjectContextPanel({
     fetchProjects,
     refreshCurrentProjectDetails,
     updateProjectMetadata,
+    updateProjectConnectedKnowledge,
   } = useProjectsContext();
   const currentProject =
     currentProjectDetails?.project ??
@@ -157,6 +170,8 @@ export default function ProjectContextPanel({
   });
 
   const projectName = currentProject?.name || "Loading project...";
+  const connectedKnowledge =
+    currentProjectDetails?.connected_knowledge ?? EMPTY_CONNECTED_KNOWLEDGE;
 
   if (!currentProjectId) return null; // no selection yet
 
@@ -209,6 +224,20 @@ export default function ProjectContextPanel({
           }
         />
       </projectFilesModal.Provider>
+
+      <SpaceConnectedKnowledgeModal
+        open={connectedKnowledgeOpen}
+        canEdit={canEdit}
+        knowledge={connectedKnowledge}
+        onClose={() => setConnectedKnowledgeOpen(false)}
+        onUploadFiles={handleUploadFiles}
+        onSave={async (documentIds, hierarchyNodeIds) => {
+          await updateProjectConnectedKnowledge(currentProjectId, {
+            document_ids: documentIds,
+            hierarchy_node_ids: hierarchyNodeIds,
+          });
+        }}
+      />
 
       <div
         className={cn("w-full flex flex-col pb-6", compact ? "gap-5" : "gap-6")}
@@ -509,6 +538,13 @@ export default function ProjectContextPanel({
             </SectionPlaceholder>
           )}
         </div>
+
+        <SpaceConnectedSourcesSection
+          knowledge={connectedKnowledge}
+          canEdit={canEdit}
+          compact={compact}
+          onOpenPicker={() => setConnectedKnowledgeOpen(true)}
+        />
 
         {/* Space-scoped memory — real, backed by /api/memory?project_id=... */}
         {currentProjectId !== null && (

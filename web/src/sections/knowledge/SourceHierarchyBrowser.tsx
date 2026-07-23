@@ -143,7 +143,7 @@ function HierarchyBreadcrumb({
 
 function buildPathToNode(
   targetId: number,
-  nodes: HierarchyNodeSummary[]
+  nodes: HierarchyNodeSummary[],
 ): HierarchyNodeSummary[] | null {
   const node = nodes.find((n) => n.id === targetId);
   if (!node) return null;
@@ -224,6 +224,22 @@ export default function SourceHierarchyBrowser({
   // Ref for scroll container
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  const sourceMetadata = useMemo(() => getSourceMetadata(source), [source]);
+  const sourceRootNode = useMemo(() => {
+    const normalize = (value: string) =>
+      value.toLowerCase().replace(/[\s_-]+/g, "");
+    const rootNames = new Set([
+      normalize(sourceMetadata.displayName),
+      normalize(source),
+    ]);
+    return (
+      allNodes.find(
+        (node) =>
+          node.parent_id === null && rootNames.has(normalize(node.title)),
+      ) ?? null
+    );
+  }, [allNodes, source, sourceMetadata.displayName]);
+
   // Get current parent node ID (null for root)
   const lastPathNode = path[path.length - 1];
   const currentParentId = lastPathNode ? lastPathNode.id : null;
@@ -244,7 +260,7 @@ export default function SourceHierarchyBrowser({
         setAllNodes(response.nodes);
       } catch (error) {
         setNodesError(
-          error instanceof Error ? error.message : "Failed to load folders"
+          error instanceof Error ? error.message : "Failed to load folders",
         );
       } finally {
         setIsLoadingNodes(false);
@@ -257,6 +273,18 @@ export default function SourceHierarchyBrowser({
   // Track the last initialNodeId we navigated to, so a new value (even to a
   // previously-visited node) re-triggers navigation instead of being skipped
   const lastNavigatedNodeIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (
+      initialNodeId ||
+      !sourceRootNode ||
+      path.length > 0 ||
+      viewSelectedOnly
+    ) {
+      return;
+    }
+    setPath([sourceRootNode]);
+  }, [initialNodeId, path.length, sourceRootNode, viewSelectedOnly]);
 
   // Navigate to initialNodeId whenever it changes to a new value and allNodes are available
   useEffect(() => {
@@ -384,7 +412,7 @@ export default function SourceHierarchyBrowser({
     const missingDetails = documents.filter(
       (doc) =>
         selectedDocumentIds.includes(doc.id) &&
-        !selectedDocumentDetails.has(doc.id)
+        !selectedDocumentDetails.has(doc.id),
     );
 
     if (missingDetails.length > 0) {
@@ -467,7 +495,7 @@ export default function SourceHierarchyBrowser({
         .map((docId) => selectedDocumentDetails.get(docId))
         .filter((doc): doc is DocumentSummary => doc !== undefined)
         .filter(
-          (doc) => doc.parent_id !== null && nodeIdsInSource.has(doc.parent_id)
+          (doc) => doc.parent_id !== null && nodeIdsInSource.has(doc.parent_id),
         )
         .map((doc) => ({ type: "document" as const, data: doc }));
 
@@ -481,7 +509,7 @@ export default function SourceHierarchyBrowser({
     if (searchValue) {
       const lower = searchValue.toLowerCase();
       result = result.filter((item) =>
-        item.data.title.toLowerCase().includes(lower)
+        item.data.title.toLowerCase().includes(lower),
       );
     }
 
@@ -500,7 +528,7 @@ export default function SourceHierarchyBrowser({
   const currentSourceSelectedCount = useMemo(() => {
     // Folders: count how many selectedFolderIds are in allNodes (source-specific)
     const folderCount = allNodes.filter((node) =>
-      selectedFolderIds.includes(node.id)
+      selectedFolderIds.includes(node.id),
     ).length;
 
     // Documents: count how many selected documents have parent in this source
@@ -545,25 +573,25 @@ export default function SourceHierarchyBrowser({
   const handleHeaderCheckboxClick = () => {
     // Get visible folders and documents
     const visibleFolders = filteredItems.filter(
-      (item) => item.type === "folder"
+      (item) => item.type === "folder",
     );
     const visibleDocs = filteredItems.filter(
-      (item) => item.type === "document"
+      (item) => item.type === "document",
     );
     const visibleFolderIds = visibleFolders.map(
-      (item) => item.data.id as number
+      (item) => item.data.id as number,
     );
     const visibleDocumentIds = visibleDocs.map(
-      (item) => item.data.id as string
+      (item) => item.data.id as string,
     );
 
     if (allVisibleSelected) {
       // Deselect all visible items by removing them from the selected arrays
       const newFolderIds = selectedFolderIds.filter(
-        (id) => !visibleFolderIds.includes(id)
+        (id) => !visibleFolderIds.includes(id),
       );
       const newDocumentIds = selectedDocumentIds.filter(
-        (id) => !visibleDocumentIds.includes(id)
+        (id) => !visibleDocumentIds.includes(id),
       );
       onSetFolderIds(newFolderIds);
       onSetDocumentIds(newDocumentIds);
@@ -607,7 +635,8 @@ export default function SourceHierarchyBrowser({
   };
 
   // Navigation handlers
-  const handleNavigateToRoot = () => setPath([]);
+  const handleNavigateToRoot = () =>
+    setPath(sourceRootNode ? [sourceRootNode] : []);
 
   const handleNavigateToNode = (node: HierarchyNodeSummary, index: number) => {
     setPath((prev) => prev.slice(0, index + 1));
@@ -618,7 +647,7 @@ export default function SourceHierarchyBrowser({
       // Exit view selected mode and navigate to the folder
       // We need to build the path to this folder from root
       const buildPathToFolder = (
-        targetId: number
+        targetId: number,
       ): HierarchyNodeSummary[] | null => {
         const node = allNodes.find((n) => n.id === targetId);
         if (!node) return null;
@@ -954,7 +983,7 @@ export default function SourceHierarchyBrowser({
                             onClick={(e) => {
                               e.stopPropagation();
                               handleClickIntoFolder(
-                                item.data as HierarchyNodeSummary
+                                item.data as HierarchyNodeSummary,
                               );
                             }}
                           />
@@ -967,7 +996,7 @@ export default function SourceHierarchyBrowser({
                       {isFolder
                         ? "—"
                         : timeAgo(
-                            (item.data as DocumentSummary).last_modified
+                            (item.data as DocumentSummary).last_modified,
                           ) || "—"}
                     </Text>
                   </TableLayouts.TableCell>

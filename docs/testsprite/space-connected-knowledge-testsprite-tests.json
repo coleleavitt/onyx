@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "project": "Onyx Space Connected Knowledge",
+    "source_prd": "docs/testsprite/space-connected-knowledge-prd.json",
+    "test_plan": "docs/testsprite/space-connected-knowledge-test-plan.json",
+    "purpose": "Durable local TestSprite command-test inventory for the scoped PRD. These definitions mirror the local testsprite-rs stored IDs and point at tracked scripts instead of ignored testsprite_tests materializations."
+  },
+  "tests": [
+    {
+      "id": "6da9c452-847d-4ed6-8eca-6f16e3ee45f8",
+      "plan_id": "SK-TC-001",
+      "title": "Space connected knowledge backend and retrieval coverage",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/space-connected-backend-retrieval.sh",
+      "code": "bash docs/testsprite/space-connected-knowledge-tests/space-connected-backend-retrieval.sh",
+      "requirements": ["SK-REQ-001", "SK-REQ-002", "SK-REQ-003", "SK-REQ-004", "SK-REQ-005"]
+    },
+    {
+      "id": "2f2e3f97-3c32-49ec-a65d-e57848140f48",
+      "plan_id": "SK-TC-002",
+      "title": "Space connected knowledge frontend modal and upload regression",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/space-connected-frontend-modal-upload.sh",
+      "code": "bash docs/testsprite/space-connected-knowledge-tests/space-connected-frontend-modal-upload.sh",
+      "requirements": ["SK-REQ-006"]
+    },
+    {
+      "id": "029e2284-ddb1-470e-a79e-8271481c6a9f",
+      "plan_id": "SK-TC-003",
+      "title": "Deep Spaces parity UI smoke (Playwright)",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/deep-spaces-parity-browser.sh",
+      "code": "bash docs/testsprite/space-connected-knowledge-tests/deep-spaces-parity-browser.sh",
+      "requirements": ["SK-REQ-006", "SK-REQ-007"]
+    },
+    {
+      "id": "f7d03d16-0bb9-4969-aa95-fb7af858471b",
+      "plan_id": "SK-TC-004",
+      "title": "Spaces right rail add files and edit details regression",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/spaces-right-rail-controls.sh",
+      "code": "bash docs/testsprite/space-connected-knowledge-tests/spaces-right-rail-controls.sh",
+      "requirements": ["SK-REQ-006", "SK-REQ-007"]
+    },
+    {
+      "id": "7b72a8f0-0272-4653-9f8f-e70245ab7888",
+      "plan_id": "SK-TC-005",
+      "title": "Deep Spaces pure helper suite",
+      "kind": "command",
+      "durable_script": "docs/testsprite/space-connected-knowledge-tests/deep-spaces-helper-suite.sh",
+      "code": "bash docs/testsprite/space-connected-knowledge-tests/deep-spaces-helper-suite.sh",
+      "requirements": ["SK-REQ-007"]
+    }
+  ]
+}

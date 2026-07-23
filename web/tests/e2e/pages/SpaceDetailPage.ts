@@ -87,6 +87,9 @@ export class SpaceDetailPage {
 
   async expectDetailSectionsVisible(): Promise<void> {
     await expect(
+      this.page.getByText("Connected sources", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(
       this.page.getByText("Links", { exact: true }).first(),
     ).toBeVisible();
     await expect(
@@ -145,6 +148,92 @@ export class SpaceDetailPage {
     ).toHaveCount(0);
   }
 
+  async openConnectedSourcesPickerAndExpectRealState(): Promise<void> {
+    await this.page
+      .getByRole("button", { name: "Add connected source" })
+      .first()
+      .click();
+
+    const dialog = this.page.getByRole("dialog", {
+      name: /Add knowledge to space/i,
+    });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("tab", { name: "Connected sources" }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("tab", { name: "Uploaded files" }),
+    ).toBeVisible();
+
+    const emptyState = dialog.getByText(
+      "No indexed connector sources are available.",
+    );
+    const sourceSidebar = dialog.locator(
+      '[aria-label="space-connected-source-sidebar"]',
+    );
+    const rows = dialog.locator(".content-column-layout .table-row-layout");
+    const emptyBrowserText = dialog.getByText(
+      /No items in this folder|Select a folder to browse documents/i,
+    );
+    const branchState: { value: "empty" | "browser" | "loading" } = {
+      value: "loading",
+    };
+    await expect
+      .poll(async () => {
+        if (await emptyState.isVisible().catch(() => false)) {
+          branchState.value = "empty";
+        } else if ((await rows.count()) > 1) {
+          branchState.value = "browser";
+        } else if (
+          (await sourceSidebar.isVisible().catch(() => false)) &&
+          (await emptyBrowserText.isVisible().catch(() => false))
+        ) {
+          branchState.value = "empty";
+        } else {
+          branchState.value = "loading";
+        }
+        return branchState.value;
+      })
+      .not.toBe("loading");
+
+    await dialog.getByRole("tab", { name: "Uploaded files" }).click();
+    await expect(
+      dialog.getByRole("button", { name: "Upload local files" }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("button", { name: "Upload local folder" }),
+    ).toBeVisible();
+
+    if (branchState.value === "empty") {
+      console.log("space connected sources smoke: empty-state");
+      await this.page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      return;
+    }
+
+    await dialog.getByRole("tab", { name: "Connected sources" }).click();
+    await expect.poll(async () => await rows.count()).toBeGreaterThan(1);
+    const selectableCount = await rows.count();
+    expect(selectableCount).toBeGreaterThan(1);
+    const firstSelectable = rows.nth(1);
+    const selectedLabel = (await firstSelectable.innerText())
+      .split("\n")
+      .map((part) => part.trim())
+      .find((part) => part && part !== "—");
+    expect(selectedLabel).toBeTruthy();
+    await firstSelectable.click();
+    await expect(dialog.getByText(/items? selected/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Save" }).click();
+    await expect(dialog).toHaveCount(0);
+
+    await this.reload();
+    await expect(
+      this.page.getByText("Connected sources", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(this.page.getByText(selectedLabel!).first()).toBeVisible();
+    console.log(`space connected sources smoke: selected ${selectedLabel}`);
+  }
+
   async openAddFilesPopoverAndExpectCompact(): Promise<void> {
     await this.page.getByRole("button", { name: "Add files" }).first().click();
 
@@ -196,20 +285,34 @@ export class SpaceDetailPage {
   }
 
   async openShareDialog(): Promise<Locator> {
-    await this.page.getByRole("button", { name: "Share" }).first().click();
+    const shareSpaceButton = this.page
+      .getByRole("button", { name: "Share space" })
+      .first();
+    if (await shareSpaceButton.isVisible().catch(() => false)) {
+      await shareSpaceButton.click();
+    } else {
+      await this.page.getByRole("button", { name: "Share" }).first().click();
+    }
     const dialog = this.page.getByRole("dialog", { name: /Share space/i });
     await expect(dialog).toBeVisible();
     return dialog;
   }
 
   private async wallpaperElementCount(): Promise<number> {
-    return await this.page
-      .locator("[data-main-container] *")
-      .evaluateAll(
-        (elements) =>
-          elements.filter((element) =>
-            getComputedStyle(element).backgroundImage.includes("url("),
-          ).length,
-      );
+    try {
+      return await this.page
+        .locator("[data-main-container] *")
+        .evaluateAll(
+          (elements) =>
+            elements.filter((element) =>
+              getComputedStyle(element).backgroundImage.includes("url("),
+            ).length,
+        );
+    } catch {
+      // The space route can still be hydrating/navigating when the poll starts.
+      // Treat that poll iteration as "not visible yet" rather than failing the
+      // whole smoke before the route settles.
+      return 0;
+    }
   }
 }

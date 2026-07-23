@@ -11,6 +11,7 @@ const mockGetRecentFiles = jest.fn();
 const mockToastWarning = jest.fn();
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/app",
   useSearchParams: () => ({
     get: () => null,
   }),

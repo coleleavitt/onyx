@@ -4,6 +4,7 @@ from typing import Callable
 from uuid import UUID
 
 from pydantic import BaseModel
+from pydantic import Field
 
 from onyx.configs.constants import MessageType
 from onyx.context.search.models import SearchDoc
@@ -219,6 +220,8 @@ class SearchParams(BaseModel):
 
     project_id_filter: int | None
     persona_id_filter: int | None
+    project_attached_document_ids: list[str] = Field(default_factory=list)
+    project_hierarchy_node_ids: list[int] = Field(default_factory=list)
     search_usage: SearchToolUsage
 
 

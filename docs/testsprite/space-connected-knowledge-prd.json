@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "project": "Onyx Space Connected Knowledge",
+    "prepared_by": "TestSprite local",
+    "scope": "Space detail connected-source knowledge selection for indexed Onyx connectors",
+    "generated_on": "2026-07-22",
+    "coverage_definition": "100% means every requirement in this scoped PRD maps to at least one stored local TestSprite test or an explicit static/unit fallback. It is not whole-repository line or branch coverage."
+  },
+  "product_overview": "Spaces can use already-indexed connector knowledge without copying SharePoint/connector files as uploads. Admins continue to configure intranet connectors in the admin panel; space editors can attach indexed hierarchy nodes/folders/sites and exact indexed documents as space-scoped retrieval context. Uploaded local files remain separate from connected-source selections. Retrieval uses selected scopes while preserving per-user ACL filtering.",
+  "core_goals": [
+    "Keep connector setup and permission sync in existing Onyx connector/admin flows.",
+    "Let space editors scope a space to indexed connector folders/sites/documents from the existing hierarchy model.",
+    "Keep uploaded files and connected-source references distinct in API, persistence, retrieval, and UI.",
+    "Ensure selecting a connector document/folder in a space never grants document access to users who could not otherwise retrieve it.",
+    "Prove the real browser flow can open the space right-rail picker and save/reload a connected-source selection when seeded hierarchy is available."
+  ],
+  "requirements": [
+    {
+      "id": "SK-REQ-001",
+      "title": "Persist space connected-source exact documents",
+      "description": "A space stores selected indexed connector document IDs separately from uploaded user files and returns them through project detail/connected-knowledge APIs.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "PUT /api/user/projects/{id}/connected-knowledge accepts document_ids.",
+        "GET /api/user/projects/{id}/connected-knowledge returns selected document snapshots.",
+        "GET /api/user/projects/{id}/details includes connected_knowledge.documents."
+      ],
+      "implementation_files": [
+        "backend/onyx/db/models.py",
+        "backend/onyx/db/projects.py",
+        "backend/onyx/server/features/projects/api.py",
+        "backend/onyx/server/features/projects/models.py",
+        "web/src/lib/projects/types.ts",
+        "web/src/lib/projects/svc.ts"
+      ]
+    },
+    {
+      "id": "SK-REQ-002",
+      "title": "Persist space connected-source hierarchy nodes",
+      "description": "A space stores selected indexed connector hierarchy node IDs (folders/sites/libraries) separately from uploaded user files and returns them through project detail/connected-knowledge APIs.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "PUT /api/user/projects/{id}/connected-knowledge accepts hierarchy_node_ids.",
+        "GET /api/user/projects/{id}/connected-knowledge returns selected hierarchy node snapshots.",
+        "Project detail reload preserves selected folders/sites."
+      ],
+      "implementation_files": [
+        "backend/alembic/versions/9b1c2d3e4f5a_add_project_connected_knowledge.py",
+        "backend/onyx/db/models.py",
+        "backend/onyx/db/projects.py",
+        "web/src/providers/ProjectsContext.tsx"
+      ]
+    },
+    {
+      "id": "SK-REQ-003",
+      "title": "Require space edit access for connected-source updates",
+      "description": "Only users with space edit access can update connected-source selections; viewers can read but not mutate.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "Viewer update attempts are rejected by the real project API path.",
+        "Owner/editor update attempts can save valid accessible selections."
+      ],
+      "implementation_files": [
+        "backend/onyx/server/features/projects/api.py",
+        "backend/onyx/db/projects.py"
+      ]
+    },
+    {
+      "id": "SK-REQ-004",
+      "title": "Validate connector document and hierarchy access before attaching",
+      "description": "Space editors cannot attach indexed connector documents or hierarchy nodes they cannot access.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "Inaccessible document selection is rejected.",
+        "Inaccessible hierarchy node selection is rejected.",
+        "Accessible public or ACL-matching selections can be attached."
+      ],
+      "implementation_files": [
+        "backend/onyx/db/projects.py",
+        "backend/tests/external_dependency_unit/projects/test_project_connected_knowledge.py"
+      ]
+    },
+    {
+      "id": "SK-REQ-005",
+      "title": "Use space connected-source selections in retrieval without bypassing ACLs",
+      "description": "Project chat/search uses selected exact document IDs and hierarchy node IDs as retrieval scope while intersecting with the requesting user's normal access-control filters.",
+      "priority": "P0",
+      "observable_behaviors": [
+        "Space connected-source selections are copied into SearchParams and SearchTool PersonaSearchInfo.",
+        "SearchTool/search_pipeline passes selected doc/node filters to the document index.",
+        "A viewer cannot retrieve an owner-only selected document even when the owner attached it to the shared space."
+      ],
+      "implementation_files": [
+        "backend/onyx/chat/models.py",
+        "backend/onyx/chat/process_message.py",
+        "backend/onyx/tools/tool_constructor.py",
+        "backend/tests/external_dependency_unit/projects/test_project_connected_knowledge.py",
+        "backend/tests/unit/onyx/document_index/test_project_connected_knowledge_filters.py"
+      ]
+    },
+    {
+      "id": "SK-REQ-006",
+      "title": "Expose connected sources distinctly from uploaded files in the space right rail",
+      "description": "The space right rail shows uploaded files and connected-source selections as separate concepts and launches a modal for indexed connector selection.",
+      "priority": "P1",
+      "observable_behaviors": [
+        "Right rail includes a Connected sources section separate from Files.",
+        "Existing Files add/upload controls remain available.",
+        "Selected connector folders/documents render under Connected sources."
+      ],
+      "implementation_files": [
+        "web/src/sections/projects/ProjectContextPanel.tsx",
+        "web/src/sections/projects/SpaceConnectedSourcesSection.tsx",
+        "web/src/sections/projects/SpaceConnectedKnowledgeModal.tsx",
+        "web/src/sections/projects/SpaceConnectedKnowledgeModal.test.tsx"
+      ]
+    },
+    {
+      "id": "SK-REQ-007",
+      "title": "Provide real browser E2E coverage for the space connected-source picker",
+      "description": "The authenticated browser flow opens a real space, opens the connected-source picker, exercises a seeded connector hierarchy path when available, saves and reloads the selection, and still verifies local upload controls and existing links/share affordances.",
+      "priority": "P1",
+      "observable_behaviors": [
+        "Deep Spaces Playwright smoke opens the connected-source picker from the right rail.",
+        "When selectable hierarchy rows exist, the smoke selects one, saves, reloads, and verifies the selection in the rail.",
+        "When no indexed connector hierarchy exists, the smoke records the honest empty-state branch rather than silently omitting it.",
+        "Existing local file upload, link, skills, scheduled task, and share controls still render."
+      ],
+      "implementation_files": [
+        "web/tests/e2e/pages/SpaceDetailPage.ts",
+        "web/tests/e2e/spaces/deep_spaces_parity.spec.ts",
+        "testsprite_tests/029e2284_ddb1_470e_a79e_8271481c6a9f_Deep_Spaces_parity_UI_smoke__Playwright.sh"
+      ]
+    }
+  ],
+  "test_credentials": {
+    "admin_username": "admin_user@example.com",
+    "admin_password": "TestPassword123!",
+    "role": "admin"
+  },
+  "test_environment": {
+    "frontend_url": "http://localhost:3000",
+    "api_url": "http://localhost:8080",
+    "runner": "local testsprite-rs with existing Onyx services and Playwright admin project"
+  }
+}

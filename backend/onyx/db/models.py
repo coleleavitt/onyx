@@ -5434,6 +5434,44 @@ class Project__UserFile(Base):
     )
 
 
+class Project__HierarchyNode(Base):
+    """Association table linking spaces to indexed connector hierarchy nodes."""
+
+    __tablename__ = "project__hierarchy_node"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("user_project.id", ondelete="CASCADE"), primary_key=True
+    )
+    hierarchy_node_id: Mapped[int] = mapped_column(
+        ForeignKey("hierarchy_node.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_project__hierarchy_node_node_id", "hierarchy_node_id"),
+    )
+
+
+class Project__Document(Base):
+    """Association table linking spaces to exact indexed connector documents."""
+
+    __tablename__ = "project__document"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("user_project.id", ondelete="CASCADE"), primary_key=True
+    )
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("document.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_project__document_document_id", "document_id"),)
+
+
 class Project__User(Base):
     __tablename__ = "project__user"
 
@@ -5490,6 +5528,14 @@ class UserProject(Base):
         "UserFile",
         secondary=Project__UserFile.__table__,
         back_populates="projects",
+    )
+    hierarchy_nodes: Mapped[list["HierarchyNode"]] = relationship(
+        "HierarchyNode",
+        secondary=Project__HierarchyNode.__table__,
+    )
+    attached_documents: Mapped[list["Document"]] = relationship(
+        "Document",
+        secondary=Project__Document.__table__,
     )
     chat_sessions: Mapped[list["ChatSession"]] = relationship(
         "ChatSession", back_populates="project", lazy="selectin"

@@ -39,6 +39,7 @@ from onyx.db.projects import get_project_token_count
 from onyx.db.projects import list_projects_for_user
 from onyx.db.projects import project_exists
 from onyx.db.projects import ProjectAccessPolicy
+from onyx.db.projects import replace_project_connected_knowledge
 from onyx.db.projects import replace_project_shares
 from onyx.db.projects import resolve_project_join_request
 from onyx.db.projects import set_project_pinned
@@ -54,6 +55,8 @@ from onyx.server.features.projects.models import normalize_project_name
 from onyx.server.features.projects.models import ProjectAccessRequest
 from onyx.server.features.projects.models import ProjectAccessRequestSnapshot
 from onyx.server.features.projects.models import ProjectAccessStateSnapshot
+from onyx.server.features.projects.models import ProjectConnectedKnowledgeRequest
+from onyx.server.features.projects.models import ProjectConnectedKnowledgeSnapshot
 from onyx.server.features.projects.models import ProjectJoinRequestSnapshot
 from onyx.server.features.projects.models import ProjectMetadataUpdateRequest
 from onyx.server.features.projects.models import ProjectShareRequest
@@ -433,6 +436,7 @@ def upsert_project_instructions(
 class ProjectPayload(BaseModel):
     project: UserProjectSnapshot
     files: list[UserFileSnapshot] | None = None
+    connected_knowledge: ProjectConnectedKnowledgeSnapshot | None = None
     persona_id_to_is_featured: dict[int, bool] | None = None
 
 
@@ -455,11 +459,62 @@ def get_project_details(
     persona_id_to_is_featured = {
         persona.id: persona.is_featured for persona in personas
     }
+    db_project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
+    )
     return ProjectPayload(
         project=project,
         files=files,
+        connected_knowledge=ProjectConnectedKnowledgeSnapshot.from_project(db_project),
         persona_id_to_is_featured=persona_id_to_is_featured,
     )
+
+
+@router.get(
+    "/{project_id}/connected-knowledge",
+    tags=PUBLIC_API_TAGS,
+)
+def get_project_connected_knowledge(
+    project_id: int,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectConnectedKnowledgeSnapshot:
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.VIEW,
+    )
+    return ProjectConnectedKnowledgeSnapshot.from_project(project)
+
+
+@router.put(
+    "/{project_id}/connected-knowledge",
+    tags=PUBLIC_API_TAGS,
+)
+def update_project_connected_knowledge(
+    project_id: int,
+    body: ProjectConnectedKnowledgeRequest,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectConnectedKnowledgeSnapshot:
+    project = _get_project_or_error(
+        project_id,
+        user=user,
+        db_session=db_session,
+        policy=ProjectAccessPolicy.EDIT,
+    )
+    updated = replace_project_connected_knowledge(
+        project=project,
+        document_ids=body.document_ids,
+        hierarchy_node_ids=body.hierarchy_node_ids,
+        user=user,
+        db_session=db_session,
+    )
+    return ProjectConnectedKnowledgeSnapshot.from_project(updated)
 
 
 @router.patch("/{project_id}", tags=PUBLIC_API_TAGS)

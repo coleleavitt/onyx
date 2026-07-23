@@ -5,10 +5,13 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 
+from onyx.configs.constants import DocumentSource
 from onyx.db.enums import ProjectAccessLevel
 from onyx.db.enums import ProjectJoinRequestStatus
 from onyx.db.enums import ProjectSharePermission
 from onyx.db.enums import UserFileStatus
+from onyx.db.models import Document
+from onyx.db.models import HierarchyNode
 from onyx.db.models import ProjectJoinRequest
 from onyx.db.models import UserFile
 from onyx.db.models import UserProject
@@ -86,6 +89,78 @@ class CategorizedFilesSnapshot(BaseModel):
                 for rejected_file in result.rejected_files
             ],
         )
+
+
+class ProjectConnectedDocumentSnapshot(BaseModel):
+    id: str
+    title: str
+    link: str | None = None
+    source: DocumentSource | None = None
+    parent_hierarchy_node_id: int | None = None
+    last_modified: datetime | None = None
+    last_synced: datetime | None = None
+
+    @classmethod
+    def from_model(cls, model: Document) -> "ProjectConnectedDocumentSnapshot":
+        parent = model.parent_hierarchy_node
+        return cls(
+            id=model.id,
+            title=model.semantic_id,
+            link=model.link,
+            source=parent.source if parent else None,
+            parent_hierarchy_node_id=model.parent_hierarchy_node_id,
+            last_modified=model.last_modified,
+            last_synced=model.last_synced,
+        )
+
+
+class ProjectConnectedHierarchyNodeSnapshot(BaseModel):
+    id: int
+    title: str
+    link: str | None = None
+    source: DocumentSource
+    parent_id: int | None = None
+
+    @classmethod
+    def from_model(
+        cls, model: HierarchyNode
+    ) -> "ProjectConnectedHierarchyNodeSnapshot":
+        return cls(
+            id=model.id,
+            title=model.display_name,
+            link=model.link,
+            source=model.source,
+            parent_id=model.parent_id,
+        )
+
+
+class ProjectConnectedKnowledgeSnapshot(BaseModel):
+    documents: list[ProjectConnectedDocumentSnapshot]
+    hierarchy_nodes: list[ProjectConnectedHierarchyNodeSnapshot]
+
+    @classmethod
+    def from_project(cls, model: UserProject) -> "ProjectConnectedKnowledgeSnapshot":
+        documents = sorted(model.attached_documents, key=lambda doc: doc.semantic_id)
+        hierarchy_nodes = sorted(
+            model.hierarchy_nodes, key=lambda node: (node.source.value, node.display_name)
+        )
+        return cls(
+            documents=[
+                ProjectConnectedDocumentSnapshot.from_model(document)
+                for document in documents
+            ],
+            hierarchy_nodes=[
+                ProjectConnectedHierarchyNodeSnapshot.from_model(node)
+                for node in hierarchy_nodes
+            ],
+        )
+
+
+class ProjectConnectedKnowledgeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_ids: list[str] = Field(default_factory=list)
+    hierarchy_node_ids: list[int] = Field(default_factory=list)
 
 
 class UserProjectSnapshot(BaseModel):

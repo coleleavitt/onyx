@@ -82,6 +82,8 @@ from onyx.db.models import ChatMessage
 from onyx.db.models import Persona
 from onyx.db.models import User
 from onyx.db.models import UserFile
+from onyx.db.projects import get_project_connected_document_ids
+from onyx.db.projects import get_project_connected_hierarchy_node_ids
 from onyx.db.projects import get_user_files_from_project
 from onyx.db.tools import get_tools
 from onyx.deep_research.dr_loop import run_deep_research_llm_loop
@@ -605,6 +607,27 @@ def determine_search_params(
     )
 
 
+def apply_project_connected_knowledge_to_search_params(
+    search_params: SearchParams,
+    project_id: int | None,
+    db_session: Session,
+) -> SearchParams:
+    if project_id is None:
+        return search_params
+
+    search_params.project_attached_document_ids = get_project_connected_document_ids(
+        project_id=project_id,
+        db_session=db_session,
+    )
+    search_params.project_hierarchy_node_ids = get_project_connected_hierarchy_node_ids(
+        project_id=project_id,
+        db_session=db_session,
+    )
+    if search_params.project_attached_document_ids or search_params.project_hierarchy_node_ids:
+        search_params.search_usage = SearchToolUsage.ENABLED
+    return search_params
+
+
 def _resolve_query_processing_hook_result(
     hook_result: QueryProcessingResponse | HookSkipped | HookSoftFailed,
     message_text: str,
@@ -925,6 +948,11 @@ def build_chat_turn(
         persona_id=persona.id,
         project_id=chat_session.project_id,
         extracted_context_files=extracted_context_files,
+    )
+    search_params = apply_project_connected_knowledge_to_search_params(
+        search_params,
+        chat_session.project_id,
+        db_session,
     )
 
     # Also grant access to persona-attached user files for FileReaderTool
@@ -1305,6 +1333,8 @@ def _run_models(
                     user_selected_filters=setup.new_msg_req.internal_search_filters,
                     project_id_filter=setup.search_params.project_id_filter,
                     persona_id_filter=setup.search_params.persona_id_filter,
+                    project_attached_document_ids=setup.search_params.project_attached_document_ids,
+                    project_hierarchy_node_ids=setup.search_params.project_hierarchy_node_ids,
                     bypass_acl=setup.bypass_acl,
                     slack_context=setup.slack_context,
                     enable_slack_search=_should_enable_slack_search(
