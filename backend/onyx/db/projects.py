@@ -27,6 +27,8 @@ from onyx.configs.constants import FileOrigin
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
+from onyx.db.connected_source_governance import filter_governed_document_ids
+from onyx.db.connected_source_governance import filter_governed_hierarchy_node_ids
 from onyx.db.document_access import get_accessible_documents_by_ids
 from onyx.db.enums import ProjectAccessLevel
 from onyx.db.enums import ProjectJoinRequestStatus
@@ -377,6 +379,16 @@ def replace_project_connected_knowledge(
                 OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
                 "Cannot attach documents you do not have access to.",
             )
+        governed_document_ids = filter_governed_document_ids(
+            db_session=db_session,
+            document_ids=requested_document_ids,
+            user=user,
+        )
+        if set(requested_document_ids) - governed_document_ids:
+            raise OnyxError(
+                OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+                "Cannot attach documents outside your connected-source policy.",
+            )
 
     hierarchy_nodes: list[HierarchyNode] = []
     if requested_node_ids:
@@ -398,6 +410,17 @@ def replace_project_connected_knowledge(
             raise OnyxError(
                 OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
                 "Cannot attach hierarchy nodes you do not have access to.",
+            )
+        governed_node_ids = filter_governed_hierarchy_node_ids(
+            db_session=db_session,
+            node_ids=requested_node_ids,
+            user=user,
+            include_archived=True,
+        )
+        if set(requested_node_ids) - governed_node_ids:
+            raise OnyxError(
+                OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+                "Cannot attach hierarchy nodes outside your connected-source policy.",
             )
 
     project.attached_documents.clear()

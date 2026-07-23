@@ -5,12 +5,40 @@ export type DocumentSortField = "name" | "last_updated";
 export type DocumentSortDirection = "asc" | "desc";
 export type FolderPosition = "on_top" | "mixed";
 
+export type ConnectedSourceCurationStatus =
+  | "DEFAULT_SAFE"
+  | "STANDARD"
+  | "ARCHIVE"
+  | "HIDDEN"
+  | "DIAGNOSTIC";
+
+export interface HierarchyNodeGovernance {
+  curation_status: ConnectedSourceCurationStatus | null;
+  is_default: boolean;
+  is_archived: boolean;
+  is_hidden: boolean;
+  is_diagnostic: boolean;
+  is_selectable: boolean;
+  display_label: string | null;
+  tenant_label: string | null;
+  department_label: string | null;
+  sort_order: number;
+  size_bytes: number | null;
+  document_count_estimate: number | null;
+  indexed_document_count: number;
+  indexed_chunk_count: number;
+  warning: string | null;
+  allowed_group_ids: number[];
+  excluded_hierarchy_node_ids: number[];
+}
+
 // Hierarchy Node types matching backend models
 export interface HierarchyNodeSummary {
   id: number;
   title: string;
   link: string | null;
   parent_id: number | null;
+  governance: HierarchyNodeGovernance | null;
 }
 
 export interface HierarchyNodesRequest {

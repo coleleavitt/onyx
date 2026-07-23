@@ -146,6 +146,9 @@ class AssistantKnowledgeFilters(BaseModel):
     # Hierarchy node IDs (folders/spaces) attached to the assistant.
     # Matches chunks where ancestor_hierarchy_node_ids contains any of these.
     hierarchy_node_ids: list[int] | None = None
+    # Hierarchy node IDs excluded from selected assistant knowledge scopes.
+    # Matches are removed when ancestor_hierarchy_node_ids contains any value.
+    excluded_hierarchy_node_ids: list[int] | None = None
 
 
 class IndexFilters(BaseFilters, UserFileFilters, AssistantKnowledgeFilters):
@@ -491,3 +494,4 @@ class PersonaSearchInfo(BaseModel):
     search_start_date: datetime | None
     attached_document_ids: list[str]
     hierarchy_node_ids: list[int]
+    excluded_hierarchy_node_ids: list[int] = []

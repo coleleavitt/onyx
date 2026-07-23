@@ -9,6 +9,7 @@ from onyx.server.documents.models import ConnectorSnapshot
 from onyx.server.documents.models import CredentialSnapshot
 from onyx.server.features.document_set.models import DocumentSet
 from onyx.server.features.persona.models import PersonaSnapshot
+from onyx.server.features.projects.models import ConnectedSourceScopeSnapshot
 from onyx.server.manage.models import UserInfo
 from onyx.server.manage.models import UserPreferences
 
@@ -21,6 +22,7 @@ class UserGroup(BaseModel):
     cc_pairs: list[ConnectorCredentialPairDescriptor]
     document_sets: list[DocumentSet]
     personas: list[PersonaSnapshot]
+    connected_source_scopes: list[ConnectedSourceScopeSnapshot]
     is_up_to_date: bool
     is_up_for_deletion: bool
     is_default: bool
@@ -82,6 +84,10 @@ class UserGroup(BaseModel):
                 PersonaSnapshot.from_model(persona)
                 for persona in user_group_model.personas
                 if not persona.deleted
+            ],
+            connected_source_scopes=[
+                ConnectedSourceScopeSnapshot.from_model(scope)
+                for scope in user_group_model.connected_source_scopes
             ],
             is_up_to_date=user_group_model.is_up_to_date,
             is_up_for_deletion=user_group_model.is_up_for_deletion,

@@ -15,6 +15,7 @@ import {
   createGroup,
   updateAgentGroupSharing,
   updateDocSetGroupSharing,
+  updateConnectedSourceScopeGroupSharing,
   saveTokenLimits,
 } from "./svc";
 import { memberTableColumns, PAGE_SIZE } from "./shared";
@@ -31,6 +32,7 @@ function CreateGroupPage() {
   const [selectedCcPairIds, setSelectedCcPairIds] = useState<number[]>([]);
   const [selectedDocSetIds, setSelectedDocSetIds] = useState<number[]>([]);
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
+  const [selectedSourceScopeIds, setSelectedSourceScopeIds] = useState<number[]>([]);
   const [tokenLimits, setTokenLimits] = useState<TokenLimit[]>([
     { tokenBudget: null, periodHours: null },
   ]);
@@ -53,6 +55,11 @@ function CreateGroupPage() {
       );
       await updateAgentGroupSharing(groupId, [], selectedAgentIds);
       await updateDocSetGroupSharing(groupId, [], selectedDocSetIds);
+      await updateConnectedSourceScopeGroupSharing(
+        groupId,
+        [],
+        selectedSourceScopeIds
+      );
       await saveTokenLimits(groupId, tokenLimits, []);
       toast.success(`Group "${trimmed}" created`);
       router.push("/admin/groups");
@@ -157,6 +164,8 @@ function CreateGroupPage() {
           onDocSetIdsChange={setSelectedDocSetIds}
           selectedAgentIds={selectedAgentIds}
           onAgentIdsChange={setSelectedAgentIds}
+          selectedSourceScopeIds={selectedSourceScopeIds}
+          onSourceScopeIdsChange={setSelectedSourceScopeIds}
         />
 
         <TokenLimitSection

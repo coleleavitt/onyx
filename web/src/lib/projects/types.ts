@@ -68,6 +68,7 @@ export interface CreateProjectInput {
   description?: string | null;
   instructions?: string | null;
   emoji?: string | null;
+  connected_knowledge_preset_id?: number | null;
 }
 
 export interface ProjectMetadataUpdate {
@@ -157,6 +158,36 @@ export interface ProjectConnectedKnowledge {
 export interface ProjectConnectedKnowledgeUpdate {
   document_ids: string[];
   hierarchy_node_ids: number[];
+}
+
+export interface ConnectedSourceScope {
+  id: number;
+  hierarchy_node_id: number;
+  title: string;
+  source: ValidSources;
+  link: string | null;
+  parent_id: number | null;
+  curation_status: "DEFAULT_SAFE" | "STANDARD" | "ARCHIVE" | "HIDDEN" | "DIAGNOSTIC";
+  display_label: string | null;
+  tenant_label: string | null;
+  department_label: string | null;
+  sort_order: number;
+  size_bytes: number | null;
+  document_count_estimate: number | null;
+  warning: string | null;
+  group_ids: number[];
+  excluded_hierarchy_node_ids: number[];
+}
+
+export interface ConnectedKnowledgePreset {
+  id: number;
+  name: string;
+  description: string | null;
+  emoji: string | null;
+  instructions: string | null;
+  is_default: boolean;
+  is_archived: boolean;
+  connected_knowledge: ProjectConnectedKnowledge;
 }
 
 export type ProjectDetails = {

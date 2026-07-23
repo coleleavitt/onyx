@@ -1,5 +1,9 @@
 /** API helpers for the Groups pages. */
 
+import {
+  fetchConnectedSourceScopes,
+  updateConnectedSourceScope,
+} from "@/lib/projects/svc";
 import { SWR_KEYS } from "@/lib/swr-keys";
 
 const USER_GROUP_URL = SWR_KEYS.adminUserGroups;
@@ -196,6 +200,36 @@ async function updateDocSetGroupSharing(
 }
 
 // ---------------------------------------------------------------------------
+// Connected source scope sharing — managed from source-governance policy rows
+// ---------------------------------------------------------------------------
+
+async function updateConnectedSourceScopeGroupSharing(
+  groupId: number,
+  initialScopeIds: number[],
+  currentScopeIds: number[]
+): Promise<void> {
+  const initialSet = new Set(initialScopeIds);
+  const currentSet = new Set(currentScopeIds);
+  const changedScopeIds = [
+    ...currentScopeIds.filter((id) => !initialSet.has(id)),
+    ...initialScopeIds.filter((id) => !currentSet.has(id)),
+  ];
+  if (changedScopeIds.length === 0) return;
+
+  const scopes = await fetchConnectedSourceScopes();
+  const scopeById = new Map(scopes.map((scope) => [scope.id, scope]));
+  for (const scopeId of changedScopeIds) {
+    const scope = scopeById.get(scopeId);
+    if (!scope) throw new Error(`Connected source scope ${scopeId} not found`);
+    const shouldInclude = currentSet.has(scopeId);
+    const groupIds = shouldInclude
+      ? Array.from(new Set([...scope.group_ids, groupId]))
+      : scope.group_ids.filter((id) => id !== groupId);
+    await updateConnectedSourceScope({ ...scope, group_ids: groupIds });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Token rate limits — create / update / delete
 // ---------------------------------------------------------------------------
 
@@ -288,5 +322,6 @@ export {
   deleteGroup,
   updateAgentGroupSharing,
   updateDocSetGroupSharing,
+  updateConnectedSourceScopeGroupSharing,
   saveTokenLimits,
 };

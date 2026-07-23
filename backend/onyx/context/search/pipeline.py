@@ -46,6 +46,7 @@ def _build_index_filters(
     # Assistant knowledge filters
     attached_document_ids: list[str] | None = None,
     hierarchy_node_ids: list[int] | None = None,
+    excluded_hierarchy_node_ids: list[int] | None = None,
     # Pre-fetched ACL filters (skips DB query when provided)
     acl_filters: list[str] | None = None,
 ) -> IndexFilters:
@@ -123,6 +124,7 @@ def _build_index_filters(
         # Assistant knowledge filters
         attached_document_ids=attached_document_ids,
         hierarchy_node_ids=hierarchy_node_ids,
+        excluded_hierarchy_node_ids=excluded_hierarchy_node_ids,
     )
 
     return final_filters
@@ -281,6 +283,11 @@ def search_pipeline(
     hierarchy_node_ids: list[int] | None = (
         persona_search_info.hierarchy_node_ids or None if persona_search_info else None
     )
+    excluded_hierarchy_node_ids: list[int] | None = (
+        persona_search_info.excluded_hierarchy_node_ids or None
+        if persona_search_info
+        else None
+    )
 
     filters = _build_index_filters(
         user_provided_filters=chunk_search_request.user_selected_filters,
@@ -293,6 +300,7 @@ def search_pipeline(
         bypass_acl=chunk_search_request.bypass_acl,
         attached_document_ids=attached_document_ids,
         hierarchy_node_ids=hierarchy_node_ids,
+        excluded_hierarchy_node_ids=excluded_hierarchy_node_ids,
         acl_filters=acl_filters,
     )
 

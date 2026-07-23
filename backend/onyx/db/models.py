@@ -67,6 +67,7 @@ from onyx.db.enums import ApprovalDecision
 from onyx.db.enums import ArtifactType
 from onyx.db.enums import BuildSessionStatus
 from onyx.db.enums import ChatSessionSharedStatus
+from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import ConnectorCredentialPairStatus
 from onyx.db.enums import DefaultAppMode
 from onyx.db.enums import EmbeddingPrecision
@@ -5151,6 +5152,11 @@ class UserGroup(Base):
         secondary=DocumentSet__UserGroup.__table__,
         viewonly=True,
     )
+    connected_source_scopes: Mapped[list["ConnectedSourceScope"]] = relationship(
+        "ConnectedSourceScope",
+        secondary="connected_source_scope__user_group",
+        viewonly=True,
+    )
     credentials: Mapped[list[Credential]] = relationship(
         "Credential",
         secondary=Credential__UserGroup.__table__,
@@ -5434,6 +5440,150 @@ class Project__UserFile(Base):
     )
 
 
+class ConnectedSourceScope(Base):
+    """Governance metadata for a connector hierarchy scope exposed to Spaces."""
+
+    __tablename__ = "connected_source_scope"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    hierarchy_node_id: Mapped[int] = mapped_column(
+        ForeignKey("hierarchy_node.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    curation_status: Mapped[ConnectedSourceCurationStatus] = mapped_column(
+        Enum(ConnectedSourceCurationStatus, native_enum=False),
+        nullable=False,
+        default=ConnectedSourceCurationStatus.STANDARD,
+        server_default=ConnectedSourceCurationStatus.STANDARD.value,
+    )
+    display_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    tenant_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    department_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    document_count_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    warning: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    hierarchy_node: Mapped["HierarchyNode"] = relationship("HierarchyNode")
+    group_links: Mapped[list["ConnectedSourceScope__UserGroup"]] = relationship(
+        "ConnectedSourceScope__UserGroup", cascade="all, delete-orphan", lazy="selectin"
+    )
+    excluded_links: Mapped[list["ConnectedSourceScopeExclusion"]] = relationship(
+        "ConnectedSourceScopeExclusion", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    __table_args__ = (
+        Index("ix_connected_source_scope_hierarchy_node_id", "hierarchy_node_id"),
+        Index("ix_connected_source_scope_status", "curation_status"),
+    )
+
+
+class ConnectedSourceScope__UserGroup(Base):
+    """Allow-list linking governed source scopes to user groups."""
+
+    __tablename__ = "connected_source_scope__user_group"
+
+    scope_id: Mapped[int] = mapped_column(
+        ForeignKey("connected_source_scope.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_group_id: Mapped[int] = mapped_column(
+        ForeignKey("user_group.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    user_group: Mapped["UserGroup"] = relationship("UserGroup")
+
+
+class ConnectedSourceScopeExclusion(Base):
+    """Configured child scopes excluded when a governed parent scope is selected."""
+
+    __tablename__ = "connected_source_scope_exclusion"
+
+    scope_id: Mapped[int] = mapped_column(
+        ForeignKey("connected_source_scope.id", ondelete="CASCADE"), primary_key=True
+    )
+    excluded_hierarchy_node_id: Mapped[int] = mapped_column(
+        ForeignKey("hierarchy_node.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    excluded_hierarchy_node: Mapped["HierarchyNode"] = relationship("HierarchyNode")
+
+    __table_args__ = (
+        Index(
+            "ix_connected_source_scope_exclusion_excluded_node",
+            "excluded_hierarchy_node_id",
+        ),
+    )
+
+
+class ProjectConnectedKnowledgePreset(Base):
+    """Curated default connected-source selection for newly created Spaces."""
+
+    __tablename__ = "project_connected_knowledge_preset"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+    emoji: Mapped[str | None] = mapped_column(String, nullable=True)
+    instructions: Mapped[str | None] = mapped_column(String, nullable=True)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    hierarchy_nodes: Mapped[list["HierarchyNode"]] = relationship(
+        "HierarchyNode", secondary="project_connected_knowledge_preset__hierarchy_node"
+    )
+    attached_documents: Mapped[list["Document"]] = relationship(
+        "Document", secondary="project_connected_knowledge_preset__document"
+    )
+
+
+class ProjectConnectedKnowledgePreset__HierarchyNode(Base):
+    __tablename__ = "project_connected_knowledge_preset__hierarchy_node"
+
+    preset_id: Mapped[int] = mapped_column(
+        ForeignKey("project_connected_knowledge_preset.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    hierarchy_node_id: Mapped[int] = mapped_column(
+        ForeignKey("hierarchy_node.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class ProjectConnectedKnowledgePreset__Document(Base):
+    __tablename__ = "project_connected_knowledge_preset__document"
+
+    preset_id: Mapped[int] = mapped_column(
+        ForeignKey("project_connected_knowledge_preset.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("document.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class Project__HierarchyNode(Base):
     """Association table linking spaces to indexed connector hierarchy nodes."""
 
@@ -5449,9 +5599,7 @@ class Project__HierarchyNode(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    __table_args__ = (
-        Index("ix_project__hierarchy_node_node_id", "hierarchy_node_id"),
-    )
+    __table_args__ = (Index("ix_project__hierarchy_node_node_id", "hierarchy_node_id"),)
 
 
 class Project__Document(Base):

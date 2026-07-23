@@ -6,12 +6,15 @@ from pydantic import ConfigDict
 from pydantic import Field
 
 from onyx.configs.constants import DocumentSource
+from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import ProjectAccessLevel
 from onyx.db.enums import ProjectJoinRequestStatus
 from onyx.db.enums import ProjectSharePermission
 from onyx.db.enums import UserFileStatus
+from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import Document
 from onyx.db.models import HierarchyNode
+from onyx.db.models import ProjectConnectedKnowledgePreset
 from onyx.db.models import ProjectJoinRequest
 from onyx.db.models import UserFile
 from onyx.db.models import UserProject
@@ -142,7 +145,8 @@ class ProjectConnectedKnowledgeSnapshot(BaseModel):
     def from_project(cls, model: UserProject) -> "ProjectConnectedKnowledgeSnapshot":
         documents = sorted(model.attached_documents, key=lambda doc: doc.semantic_id)
         hierarchy_nodes = sorted(
-            model.hierarchy_nodes, key=lambda node: (node.source.value, node.display_name)
+            model.hierarchy_nodes,
+            key=lambda node: (node.source.value, node.display_name),
         )
         return cls(
             documents=[
@@ -161,6 +165,120 @@ class ProjectConnectedKnowledgeRequest(BaseModel):
 
     document_ids: list[str] = Field(default_factory=list)
     hierarchy_node_ids: list[int] = Field(default_factory=list)
+
+
+class ConnectedSourceScopeSnapshot(BaseModel):
+    id: int
+    hierarchy_node_id: int
+    title: str
+    source: DocumentSource
+    link: str | None = None
+    parent_id: int | None = None
+    curation_status: ConnectedSourceCurationStatus
+    display_label: str | None = None
+    tenant_label: str | None = None
+    department_label: str | None = None
+    sort_order: int
+    size_bytes: int | None = None
+    document_count_estimate: int | None = None
+    warning: str | None = None
+    group_ids: list[int]
+    excluded_hierarchy_node_ids: list[int]
+
+    @classmethod
+    def from_model(cls, model: ConnectedSourceScope) -> "ConnectedSourceScopeSnapshot":
+        node = model.hierarchy_node
+        return cls(
+            id=model.id,
+            hierarchy_node_id=model.hierarchy_node_id,
+            title=node.display_name,
+            source=node.source,
+            link=node.link,
+            parent_id=node.parent_id,
+            curation_status=model.curation_status,
+            display_label=model.display_label,
+            tenant_label=model.tenant_label,
+            department_label=model.department_label,
+            sort_order=model.sort_order,
+            size_bytes=model.size_bytes,
+            document_count_estimate=model.document_count_estimate,
+            warning=model.warning,
+            group_ids=sorted(link.user_group_id for link in model.group_links),
+            excluded_hierarchy_node_ids=sorted(
+                link.excluded_hierarchy_node_id for link in model.excluded_links
+            ),
+        )
+
+
+class ConnectedSourceScopeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    curation_status: ConnectedSourceCurationStatus = (
+        ConnectedSourceCurationStatus.STANDARD
+    )
+    display_label: str | None = None
+    tenant_label: str | None = None
+    department_label: str | None = None
+    sort_order: int = 0
+    size_bytes: int | None = None
+    document_count_estimate: int | None = None
+    warning: str | None = None
+    group_ids: list[int] = Field(default_factory=list)
+    excluded_hierarchy_node_ids: list[int] = Field(default_factory=list)
+
+
+class ProjectConnectedKnowledgePresetSnapshot(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    emoji: str | None = None
+    instructions: str | None = None
+    is_default: bool
+    is_archived: bool
+    connected_knowledge: ProjectConnectedKnowledgeSnapshot
+
+    @classmethod
+    def from_model(
+        cls, model: ProjectConnectedKnowledgePreset
+    ) -> "ProjectConnectedKnowledgePresetSnapshot":
+        return cls(
+            id=model.id,
+            name=model.name,
+            description=model.description,
+            emoji=model.emoji,
+            instructions=model.instructions,
+            is_default=model.is_default,
+            is_archived=model.is_archived,
+            connected_knowledge=ProjectConnectedKnowledgeSnapshot(
+                documents=[
+                    ProjectConnectedDocumentSnapshot.from_model(document)
+                    for document in sorted(
+                        model.attached_documents,
+                        key=lambda document: document.semantic_id,
+                    )
+                ],
+                hierarchy_nodes=[
+                    ProjectConnectedHierarchyNodeSnapshot.from_model(node)
+                    for node in sorted(
+                        model.hierarchy_nodes,
+                        key=lambda node: (node.source.value, node.display_name),
+                    )
+                ],
+            ),
+        )
+
+
+class ProjectConnectedKnowledgePresetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str | None = None
+    emoji: str | None = None
+    instructions: str | None = None
+    document_ids: list[str] = Field(default_factory=list)
+    hierarchy_node_ids: list[int] = Field(default_factory=list)
+    is_default: bool = False
+    is_archived: bool = False
 
 
 class UserProjectSnapshot(BaseModel):

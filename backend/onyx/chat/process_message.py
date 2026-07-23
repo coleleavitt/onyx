@@ -82,6 +82,7 @@ from onyx.db.models import ChatMessage
 from onyx.db.models import Persona
 from onyx.db.models import User
 from onyx.db.models import UserFile
+from onyx.db.connected_source_governance import get_project_connected_excluded_hierarchy_node_ids
 from onyx.db.projects import get_project_connected_document_ids
 from onyx.db.projects import get_project_connected_hierarchy_node_ids
 from onyx.db.projects import get_user_files_from_project
@@ -622,6 +623,12 @@ def apply_project_connected_knowledge_to_search_params(
     search_params.project_hierarchy_node_ids = get_project_connected_hierarchy_node_ids(
         project_id=project_id,
         db_session=db_session,
+    )
+    search_params.project_excluded_hierarchy_node_ids = (
+        get_project_connected_excluded_hierarchy_node_ids(
+            project_id=project_id,
+            db_session=db_session,
+        )
     )
     if search_params.project_attached_document_ids or search_params.project_hierarchy_node_ids:
         search_params.search_usage = SearchToolUsage.ENABLED
@@ -1335,6 +1342,7 @@ def _run_models(
                     persona_id_filter=setup.search_params.persona_id_filter,
                     project_attached_document_ids=setup.search_params.project_attached_document_ids,
                     project_hierarchy_node_ids=setup.search_params.project_hierarchy_node_ids,
+                    project_excluded_hierarchy_node_ids=setup.search_params.project_excluded_hierarchy_node_ids,
                     bypass_acl=setup.bypass_acl,
                     slack_context=setup.slack_context,
                     enable_slack_search=_should_enable_slack_search(

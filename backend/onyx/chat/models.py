@@ -222,6 +222,7 @@ class SearchParams(BaseModel):
     persona_id_filter: int | None
     project_attached_document_ids: list[str] = Field(default_factory=list)
     project_hierarchy_node_ids: list[int] = Field(default_factory=list)
+    project_excluded_hierarchy_node_ids: list[int] = Field(default_factory=list)
     search_usage: SearchToolUsage
 
 

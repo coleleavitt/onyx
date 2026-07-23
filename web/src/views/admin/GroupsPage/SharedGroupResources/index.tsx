@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { SvgEmpty, SvgFiles, SvgXOctagon } from "@opal/icons";
 import { Content } from "@opal/layouts";
 import { Section } from "@/layouts/general-layouts";
@@ -13,6 +13,8 @@ import AgentAvatar from "@/refresh-components/avatars/AgentAvatar";
 import { useConnectorStatus } from "@/lib/hooks";
 import { useDocumentSets } from "@/lib/hooks/useDocumentSets";
 import { useAgents } from "@/lib/agents/hooks";
+import { fetchConnectedSourceScopes } from "@/lib/projects/svc";
+import type { ConnectedSourceScope } from "@/lib/projects/types";
 import { getSourceMetadata } from "@/lib/sources";
 import type { ValidSources } from "@/lib/types";
 import ResourceContent from "@/views/admin/GroupsPage/SharedGroupResources/ResourceContent";
@@ -26,6 +28,8 @@ interface SharedGroupResourcesProps {
   onDocSetIdsChange: (ids: number[]) => void;
   selectedAgentIds: number[];
   onAgentIdsChange: (ids: number[]) => void;
+  selectedSourceScopeIds: number[];
+  onSourceScopeIdsChange: (ids: number[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,13 +91,21 @@ function SharedGroupResources({
   onDocSetIdsChange,
   selectedAgentIds,
   onAgentIdsChange,
+  selectedSourceScopeIds,
+  onSourceScopeIdsChange,
 }: SharedGroupResourcesProps) {
   const [connectorSearch, setConnectorSearch] = useState("");
   const [agentSearch, setAgentSearch] = useState("");
+  const [sourceScopeSearch, setSourceScopeSearch] = useState("");
+  const [sourceScopes, setSourceScopes] = useState<ConnectedSourceScope[]>([]);
 
   const { data: connectors = [] } = useConnectorStatus();
   const { documentSets } = useDocumentSets();
   const { agents } = useAgents();
+
+  useEffect(() => {
+    fetchConnectedSourceScopes().then(setSourceScopes).catch(() => setSourceScopes([]));
+  }, []);
 
   // --- Derived data ---
 
@@ -109,6 +121,10 @@ function SharedGroupResources({
     () => new Set(selectedAgentIds),
     [selectedAgentIds]
   );
+  const selectedSourceScopeSet = useMemo(
+    () => new Set(selectedSourceScopeIds),
+    [selectedSourceScopeIds]
+  );
 
   const selectedPairs = useMemo(
     () => connectors.filter((p) => selectedCcPairSet.has(p.cc_pair_id)),
@@ -121,6 +137,10 @@ function SharedGroupResources({
   const selectedAgentObjects = useMemo(
     () => agents.filter((a) => selectedAgentSet.has(a.id)),
     [agents, selectedAgentSet]
+  );
+  const selectedSourceScopes = useMemo(
+    () => sourceScopes.filter((scope) => selectedSourceScopeSet.has(scope.id)),
+    [sourceScopes, selectedSourceScopeSet]
   );
 
   // --- Popover sections ---
@@ -205,6 +225,66 @@ function SharedGroupResources({
     onDocSetIdsChange,
   ]);
 
+  const sourceScopeSections: PopoverSection[] = useMemo(() => {
+    const q = sourceScopeSearch.toLowerCase();
+    const items = sourceScopes
+      .filter((scope) => {
+        const label = [
+          scope.display_label,
+          scope.department_label,
+          scope.tenant_label,
+          scope.title,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return !q || label.includes(q);
+      })
+      .map((scope) => {
+        const isSelected = selectedSourceScopeSet.has(scope.id);
+        const meta = getSourceMetadata(scope.source);
+        const title = scope.display_label ?? scope.title;
+        const description = [
+          scope.tenant_label,
+          scope.department_label,
+          scope.curation_status === "ARCHIVE" ? "Archive" : null,
+          scope.warning,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        return {
+          key: `s-${scope.id}`,
+          disabled: isSelected,
+          onSelect: () =>
+            isSelected
+              ? onSourceScopeIdsChange(
+                  selectedSourceScopeIds.filter((id) => id !== scope.id)
+                )
+              : onSourceScopeIdsChange([...selectedSourceScopeIds, scope.id]),
+          render: (dimmed: boolean) => (
+            <LineItem
+              interactive={!dimmed}
+              muted={dimmed}
+              icon={meta.icon}
+              description={description || "Connected source scope"}
+              rightChildren={
+                scope.group_ids.length > 0 || dimmed ? <SharedBadge /> : undefined
+              }
+            >
+              {title}
+            </LineItem>
+          ),
+        };
+      });
+    return items.length > 0 ? [{ label: "Connected Sources", items }] : [];
+  }, [
+    sourceScopes,
+    sourceScopeSearch,
+    selectedSourceScopeSet,
+    selectedSourceScopeIds,
+    onSourceScopeIdsChange,
+  ]);
+
   const agentSections: PopoverSection[] = useMemo(() => {
     const q = agentSearch.toLowerCase();
 
@@ -256,6 +336,10 @@ function SharedGroupResources({
 
   function removeAgent(id: number) {
     onAgentIdsChange(selectedAgentIds.filter((aid) => aid !== id));
+  }
+
+  function removeSourceScope(id: number) {
+    onSourceScopeIdsChange(selectedSourceScopeIds.filter((scopeId) => scopeId !== id));
   }
 
   const hasSelectedResources =
@@ -335,6 +419,67 @@ function SharedGroupResources({
                   icon={SvgEmpty}
                   title="No connectors or document sets added"
                   description="Add connectors or document set to share with this group."
+                  sizePreset="secondary"
+                  variant="section"
+                />
+              )}
+            </Section>
+
+            <Divider paddingParallel="fit" paddingPerpendicular="fit" />
+
+            {/* Connected source scopes */}
+            <Section
+              gap={0.5}
+              height="auto"
+              alignItems="stretch"
+              justifyContent="start"
+            >
+              <Section
+                gap={0.25}
+                height="auto"
+                alignItems="stretch"
+                justifyContent="start"
+              >
+                <Text mainUiAction text04>
+                  Space Connected Sources
+                </Text>
+                <ResourcePopover
+                  placeholder="Add source scopes"
+                  searchValue={sourceScopeSearch}
+                  onSearchChange={setSourceScopeSearch}
+                  sections={sourceScopeSections}
+                />
+              </Section>
+              {selectedSourceScopes.length > 0 ? (
+                <Section
+                  flexDirection="row"
+                  wrap
+                  gap={0.25}
+                  height="auto"
+                  alignItems="start"
+                  justifyContent="start"
+                >
+                  {selectedSourceScopes.map((scope) => (
+                    <ResourceContent
+                      key={`s-${scope.id}`}
+                      icon={getSourceMetadata(scope.source).icon}
+                      title={scope.display_label ?? scope.title}
+                      description={[
+                        scope.tenant_label,
+                        scope.department_label,
+                        scope.curation_status === "ARCHIVE" ? "Archive" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Connected source"}
+                      onRemove={() => removeSourceScope(scope.id)}
+                    />
+                  ))}
+                </Section>
+              ) : (
+                <Content
+                  icon={SvgEmpty}
+                  title="No connected source scopes added"
+                  description="Add curated SharePoint departments or folders this group may browse in Spaces."
                   sizePreset="secondary"
                   variant="section"
                 />

@@ -12,7 +12,9 @@ from onyx.configs.constants import PUBLIC_DOC_PAT
 from onyx.context.search.models import IndexFilters
 from onyx.context.search.models import InferenceChunk
 from onyx.context.search.models import PersonaSearchInfo
+from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
+from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import HierarchyNodeType
 from onyx.db.enums import ProjectSharePermission
 from onyx.db.models import Document
@@ -20,6 +22,8 @@ from onyx.db.models import HierarchyNode
 from onyx.db.models import KGStage
 from onyx.db.models import Project__User
 from onyx.db.models import User
+from onyx.db.models import User__UserGroup
+from onyx.db.models import UserGroup
 from onyx.db.models import UserProject
 from onyx.db.projects import fetch_project_by_id
 from onyx.db.projects import replace_project_connected_knowledge
@@ -47,11 +51,18 @@ class _FilteringDocumentIndex:
     ) -> list[InferenceChunk]:
         self.last_filters = filters
         selected_doc_ids = set(filters.attached_document_ids or [])
-        selected_node_ids = {str(node_id) for node_id in (filters.hierarchy_node_ids or [])}
+        selected_node_ids = {
+            str(node_id) for node_id in (filters.hierarchy_node_ids or [])
+        }
+        excluded_node_ids = {
+            str(node_id) for node_id in (filters.excluded_hierarchy_node_ids or [])
+        }
         acl_entries = set(filters.access_control_list or [])
         results: list[InferenceChunk] = []
         for chunk in self.chunks:
             chunk_nodes = set(chunk.metadata.get("ancestor_hierarchy_node_ids", []))
+            if chunk_nodes & excluded_node_ids:
+                continue
             in_scope = chunk.document_id in selected_doc_ids or bool(
                 chunk_nodes & selected_node_ids
             )
@@ -87,7 +98,9 @@ def _chunk(
         hidden=False,
         metadata={
             "acl": acl,
-            "ancestor_hierarchy_node_ids": [str(node_id) for node_id in ancestor_node_ids],
+            "ancestor_hierarchy_node_ids": [
+                str(node_id) for node_id in ancestor_node_ids
+            ],
         },
         match_highlights=[],
         doc_summary="",
@@ -104,6 +117,20 @@ def _create_project(db_session: Session, user: User, name: str) -> UserProject:
     return project
 
 
+def _create_group_for_user(
+    db_session: Session,
+    user: User,
+    name: str,
+) -> UserGroup:
+    group = UserGroup(name=f"{name}-{uuid4().hex}")
+    db_session.add(group)
+    db_session.flush()
+    db_session.add(User__UserGroup(user_group_id=group.id, user_id=user.id))
+    db_session.commit()
+    db_session.refresh(group)
+    return group
+
+
 def _create_hierarchy_node(
     db_session: Session,
     *,
@@ -111,6 +138,7 @@ def _create_hierarchy_node(
     name: str,
     source: DocumentSource = DocumentSource.SHAREPOINT,
     is_public: bool = True,
+    parent_id: int | None = None,
 ) -> HierarchyNode:
     node = HierarchyNode(
         raw_node_id=raw_id,
@@ -118,6 +146,7 @@ def _create_hierarchy_node(
         source=source,
         node_type=HierarchyNodeType.FOLDER,
         is_public=is_public,
+        parent_id=parent_id,
     )
     db_session.add(node)
     db_session.commit()
@@ -359,7 +388,9 @@ def test_search_tool_project_connected_knowledge_excludes_unauthorized_selected_
     assert fake_index.last_filters is not None
     assert private_owner_exact.id in fake_index.last_filters.attached_document_ids
     assert folder.id in fake_index.last_filters.hierarchy_node_ids
-    assert prefix_user_email(viewer.email) in fake_index.last_filters.access_control_list
+    assert (
+        prefix_user_email(viewer.email) in fake_index.last_filters.access_control_list
+    )
 
 
 def test_project_connected_knowledge_requires_edit_access(
@@ -415,3 +446,152 @@ def test_project_connected_knowledge_rejects_inaccessible_selection(
             user=user,
             db_session=db_session,
         )
+
+
+def test_project_connected_knowledge_rejects_scope_outside_group_policy(
+    db_session: Session,
+) -> None:
+    allowed_user = create_test_user(db_session, "project_policy_allowed")
+    denied_user = create_test_user(db_session, "project_policy_denied")
+    allowed_group = _create_group_for_user(
+        db_session, allowed_user, "advisor-services-policy"
+    )
+    governed_folder = _create_hierarchy_node(
+        db_session,
+        raw_id=f"governed-folder-{uuid4().hex}",
+        name="Advisor Services Intranet",
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=governed_folder.id,
+        curation_status=ConnectedSourceCurationStatus.DEFAULT_SAFE,
+        group_ids=[allowed_group.id],
+        excluded_hierarchy_node_ids=[],
+        tenant_label="Foundations",
+        department_label="Advisor Services",
+    )
+
+    denied_project = _create_project(db_session, denied_user, "Denied Policy Space")
+    with pytest.raises(OnyxError):
+        replace_project_connected_knowledge(
+            project=denied_project,
+            document_ids=[],
+            hierarchy_node_ids=[governed_folder.id],
+            user=denied_user,
+            db_session=db_session,
+        )
+
+    allowed_project = _create_project(db_session, allowed_user, "Allowed Policy Space")
+    replace_project_connected_knowledge(
+        project=allowed_project,
+        document_ids=[],
+        hierarchy_node_ids=[governed_folder.id],
+        user=allowed_user,
+        db_session=db_session,
+    )
+    assert [node.id for node in allowed_project.hierarchy_nodes] == [governed_folder.id]
+
+
+def test_project_connected_knowledge_applies_configured_excluded_child_scope(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_exclusion")
+    project = _create_project(db_session, user, "Excluded Archive Space")
+    parent = _create_hierarchy_node(
+        db_session,
+        raw_id=f"parent-scope-{uuid4().hex}",
+        name="Business Development Intranet",
+    )
+    archive = _create_hierarchy_node(
+        db_session,
+        raw_id=f"archive-scope-{uuid4().hex}",
+        name="z.Completed Transitions",
+        parent_id=parent.id,
+    )
+    active_doc = _create_indexed_document(
+        db_session,
+        document_id=f"active-doc-{uuid4().hex}",
+        title="Current transition template",
+        parent=parent,
+    )
+    archived_doc = _create_indexed_document(
+        db_session,
+        document_id=f"archived-doc-{uuid4().hex}",
+        title="Completed transition archive",
+        parent=archive,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=parent.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[archive.id],
+        warning="Excludes completed transition archive.",
+    )
+
+    replace_project_connected_knowledge(
+        project=project,
+        document_ids=[],
+        hierarchy_node_ids=[parent.id],
+        user=user,
+        db_session=db_session,
+    )
+    params = apply_project_connected_knowledge_to_search_params(
+        SearchParams(
+            project_id_filter=None,
+            persona_id_filter=None,
+            search_usage=SearchToolUsage.DISABLED,
+        ),
+        project.id,
+        db_session,
+    )
+    assert params.project_hierarchy_node_ids == [parent.id]
+    assert params.project_excluded_hierarchy_node_ids == [archive.id]
+
+    fake_index = _FilteringDocumentIndex(
+        [
+            _chunk(
+                active_doc.id,
+                title="Current transition template",
+                acl=[PUBLIC_DOC_PAT],
+                ancestor_node_ids=[parent.id],
+            ),
+            _chunk(
+                archived_doc.id,
+                title="Completed transition archive",
+                acl=[PUBLIC_DOC_PAT],
+                ancestor_node_ids=[parent.id, archive.id],
+            ),
+        ]
+    )
+    search_tool = SearchTool(
+        tool_id=1,
+        emitter=None,  # type: ignore[arg-type]
+        user=user,
+        persona_search_info=PersonaSearchInfo(
+            document_set_names=[],
+            search_start_date=None,
+            attached_document_ids=params.project_attached_document_ids,
+            hierarchy_node_ids=params.project_hierarchy_node_ids,
+            excluded_hierarchy_node_ids=params.project_excluded_hierarchy_node_ids,
+        ),
+        llm=None,  # type: ignore[arg-type]
+        document_index=fake_index,  # type: ignore[arg-type]
+        user_selected_filters=None,
+        project_id_filter=params.project_id_filter,
+        persona_id_filter=params.persona_id_filter,
+    )
+
+    chunks = search_tool._run_search_for_query(
+        query="transition",
+        hybrid_alpha=0.0,
+        num_hits=10,
+        acl_filters=list(get_acl_for_user(user, db_session)),
+        embedding_model=None,  # type: ignore[arg-type]
+        federated_retrieval_infos=[],
+        effective_filters=None,
+    )
+
+    assert {chunk.document_id for chunk in chunks} == {active_doc.id}
+    assert fake_index.last_filters is not None
+    assert fake_index.last_filters.excluded_hierarchy_node_ids == [archive.id]

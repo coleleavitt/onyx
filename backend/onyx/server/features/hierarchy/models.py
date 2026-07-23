@@ -2,8 +2,10 @@ from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel
+from pydantic import Field
 
 from onyx.configs.constants import DocumentSource
+from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.server.features.hierarchy.constants import DOCUMENT_PAGE_SIZE
 
 
@@ -26,11 +28,32 @@ class HierarchyNodesRequest(BaseModel):
     source: DocumentSource
 
 
+class HierarchyNodeGovernanceSnapshot(BaseModel):
+    curation_status: ConnectedSourceCurationStatus | None = None
+    is_default: bool = False
+    is_archived: bool = False
+    is_hidden: bool = False
+    is_diagnostic: bool = False
+    is_selectable: bool = True
+    display_label: str | None = None
+    tenant_label: str | None = None
+    department_label: str | None = None
+    sort_order: int = 0
+    size_bytes: int | None = None
+    document_count_estimate: int | None = None
+    indexed_document_count: int = 0
+    indexed_chunk_count: int = 0
+    warning: str | None = None
+    allowed_group_ids: list[int] = Field(default_factory=list)
+    excluded_hierarchy_node_ids: list[int] = Field(default_factory=list)
+
+
 class HierarchyNodeSummary(BaseModel):
     id: int
     title: str
     link: str | None
     parent_id: int | None
+    governance: HierarchyNodeGovernanceSnapshot | None = None
 
 
 class HierarchyNodesResponse(BaseModel):

@@ -241,6 +241,7 @@ class DocumentQuery:
             selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
+            excluded_hierarchy_node_ids=index_filters.excluded_hierarchy_node_ids,
         )
         final_get_ids_query: dict[str, Any] = {
             "query": {"bool": {"filter": filter_clauses}},
@@ -380,6 +381,7 @@ class DocumentQuery:
             selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
+            excluded_hierarchy_node_ids=index_filters.excluded_hierarchy_node_ids,
         )
 
         # See https://docs.opensearch.org/latest/query-dsl/compound/hybrid/
@@ -477,6 +479,7 @@ class DocumentQuery:
             selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
+            excluded_hierarchy_node_ids=index_filters.excluded_hierarchy_node_ids,
         )
 
         keyword_search_query = (
@@ -561,6 +564,7 @@ class DocumentQuery:
             selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
+            excluded_hierarchy_node_ids=index_filters.excluded_hierarchy_node_ids,
         )
 
         semantic_search_query = (
@@ -624,6 +628,7 @@ class DocumentQuery:
             selected_document_ids=index_filters.document_ids,
             attached_document_ids=index_filters.attached_document_ids,
             hierarchy_node_ids=index_filters.hierarchy_node_ids,
+            excluded_hierarchy_node_ids=index_filters.excluded_hierarchy_node_ids,
         )
         final_random_search_query = {
             "query": {
@@ -868,6 +873,7 @@ class DocumentQuery:
         # Assistant knowledge filters
         attached_document_ids: list[str] | None = None,
         hierarchy_node_ids: list[int] | None = None,
+        excluded_hierarchy_node_ids: list[int] | None = None,
     ) -> list[dict[str, Any]]:
         """Returns filters to be passed into the "filter" key of a search query.
 
@@ -1321,6 +1327,11 @@ class DocumentQuery:
                     _get_user_project_filter(project_id_filter)
                 )
             filter_clauses.append(knowledge_filter)
+
+        if excluded_hierarchy_node_ids:
+            filter_clauses.append(
+                {"bool": {"must_not": [_get_hierarchy_node_filter(excluded_hierarchy_node_ids)]}}
+            )
 
         if created_at_range is not None or updated_at_range is not None:
             filter_clauses.extend(

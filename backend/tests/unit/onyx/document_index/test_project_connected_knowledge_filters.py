@@ -19,15 +19,19 @@ def test_project_connected_scope_is_carried_into_index_filters_with_acl() -> Non
         db_session=None,
         attached_document_ids=["doc-allowed-by-space"],
         hierarchy_node_ids=[42],
+        excluded_hierarchy_node_ids=[99],
         acl_filters=["user@example.com"],
     )
 
     assert filters.attached_document_ids == ["doc-allowed-by-space"]
     assert filters.hierarchy_node_ids == [42]
+    assert filters.excluded_hierarchy_node_ids == [99]
     assert filters.access_control_list == ["user@example.com"]
 
 
-def test_attached_document_and_hierarchy_scope_is_acl_intersected_in_search_query() -> None:
+def test_attached_document_and_hierarchy_scope_is_acl_intersected_in_search_query() -> (
+    None
+):
     filters = DocumentQuery._get_search_filters(
         tenant_state=TenantState(tenant_id="", multitenant=False),
         include_hidden=False,
@@ -43,6 +47,7 @@ def test_attached_document_and_hierarchy_scope_is_acl_intersected_in_search_quer
         max_chunk_index=None,
         attached_document_ids=["doc-allowed-by-space"],
         hierarchy_node_ids=[42],
+        excluded_hierarchy_node_ids=[99],
     )
 
     assert any(ACCESS_CONTROL_LIST_FIELD_NAME in str(clause) for clause in filters)
@@ -54,5 +59,12 @@ def test_attached_document_and_hierarchy_scope_is_acl_intersected_in_search_quer
     ]
     assert len(knowledge_filters) == 1
     should_clauses = knowledge_filters[0]["bool"]["should"]
-    assert {"terms": {DOCUMENT_ID_FIELD_NAME: ["doc-allowed-by-space"]}} in should_clauses
+    assert {
+        "terms": {DOCUMENT_ID_FIELD_NAME: ["doc-allowed-by-space"]}
+    } in should_clauses
     assert {"terms": {ANCESTOR_HIERARCHY_NODE_IDS_FIELD_NAME: [42]}} in should_clauses
+    assert any(
+        clause.get("bool", {}).get("must_not")
+        == [{"terms": {ANCESTOR_HIERARCHY_NODE_IDS_FIELD_NAME: [99]}}]
+        for clause in filters
+    )

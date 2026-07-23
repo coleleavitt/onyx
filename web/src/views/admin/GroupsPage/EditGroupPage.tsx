@@ -35,6 +35,7 @@ import {
   deleteGroup,
   updateAgentGroupSharing,
   updateDocSetGroupSharing,
+  updateConnectedSourceScopeGroupSharing,
   saveTokenLimits,
 } from "./svc";
 import { SWR_KEYS } from "@/lib/swr-keys";
@@ -99,6 +100,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const [selectedCcPairIds, setSelectedCcPairIds] = useState<number[]>([]);
   const [selectedDocSetIds, setSelectedDocSetIds] = useState<number[]>([]);
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
+  const [selectedSourceScopeIds, setSelectedSourceScopeIds] = useState<number[]>([]);
   const [tokenLimits, setTokenLimits] = useState<TokenLimit[]>([
     { tokenBudget: null, periodHours: null },
   ]);
@@ -108,6 +110,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const [isAddingMembers, setIsAddingMembers] = useState(false);
   const initialAgentIdsRef = useRef<number[]>([]);
   const initialDocSetIdsRef = useRef<number[]>([]);
+  const initialSourceScopeIdsRef = useRef<number[]>([]);
 
   // Users + service accounts (curator-accessible — see hook docs).
   const {
@@ -131,6 +134,9 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       const agentIds = group.personas.map((p) => p.id);
       setSelectedAgentIds(agentIds);
       initialAgentIdsRef.current = agentIds;
+      const sourceScopeIds = group.connected_source_scopes.map((scope) => scope.id);
+      setSelectedSourceScopeIds(sourceScopeIds);
+      initialSourceScopeIdsRef.current = sourceScopeIds;
       setInitialized(true);
     }
   }, [group, initialized]);
@@ -248,6 +254,13 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         selectedDocSetIds
       );
 
+      // Update connected source scope visibility for this group
+      await updateConnectedSourceScopeGroupSharing(
+        groupId,
+        initialSourceScopeIdsRef.current,
+        selectedSourceScopeIds
+      );
+
       // Save token rate limits (create/update/delete) — Enterprise-only
       if (isEnterpriseTier) {
         await saveTokenLimits(groupId, tokenLimits, tokenRateLimits ?? []);
@@ -256,6 +269,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       // Update refs so subsequent saves diff correctly
       initialAgentIdsRef.current = selectedAgentIds;
       initialDocSetIdsRef.current = selectedDocSetIds;
+      initialSourceScopeIdsRef.current = selectedSourceScopeIds;
 
       mutate(SWR_KEYS.adminUserGroups);
       mutate(SWR_KEYS.userGroupTokenRateLimit(groupId));
@@ -454,6 +468,8 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
                 onDocSetIdsChange={setSelectedDocSetIds}
                 selectedAgentIds={selectedAgentIds}
                 onAgentIdsChange={setSelectedAgentIds}
+                selectedSourceScopeIds={selectedSourceScopeIds}
+                onSourceScopeIdsChange={setSelectedSourceScopeIds}
               />
 
               <TokenLimitSection

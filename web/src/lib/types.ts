@@ -543,6 +543,25 @@ export interface SlackBotTokens {
 }
 
 /* EE Only Types */
+export interface ConnectedSourceScopeSummary {
+  id: number;
+  hierarchy_node_id: number;
+  title: string;
+  source: ValidSources;
+  link: string | null;
+  parent_id: number | null;
+  curation_status: "DEFAULT_SAFE" | "STANDARD" | "ARCHIVE" | "HIDDEN" | "DIAGNOSTIC";
+  display_label: string | null;
+  tenant_label: string | null;
+  department_label: string | null;
+  sort_order: number;
+  size_bytes: number | null;
+  document_count_estimate: number | null;
+  warning: string | null;
+  group_ids: number[];
+  excluded_hierarchy_node_ids: number[];
+}
+
 export interface UserGroup {
   id: number;
   name: string;
@@ -551,6 +570,7 @@ export interface UserGroup {
   cc_pairs: CCPairDescriptor<any, any>[];
   document_sets: DocumentSetSummary[];
   personas: Agent[];
+  connected_source_scopes: ConnectedSourceScopeSummary[];
   is_up_to_date: boolean;
   is_up_for_deletion: boolean;
   is_default: boolean;

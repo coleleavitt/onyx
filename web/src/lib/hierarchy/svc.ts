@@ -22,11 +22,13 @@ async function extractErrorDetail(
 }
 
 export async function fetchHierarchyNodes(
-  source: ValidSources
+  source: ValidSources,
+  options?: { includeArchived?: boolean; includeHidden?: boolean }
 ): Promise<HierarchyNodesResponse> {
-  const response = await fetch(
-    `${HIERARCHY_NODES_PREFIX}?source=${encodeURIComponent(source)}`
-  );
+  const params = new URLSearchParams({ source });
+  if (options?.includeArchived) params.set("include_archived", "true");
+  if (options?.includeHidden) params.set("include_hidden", "true");
+  const response = await fetch(`${HIERARCHY_NODES_PREFIX}?${params.toString()}`);
 
   if (!response.ok) {
     const detail = await extractErrorDetail(

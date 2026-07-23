@@ -12,6 +12,8 @@ import type {
   CreateProjectInput,
   ProjectMetadataUpdate,
   ProjectAccessState,
+  ConnectedKnowledgePreset,
+  ConnectedSourceScope,
   ProjectConnectedKnowledge,
   ProjectConnectedKnowledgeUpdate,
   ProjectJoinRequest,
@@ -68,6 +70,12 @@ export async function createProject(
   ) {
     params.set("emoji", createInput.emoji);
   }
+  if (createInput.connected_knowledge_preset_id != null) {
+    params.set(
+      "connected_knowledge_preset_id",
+      String(createInput.connected_knowledge_preset_id)
+    );
+  }
   const response = await fetch(
     `/api/user/projects/create?${params.toString()}`,
     {
@@ -76,6 +84,54 @@ export async function createProject(
   );
   if (!response.ok) {
     await handleRequestError("Create project", response);
+  }
+  return response.json();
+}
+
+export async function fetchConnectedKnowledgePresets(): Promise<
+  ConnectedKnowledgePreset[]
+> {
+  const response = await fetch("/api/user/projects/connected-knowledge-presets");
+  if (!response.ok) {
+    await handleRequestError("Fetch connected knowledge presets", response);
+  }
+  return response.json();
+}
+
+export async function fetchConnectedSourceScopes(): Promise<
+  ConnectedSourceScope[]
+> {
+  const response = await fetch("/api/user/projects/connected-source-scopes");
+  if (!response.ok) {
+    await handleRequestError("Fetch connected source scopes", response);
+  }
+  return response.json();
+}
+
+export async function updateConnectedSourceScope(
+  scope: ConnectedSourceScope
+): Promise<ConnectedSourceScope> {
+  const response = await fetch(
+    `/api/user/projects/connected-source-scopes/${scope.hierarchy_node_id}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        curation_status: scope.curation_status,
+        display_label: scope.display_label,
+        tenant_label: scope.tenant_label,
+        department_label: scope.department_label,
+        sort_order: scope.sort_order,
+        size_bytes: scope.size_bytes,
+        document_count_estimate: scope.document_count_estimate,
+        warning: scope.warning,
+        group_ids: scope.group_ids,
+        excluded_hierarchy_node_ids: scope.excluded_hierarchy_node_ids,
+      }),
+    }
+  );
+  if (!response.ok) {
+    await handleRequestError("Update connected source scope", response);
   }
   return response.json();
 }

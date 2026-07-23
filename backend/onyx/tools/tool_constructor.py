@@ -77,6 +77,7 @@ class SearchToolConfig(BaseModel):
     # chosen folders/sites/documents while retrieval still applies ACL filters.
     project_attached_document_ids: list[str] = Field(default_factory=list)
     project_hierarchy_node_ids: list[int] = Field(default_factory=list)
+    project_excluded_hierarchy_node_ids: list[int] = Field(default_factory=list)
     bypass_acl: bool = False
     additional_context: str | None = None
     slack_context: SlackContext | None = None
@@ -222,6 +223,7 @@ def _construct_tools_impl(
             search_start_date=persona.search_start_date,
             attached_document_ids=attached_document_ids,
             hierarchy_node_ids=hierarchy_node_ids,
+            excluded_hierarchy_node_ids=config.project_excluded_hierarchy_node_ids,
         )
         return SearchTool(
             tool_id=tool_id,

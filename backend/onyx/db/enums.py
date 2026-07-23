@@ -651,6 +651,23 @@ class ProjectSharePermission(str, PyEnum):
     VIEWER = "VIEWER"
 
 
+class ConnectedSourceCurationStatus(str, PyEnum):
+    """Business curation status for connector hierarchy scopes in Spaces."""
+
+    DEFAULT_SAFE = "DEFAULT_SAFE"
+    STANDARD = "STANDARD"
+    ARCHIVE = "ARCHIVE"
+    HIDDEN = "HIDDEN"
+    DIAGNOSTIC = "DIAGNOSTIC"
+
+    def is_hidden_by_default(self) -> bool:
+        return self in {
+            ConnectedSourceCurationStatus.ARCHIVE,
+            ConnectedSourceCurationStatus.HIDDEN,
+            ConnectedSourceCurationStatus.DIAGNOSTIC,
+        }
+
+
 class ProjectAccessLevel(str, PyEnum):
     OWNER = "OWNER"
     EDITOR = "EDITOR"

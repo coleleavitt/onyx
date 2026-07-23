@@ -19,6 +19,10 @@ from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
 from onyx.configs.constants import PUBLIC_API_TAGS
 from onyx.configs.constants import USER_FILE_PROJECT_SYNC_MAX_QUEUE_DEPTH
+from onyx.db.connected_source_governance import create_connected_knowledge_preset
+from onyx.db.connected_source_governance import get_visible_presets_for_user
+from onyx.db.connected_source_governance import list_connected_source_scopes
+from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import Permission
 from onyx.db.enums import UserFileStatus
@@ -49,12 +53,16 @@ from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.projects.models import CategorizedFilesSnapshot
 from onyx.server.features.projects.models import ChatSessionRequest
+from onyx.server.features.projects.models import ConnectedSourceScopeRequest
+from onyx.server.features.projects.models import ConnectedSourceScopeSnapshot
 from onyx.server.features.projects.models import normalize_project_description
 from onyx.server.features.projects.models import normalize_project_emoji
 from onyx.server.features.projects.models import normalize_project_name
 from onyx.server.features.projects.models import ProjectAccessRequest
 from onyx.server.features.projects.models import ProjectAccessRequestSnapshot
 from onyx.server.features.projects.models import ProjectAccessStateSnapshot
+from onyx.server.features.projects.models import ProjectConnectedKnowledgePresetRequest
+from onyx.server.features.projects.models import ProjectConnectedKnowledgePresetSnapshot
 from onyx.server.features.projects.models import ProjectConnectedKnowledgeRequest
 from onyx.server.features.projects.models import ProjectConnectedKnowledgeSnapshot
 from onyx.server.features.projects.models import ProjectJoinRequestSnapshot
@@ -194,6 +202,7 @@ def create_project(
     description: str | None = None,
     instructions: str | None = None,
     emoji: str | None = None,
+    connected_knowledge_preset_id: int | None = None,
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
@@ -207,6 +216,36 @@ def create_project(
     db_session.add(project)
     db_session.commit()
     db_session.refresh(project)
+
+    if connected_knowledge_preset_id is not None:
+        visible_presets = get_visible_presets_for_user(
+            db_session=db_session,
+            user=user,
+            include_archived=False,
+        )
+        preset = next(
+            (
+                candidate
+                for candidate in visible_presets
+                if candidate.id == connected_knowledge_preset_id
+            ),
+            None,
+        )
+        if preset is None:
+            raise OnyxError(
+                OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+                "Connected knowledge preset is not available.",
+            )
+        if not project.instructions and preset.instructions:
+            project.instructions = preset.instructions
+        replace_project_connected_knowledge(
+            project=project,
+            document_ids=[document.id for document in preset.attached_documents],
+            hierarchy_node_ids=[node.id for node in preset.hierarchy_nodes],
+            user=user,
+            db_session=db_session,
+        )
+
     return _project_snapshot(project, user=user, db_session=db_session)
 
 
@@ -438,6 +477,77 @@ class ProjectPayload(BaseModel):
     files: list[UserFileSnapshot] | None = None
     connected_knowledge: ProjectConnectedKnowledgeSnapshot | None = None
     persona_id_to_is_featured: dict[int, bool] | None = None
+
+
+@router.get("/connected-source-scopes", tags=PUBLIC_API_TAGS)
+def list_connected_source_scope_policies(
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[ConnectedSourceScopeSnapshot]:
+    return [
+        ConnectedSourceScopeSnapshot.from_model(scope)
+        for scope in list_connected_source_scopes(db_session)
+    ]
+
+
+@router.put("/connected-source-scopes/{hierarchy_node_id}", tags=PUBLIC_API_TAGS)
+def upsert_connected_source_scope_policy(
+    hierarchy_node_id: int,
+    body: ConnectedSourceScopeRequest,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ConnectedSourceScopeSnapshot:
+    scope = upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=hierarchy_node_id,
+        curation_status=body.curation_status,
+        group_ids=body.group_ids,
+        excluded_hierarchy_node_ids=body.excluded_hierarchy_node_ids,
+        display_label=body.display_label,
+        tenant_label=body.tenant_label,
+        department_label=body.department_label,
+        sort_order=body.sort_order,
+        size_bytes=body.size_bytes,
+        document_count_estimate=body.document_count_estimate,
+        warning=body.warning,
+    )
+    return ConnectedSourceScopeSnapshot.from_model(scope)
+
+
+@router.get("/connected-knowledge-presets", tags=PUBLIC_API_TAGS)
+def list_connected_knowledge_presets(
+    include_archived: bool = False,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[ProjectConnectedKnowledgePresetSnapshot]:
+    return [
+        ProjectConnectedKnowledgePresetSnapshot.from_model(preset)
+        for preset in get_visible_presets_for_user(
+            db_session=db_session,
+            user=user,
+            include_archived=include_archived,
+        )
+    ]
+
+
+@router.post("/connected-knowledge-presets", tags=PUBLIC_API_TAGS)
+def create_connected_knowledge_preset_endpoint(
+    body: ProjectConnectedKnowledgePresetRequest,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> ProjectConnectedKnowledgePresetSnapshot:
+    preset = create_connected_knowledge_preset(
+        db_session=db_session,
+        name=body.name,
+        description=body.description,
+        emoji=body.emoji,
+        instructions=body.instructions,
+        document_ids=body.document_ids,
+        hierarchy_node_ids=body.hierarchy_node_ids,
+        is_default=body.is_default,
+        is_archived=body.is_archived,
+    )
+    return ProjectConnectedKnowledgePresetSnapshot.from_model(preset)
 
 
 @router.get(

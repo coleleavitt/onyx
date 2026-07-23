@@ -1,6 +1,7 @@
 "use client";
 
-import { Formik, Form } from "formik";
+import { useEffect, useState } from "react";
+import { Field, Formik, Form } from "formik";
 import * as Yup from "yup";
 import { Button } from "@opal/components";
 import { useProjectsContext } from "@/providers/ProjectsContext";
@@ -16,6 +17,8 @@ import {
   SPACE_DESCRIPTION_MAX_LENGTH,
   SPACE_NAME_MAX_LENGTH,
 } from "@/lib/projects/constants";
+import { fetchConnectedKnowledgePresets } from "@/lib/projects/svc";
+import type { ConnectedKnowledgePreset } from "@/lib/projects/types";
 
 interface CreateProjectModalProps {
   initialProjectName?: string;
@@ -30,6 +33,14 @@ export default function CreateProjectModal({
   const modal = useModal();
   const route = useAppRouter();
   const label = terminology === "space" ? "Space" : "Project";
+  const [presets, setPresets] = useState<ConnectedKnowledgePreset[]>([]);
+
+  useEffect(() => {
+    if (!modal.isOpen || terminology !== "space") return;
+    fetchConnectedKnowledgePresets()
+      .then(setPresets)
+      .catch(() => setPresets([]));
+  }, [modal.isOpen, terminology]);
   const validationSchema = Yup.object({
     projectName: Yup.string()
       .trim()
@@ -60,6 +71,7 @@ export default function CreateProjectModal({
             emoji: "",
             description: "",
             instructions: "",
+            presetId: "",
           }}
           validationSchema={validationSchema}
           validateOnMount
@@ -72,6 +84,9 @@ export default function CreateProjectModal({
                 emoji: values.emoji.trim() || null,
                 description: values.description.trim() || null,
                 instructions: values.instructions.trim() || null,
+                connected_knowledge_preset_id: values.presetId
+                  ? Number(values.presetId)
+                  : null,
               });
               route({ projectId: newProject.id, projectName: newProject.name });
               modal.toggle(false);
@@ -126,6 +141,27 @@ export default function CreateProjectModal({
                     autoResize
                   />
                 </InputVertical>
+                {terminology === "space" && presets.length > 0 && (
+                  <InputVertical
+                    title="Connected source default"
+                    suffix="optional"
+                    withLabel="presetId"
+                  >
+                    <Field
+                      as="select"
+                      name="presetId"
+                      className="w-full rounded-8 border border-border-02 bg-background-01 px-3 py-2 text-sm text-text-01"
+                    >
+                      <option value="">Start without a default source</option>
+                      {presets.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.emoji ? `${preset.emoji} ` : ""}
+                          {preset.name}
+                        </option>
+                      ))}
+                    </Field>
+                  </InputVertical>
+                )}
               </Modal.Body>
               <Modal.Footer>
                 <Button

@@ -61,6 +61,34 @@ function formatLinkSubtitle(link: string | null): string | null {
   return stripped || null;
 }
 
+function formatByteSize(bytes: number | null | undefined): string | null {
+  if (!bytes || bytes <= 0) return null;
+  const gib = bytes / 1024 / 1024 / 1024;
+  if (gib >= 1) return `${gib.toFixed(1)} GiB`;
+  const mib = bytes / 1024 / 1024;
+  return `${mib.toFixed(0)} MiB`;
+}
+
+function governanceBadges(node: HierarchyNodeSummary): string[] {
+  const governance = node.governance;
+  if (!governance) return [];
+  const badges: string[] = [];
+  if (governance.is_default) badges.push("Recommended");
+  if (governance.is_archived) badges.push("Archive");
+  if (governance.is_diagnostic) badges.push("Diagnostic");
+  const size = formatByteSize(governance.size_bytes);
+  if (size) badges.push(size);
+  if (governance.indexed_document_count > 0) {
+    badges.push(`${governance.indexed_document_count} docs`);
+  } else if (governance.document_count_estimate) {
+    badges.push(`~${governance.document_count_estimate} docs`);
+  }
+  if (governance.indexed_chunk_count > 0) {
+    badges.push(`${governance.indexed_chunk_count} chunks`);
+  }
+  return badges;
+}
+
 // ============================================================================
 // HIERARCHY BREADCRUMB - Navigation path for folder hierarchy
 // ============================================================================
@@ -211,6 +239,7 @@ export default function SourceHierarchyBrowser({
 
   // View selected only filter state
   const [viewSelectedOnly, setViewSelectedOnly] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Store path before entering view selected mode so we can restore it
   const [savedPath, setSavedPath] = useState<HierarchyNodeSummary[]>([]);
@@ -256,7 +285,9 @@ export default function SourceHierarchyBrowser({
       setHasMoreDocuments(true);
 
       try {
-        const response = await fetchHierarchyNodes(source);
+        const response = await fetchHierarchyNodes(source, {
+          includeArchived: showArchived,
+        });
         setAllNodes(response.nodes);
       } catch (error) {
         setNodesError(
@@ -268,7 +299,7 @@ export default function SourceHierarchyBrowser({
     };
 
     loadNodes();
-  }, [source]);
+  }, [source, showArchived]);
 
   // Track the last initialNodeId we navigated to, so a new value (even to a
   // previously-visited node) re-triggers navigation instead of being skipped
@@ -426,7 +457,17 @@ export default function SourceHierarchyBrowser({
 
   // Get child folders of the current path
   const childFolders = useMemo(() => {
-    return allNodes.filter((node) => node.parent_id === currentParentId);
+    return allNodes
+      .filter((node) => node.parent_id === currentParentId)
+      .sort((left, right) => {
+        const leftOrder = left.governance?.sort_order ?? 0;
+        const rightOrder = right.governance?.sort_order ?? 0;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        const leftDefault = left.governance?.is_default ? 0 : 1;
+        const rightDefault = right.governance?.is_default ? 0 : 1;
+        if (leftDefault !== rightDefault) return leftDefault - rightDefault;
+        return left.title.localeCompare(right.title);
+      });
   }, [allNodes, currentParentId]);
 
   // Combine folders and documents into items list
@@ -694,6 +735,7 @@ export default function SourceHierarchyBrowser({
   // Handler for clicking a row (folder or document)
   const handleItemClick = (item: HierarchyItem) => {
     if (item.type === "folder") {
+      if (item.data.governance?.is_selectable === false) return;
       onToggleFolder(item.data.id);
       return;
     }
@@ -769,6 +811,14 @@ export default function SourceHierarchyBrowser({
             }
           />
         </GeneralLayouts.Section>
+        <Button
+          variant={showArchived ? "action" : undefined}
+          prominence="tertiary"
+          size="sm"
+          onClick={() => setShowArchived((current) => !current)}
+        >
+          {showArchived ? "Hide archives" : "Show archives"}
+        </Button>
       </GeneralLayouts.Section>
 
       {/* Breadcrumb OR "Selected items" pill - mutually exclusive */}
@@ -929,6 +979,21 @@ export default function SourceHierarchyBrowser({
                 ? selectedFolderIds.includes(item.data.id as number)
                 : selectedDocumentIds.includes(item.data.id as string);
               const subtitle = formatLinkSubtitle(item.data.link);
+              const folderGovernance = isFolder
+                ? (item.data as HierarchyNodeSummary).governance
+                : null;
+              const badges = isFolder
+                ? governanceBadges(item.data as HierarchyNodeSummary)
+                : [];
+              const title =
+                folderGovernance?.display_label || item.data.title;
+              const detailLine = [
+                subtitle,
+                badges.length > 0 ? badges.join(" · ") : null,
+                folderGovernance?.warning ?? null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
 
               return (
                 <TableLayouts.TableRow
@@ -956,10 +1021,10 @@ export default function SourceHierarchyBrowser({
                           height="auto"
                           className="min-w-0 grow"
                         >
-                          <Truncated>{item.data.title}</Truncated>
-                          {subtitle && (
+                          <Truncated>{title}</Truncated>
+                          {detailLine && (
                             <Truncated text03 secondaryBody>
-                              {subtitle}
+                              {detailLine}
                             </Truncated>
                           )}
                         </GeneralLayouts.Section>
