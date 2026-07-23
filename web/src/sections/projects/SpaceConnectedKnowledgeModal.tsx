@@ -12,7 +12,7 @@ import type {
   ProjectConnectedKnowledge,
 } from "@/lib/projects/types";
 import type { AgentAttachedDocument } from "@/lib/agents/types";
-import type { ValidSources } from "@/lib/types";
+import { ValidSources } from "@/lib/types";
 import { Button, Divider, LineItemButton, Tabs, Text } from "@opal/components";
 import { toast } from "@opal/layouts";
 import { SvgFiles, SvgFolderOpen, SvgPlusCircle } from "@opal/icons";
@@ -218,7 +218,16 @@ export default function SpaceConnectedKnowledgeModal({
                         <LineItemButton
                           key={source}
                           icon={metadata.icon}
-                          title={metadata.displayName}
+                          title={
+                            source === ValidSources.Sharepoint
+                              ? "SharePoint intranets"
+                              : metadata.displayName
+                          }
+                          description={
+                            source === ValidSources.Sharepoint
+                              ? "Browse Foundations and Magellan departments"
+                              : undefined
+                          }
                           width="full"
                           variant="section"
                           selectVariant="select-light"

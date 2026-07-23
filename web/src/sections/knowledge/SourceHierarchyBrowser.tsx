@@ -1011,7 +1011,14 @@ export default function SourceHierarchyBrowser({
                 : [];
               const title =
                 folderGovernance?.display_label || item.data.title;
+              const departmentPath = [
+                folderGovernance?.tenant_label,
+                folderGovernance?.department_label,
+              ]
+                .filter(Boolean)
+                .join(" / ");
               const detailLine = [
+                departmentPath || null,
                 subtitle,
                 badges.length > 0 ? badges.join(" · ") : null,
                 folderGovernance?.warning ?? null,

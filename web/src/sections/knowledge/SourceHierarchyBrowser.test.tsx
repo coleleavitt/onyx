@@ -167,6 +167,7 @@ test("hierarchy browser hides archive scopes until explicitly opted in and shows
 
   const advisorLabels = await screen.findAllByText("Advisor Services Intranet");
   expect(advisorLabels.length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Foundations \/ Advisor Services/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Recommended/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/373 docs/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Success/).length).toBeGreaterThan(0);

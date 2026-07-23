@@ -391,6 +391,15 @@ def _evaluate_source_partition(
                 selectable = False
                 denial_reason = "outside_policy"
 
+        if (
+            node_metrics.has_connector_backing
+            and not node_metrics.has_active_connector
+            and not include_hidden
+        ):
+            visible = False
+            selectable = False
+            denial_reason = "connector_not_active"
+
         for scope in path_scopes:
             if not _scope_is_allowed_for_groups(scope, user_group_ids):
                 visible = False

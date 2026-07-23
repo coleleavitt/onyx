@@ -995,3 +995,34 @@ def test_paused_connector_backed_scope_is_hidden_by_default(
     assert governed_with_hidden.metadata_by_node_id[
         node.id
     ].metrics.connector_statuses == (ConnectorCredentialPairStatus.PAUSED.value,)
+
+
+def test_uncurated_paused_connector_backed_scope_is_hidden_by_default(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_uncurated_paused")
+    node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"uncurated-paused-{uuid4().hex}",
+        name="Uncurated Paused Intranet",
+    )
+    cc_pair = make_cc_pair(db_session, source=node.source, commit=False)
+    cc_pair.status = ConnectorCredentialPairStatus.PAUSED
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=node.id,
+            connector_id=cc_pair.connector_id,
+            credential_id=cc_pair.credential_id,
+        )
+    )
+    db_session.commit()
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[node],
+        user=user,
+    )
+
+    assert governed.nodes == []
+    assert governed.metadata_by_node_id[node.id].denial_reason == "connector_not_active"
+    assert governed.metadata_by_node_id[node.id].is_selectable is False

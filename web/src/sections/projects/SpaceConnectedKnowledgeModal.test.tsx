@@ -78,6 +78,10 @@ test("space knowledge modal keeps uploads distinct from connected source selecti
   );
 
   expect(screen.getByRole("tab", { name: "Connected sources" })).toBeVisible();
+  expect(screen.getByText("SharePoint intranets")).toBeVisible();
+  expect(
+    screen.getByText("Browse Foundations and Magellan departments"),
+  ).toBeVisible();
   await user.click(screen.getByRole("tab", { name: "Uploaded files" }));
   expect(
     screen.getByText("Uploaded files are copied into this space"),
