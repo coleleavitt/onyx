@@ -68,6 +68,13 @@ import { SWR_KEYS } from "@/lib/swr-keys";
  * };
  * ```
  */
+
+// Stable fallback so consumers get a referentially-equal empty list on every
+// render while data is loading (or the hook is disabled). Returning a fresh
+// `[]` here invalidates downstream useMemo/useEffect deps each render and can
+// cause infinite update loops.
+const EMPTY_CC_PAIRS: CCPairBasicInfo[] = [];
+
 export default function useCCPairs(enabled: boolean = true) {
   const { data, error, isLoading, mutate } = useSWR<CCPairBasicInfo[]>(
     enabled ? SWR_KEYS.connectorStatus : null,
@@ -81,7 +88,7 @@ export default function useCCPairs(enabled: boolean = true) {
   );
 
   return {
-    ccPairs: data ?? [],
+    ccPairs: data ?? EMPTY_CC_PAIRS,
     isLoading: enabled && isLoading,
     error,
     refetch: mutate,

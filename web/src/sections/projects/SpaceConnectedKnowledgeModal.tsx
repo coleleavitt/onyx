@@ -156,7 +156,9 @@ export default function SpaceConnectedKnowledgeModal({
 
   useEffect(() => {
     if (!open || !connectedSources.includes(ValidSources.Sharepoint)) {
-      setSharePointNodes([]);
+      // Functional update that keeps the existing reference when already empty
+      // so this reset never triggers a render loop by itself.
+      setSharePointNodes((current) => (current.length === 0 ? current : []));
       return;
     }
     let cancelled = false;
