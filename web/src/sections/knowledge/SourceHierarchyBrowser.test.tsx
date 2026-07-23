@@ -33,6 +33,8 @@ const rootNode = {
     document_count_estimate: null,
     indexed_document_count: 0,
     indexed_chunk_count: 0,
+    indexing_status: null,
+    last_synced_at: null,
     warning: null,
     allowed_group_ids: [],
     excluded_hierarchy_node_ids: [],
@@ -60,6 +62,8 @@ const navigationOnlyNode = {
     document_count_estimate: null,
     indexed_document_count: 0,
     indexed_chunk_count: 0,
+    indexing_status: null,
+    last_synced_at: null,
     warning: null,
     allowed_group_ids: [],
     excluded_hierarchy_node_ids: [],
@@ -87,6 +91,8 @@ const recommendedNode = {
     document_count_estimate: 372,
     indexed_document_count: 373,
     indexed_chunk_count: 27186,
+    indexing_status: "success",
+    last_synced_at: "2026-07-23T16:00:00Z",
     warning: null,
     allowed_group_ids: [10],
     excluded_hierarchy_node_ids: [],
@@ -114,6 +120,8 @@ const archiveNode = {
     document_count_estimate: 122763,
     indexed_document_count: 562,
     indexed_chunk_count: 35991,
+    indexing_status: "canceled",
+    last_synced_at: "2026-07-22T16:00:00Z",
     warning: "Large historical transition archive.",
     allowed_group_ids: [],
     excluded_hierarchy_node_ids: [],
@@ -161,6 +169,8 @@ test("hierarchy browser hides archive scopes until explicitly opted in and shows
   expect(advisorLabels.length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Recommended/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/373 docs/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Success/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Synced/).length).toBeGreaterThan(0);
   expect(screen.queryByText("Business Development Archive")).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Show archives" }));

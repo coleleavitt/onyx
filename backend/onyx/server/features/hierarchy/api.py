@@ -85,6 +85,8 @@ def _governance_snapshot(
         document_count_estimate=metadata.document_count_estimate,
         indexed_document_count=metadata.metrics.document_count,
         indexed_chunk_count=metadata.metrics.chunk_count,
+        indexing_status=metadata.metrics.latest_index_status,
+        last_synced_at=metadata.metrics.last_successful_index_time,
         warning=metadata.warning,
         allowed_group_ids=list(metadata.allowed_group_ids),
         excluded_hierarchy_node_ids=list(metadata.excluded_hierarchy_node_ids),

@@ -1,3 +1,5 @@
+from datetime import datetime
+from datetime import timezone
 from uuid import uuid4
 
 import pytest
@@ -20,10 +22,13 @@ from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import HierarchyNodeType
+from onyx.db.enums import IndexingStatus
 from onyx.db.enums import ProjectSharePermission
 from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import Document
 from onyx.db.models import HierarchyNode
+from onyx.db.models import HierarchyNodeByConnectorCredentialPair
+from onyx.db.models import IndexAttempt
 from onyx.db.models import KGStage
 from onyx.db.models import Project__User
 from onyx.db.models import User
@@ -32,6 +37,7 @@ from onyx.db.models import UserGroup
 from onyx.db.models import UserProject
 from onyx.db.projects import fetch_project_by_id
 from onyx.db.projects import replace_project_connected_knowledge
+from onyx.db.search_settings import get_current_search_settings
 from onyx.error_handling.exceptions import OnyxError
 from onyx.server.features.projects.api import create_project as create_project_api
 from onyx.server.features.projects.api import get_project_connected_knowledge
@@ -850,3 +856,49 @@ def test_create_project_with_unavailable_preset_is_atomic(
         db_session.query(UserProject).filter(UserProject.user_id == user.id).count()
     )
     assert after_count == before_count
+
+
+def test_governance_metrics_include_indexing_status_and_last_sync(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_status_metrics")
+    node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"status-metrics-node-{uuid4().hex}",
+        name="Human Resources Intranet",
+    )
+    cc_pair = make_cc_pair(db_session, source=node.source, commit=False)
+    last_successful_sync = datetime(2026, 7, 23, 16, 0, tzinfo=timezone.utc)
+    cc_pair.last_successful_index_time = last_successful_sync
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=node.id,
+            connector_id=cc_pair.connector_id,
+            credential_id=cc_pair.credential_id,
+        )
+    )
+    search_settings = get_current_search_settings(db_session)
+    db_session.add(
+        IndexAttempt(
+            connector_credential_pair_id=cc_pair.id,
+            search_settings_id=search_settings.id,
+            from_beginning=True,
+            status=IndexingStatus.IN_PROGRESS,
+            time_created=last_successful_sync,
+            time_started=last_successful_sync,
+            time_updated=last_successful_sync,
+            total_docs_indexed=10,
+            total_chunks=40,
+        )
+    )
+    db_session.commit()
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[node],
+        user=user,
+    )
+    metrics = governed.metadata_by_node_id[node.id].metrics
+
+    assert metrics.latest_index_status == IndexingStatus.IN_PROGRESS.value
+    assert metrics.last_successful_index_time == last_successful_sync

@@ -28,6 +28,8 @@ export interface HierarchyNodeGovernance {
   document_count_estimate: number | null;
   indexed_document_count: number;
   indexed_chunk_count: number;
+  indexing_status: string | null;
+  last_synced_at: string | null;
   warning: string | null;
   allowed_group_ids: number[];
   excluded_hierarchy_node_ids: number[];

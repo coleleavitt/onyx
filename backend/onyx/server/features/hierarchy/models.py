@@ -44,6 +44,8 @@ class HierarchyNodeGovernanceSnapshot(BaseModel):
     document_count_estimate: int | None = None
     indexed_document_count: int = 0
     indexed_chunk_count: int = 0
+    indexing_status: str | None = None
+    last_synced_at: datetime | None = None
     warning: str | None = None
     allowed_group_ids: list[int] = Field(default_factory=list)
     excluded_hierarchy_node_ids: list[int] = Field(default_factory=list)

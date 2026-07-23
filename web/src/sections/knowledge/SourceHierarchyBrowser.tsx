@@ -69,6 +69,14 @@ function formatByteSize(bytes: number | null | undefined): string | null {
   return `${mib.toFixed(0)} MiB`;
 }
 
+function formatIndexingStatus(status: string | null | undefined): string | null {
+  if (!status) return null;
+  return status
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
 function governanceBadges(node: HierarchyNodeSummary): string[] {
   const governance = node.governance;
   if (!governance) return [];
@@ -86,6 +94,10 @@ function governanceBadges(node: HierarchyNodeSummary): string[] {
   if (governance.indexed_chunk_count > 0) {
     badges.push(`${governance.indexed_chunk_count} chunks`);
   }
+  const status = formatIndexingStatus(governance.indexing_status);
+  if (status) badges.push(status);
+  const lastSynced = timeAgo(governance.last_synced_at);
+  if (lastSynced) badges.push(`Synced ${lastSynced}`);
   return badges;
 }
 

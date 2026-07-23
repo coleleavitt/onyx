@@ -16,8 +16,11 @@ from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import ConnectedSourceScope__UserGroup
 from onyx.db.models import ConnectedSourceScopeExclusion
+from onyx.db.models import ConnectorCredentialPair
 from onyx.db.models import Document
 from onyx.db.models import HierarchyNode
+from onyx.db.models import HierarchyNodeByConnectorCredentialPair
+from onyx.db.models import IndexAttempt
 from onyx.db.models import Project__HierarchyNode
 from onyx.db.models import ProjectConnectedKnowledgePreset
 from onyx.db.models import User
@@ -170,6 +173,35 @@ def _load_scopes_by_source(
     return grouped
 
 
+def _status_value(status: object) -> str:
+    return getattr(status, "value", str(status))
+
+
+def _aggregate_index_status(statuses: list[object]) -> str | None:
+    if not statuses:
+        return None
+    priority = {
+        "IN_PROGRESS": 0,
+        "in_progress": 0,
+        "NOT_STARTED": 1,
+        "not_started": 1,
+        "COMPLETED_WITH_ERRORS": 2,
+        "completed_with_errors": 2,
+        "FAILED": 3,
+        "failed": 3,
+        "CANCELED": 4,
+        "canceled": 4,
+        "INTERRUPTED": 4,
+        "interrupted": 4,
+        "SUCCESS": 5,
+        "success": 5,
+    }
+    return min(
+        (_status_value(status) for status in statuses),
+        key=lambda value: priority.get(value, 99),
+    )
+
+
 def _build_metrics_by_node_id(
     db_session: Session,
     nodes: list[HierarchyNode],
@@ -178,7 +210,7 @@ def _build_metrics_by_node_id(
         return {}
 
     descendants = _descendants_by_node_id(nodes)
-    parent_ids = [node.id for node in nodes]
+    node_ids = [node.id for node in nodes]
     direct_counts = {
         row.parent_hierarchy_node_id: (
             int(row.document_count),
@@ -190,24 +222,91 @@ def _build_metrics_by_node_id(
                 func.count(Document.id).label("document_count"),
                 func.coalesce(func.sum(Document.chunk_count), 0).label("chunk_count"),
             )
-            .where(Document.parent_hierarchy_node_id.in_(parent_ids))
+            .where(Document.parent_hierarchy_node_id.in_(node_ids))
             .group_by(Document.parent_hierarchy_node_id)
         )
     }
+
+    cc_pair_ids_by_node: dict[int, set[int]] = defaultdict(set)
+    last_successful_sync_by_cc_pair: dict[int, datetime] = {}
+    association_rows = db_session.execute(
+        select(
+            HierarchyNodeByConnectorCredentialPair.hierarchy_node_id,
+            ConnectorCredentialPair.id,
+            ConnectorCredentialPair.last_successful_index_time,
+        )
+        .join(
+            ConnectorCredentialPair,
+            (
+                ConnectorCredentialPair.connector_id
+                == HierarchyNodeByConnectorCredentialPair.connector_id
+            )
+            & (
+                ConnectorCredentialPair.credential_id
+                == HierarchyNodeByConnectorCredentialPair.credential_id
+            ),
+        )
+        .where(HierarchyNodeByConnectorCredentialPair.hierarchy_node_id.in_(node_ids))
+    ).all()
+    for node_id, cc_pair_id, last_successful_index_time in association_rows:
+        cc_pair_ids_by_node[node_id].add(cc_pair_id)
+        if last_successful_index_time is not None:
+            current = last_successful_sync_by_cc_pair.get(cc_pair_id)
+            if current is None or last_successful_index_time > current:
+                last_successful_sync_by_cc_pair[cc_pair_id] = last_successful_index_time
+
+    cc_pair_ids = {
+        cc_pair_id for ids in cc_pair_ids_by_node.values() for cc_pair_id in ids
+    }
+    latest_attempt_by_cc_pair: dict[int, IndexAttempt] = {}
+    if cc_pair_ids:
+        attempts = db_session.scalars(
+            select(IndexAttempt)
+            .where(IndexAttempt.connector_credential_pair_id.in_(cc_pair_ids))
+            .order_by(
+                IndexAttempt.connector_credential_pair_id,
+                IndexAttempt.time_created.desc(),
+                IndexAttempt.id.desc(),
+            )
+        ).all()
+        for attempt in attempts:
+            latest_attempt_by_cc_pair.setdefault(
+                attempt.connector_credential_pair_id,
+                attempt,
+            )
 
     raw_metrics: dict[int, ConnectedSourceScopeMetrics] = {}
     for node in nodes:
         document_count = 0
         chunk_count = 0
+        effective_cc_pair_ids: set[int] = set()
         for descendant_id in descendants[node.id]:
             direct_document_count, direct_chunk_count = direct_counts.get(
                 descendant_id, (0, 0)
             )
             document_count += direct_document_count
             chunk_count += direct_chunk_count
+            effective_cc_pair_ids.update(cc_pair_ids_by_node.get(descendant_id, set()))
+        status = _aggregate_index_status(
+            [
+                latest_attempt_by_cc_pair[cc_pair_id].status
+                for cc_pair_id in effective_cc_pair_ids
+                if cc_pair_id in latest_attempt_by_cc_pair
+            ]
+        )
+        last_successful_index_time = max(
+            (
+                last_successful_sync_by_cc_pair[cc_pair_id]
+                for cc_pair_id in effective_cc_pair_ids
+                if cc_pair_id in last_successful_sync_by_cc_pair
+            ),
+            default=None,
+        )
         raw_metrics[node.id] = ConnectedSourceScopeMetrics(
             document_count=document_count,
             chunk_count=chunk_count,
+            latest_index_status=status,
+            last_successful_index_time=last_successful_index_time,
         )
 
     return raw_metrics
