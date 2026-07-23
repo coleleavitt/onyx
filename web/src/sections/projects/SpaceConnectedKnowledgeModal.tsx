@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Modal from "@/refresh-components/Modal";
 import * as TableLayouts from "@/layouts/table-layouts";
 import useCCPairs from "@/hooks/useCCPairs";
+import { useUser } from "@/providers/UserProvider";
+import { createConnectedKnowledgePreset } from "@/lib/projects/svc";
 import SourceHierarchyBrowser from "@/sections/knowledge/SourceHierarchyBrowser";
 import { getSourceMetadata } from "@/lib/sources";
 import { fetchHierarchyNodes } from "@/lib/hierarchy/svc";
@@ -15,7 +17,14 @@ import type {
 } from "@/lib/projects/types";
 import type { AgentAttachedDocument } from "@/lib/agents/types";
 import { ValidSources } from "@/lib/types";
-import { Button, Divider, LineItemButton, Tabs, Text } from "@opal/components";
+import {
+  Button,
+  Checkbox,
+  Divider,
+  LineItemButton,
+  Tabs,
+  Text,
+} from "@opal/components";
 import { toast } from "@opal/layouts";
 import { SvgFiles, SvgFolderOpen, SvgPlusCircle } from "@opal/icons";
 
@@ -111,6 +120,8 @@ export default function SpaceConnectedKnowledgeModal({
   onUploadFiles,
 }: SpaceConnectedKnowledgeModalProps) {
   const { ccPairs } = useCCPairs(open);
+  const { isAdmin } = useUser();
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
   const connectedSources = useMemo(() => {
     const sources = new Set<ValidSources>();
     ccPairs.forEach((pair) => sources.add(pair.source));
@@ -231,6 +242,28 @@ export default function SpaceConnectedKnowledgeModal({
     );
   }
 
+  async function handleSaveAsPreset() {
+    const name = window.prompt(
+      "Preset name (visible to everyone who can use these sources):",
+    );
+    if (!name || !name.trim()) return;
+    setIsSavingPreset(true);
+    try {
+      await createConnectedKnowledgePreset({
+        name: name.trim(),
+        document_ids: selectedDocumentIds,
+        hierarchy_node_ids: selectedHierarchyNodeIds,
+      });
+      toast.success(`Saved preset "${name.trim()}"`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save preset.",
+      );
+    } finally {
+      setIsSavingPreset(false);
+    }
+  }
+
   function handleToggleFolder(folderId: number) {
     setSelectedHierarchyNodeIds((current) =>
       current.includes(folderId)
@@ -307,19 +340,28 @@ export default function SpaceConnectedKnowledgeModal({
                                       variant="section"
                                       selectVariant="select-light"
                                       state={
-                                        selectedHierarchyNodeIds.includes(node.id)
+                                        activeSharePointNodeId === node.id
                                           ? "selected"
                                           : "empty"
                                       }
                                       onClick={() => {
+                                        // Navigate-only: browsing a department
+                                        // must never silently attach it. Use
+                                        // the checkbox to attach/detach.
                                         setActiveSource(source);
                                         setActiveSharePointNodeId(node.id);
-                                        setSelectedHierarchyNodeIds((current) =>
-                                          current.includes(node.id)
-                                            ? current
-                                            : [...current, node.id],
-                                        );
                                       }}
+                                      rightChildren={
+                                        <Checkbox
+                                          aria-label={`Attach ${sharePointNodeLabel(node)}`}
+                                          checked={selectedHierarchyNodeIds.includes(
+                                            node.id,
+                                          )}
+                                          onCheckedChange={() =>
+                                            handleToggleFolder(node.id)
+                                          }
+                                        />
+                                      }
                                     />
                                   ))}
                                 </div>
@@ -447,6 +489,15 @@ export default function SpaceConnectedKnowledgeModal({
                   }`}
             </Text>
             <div className="flex items-center gap-2">
+              {isAdmin && (
+                <Button
+                  prominence="secondary"
+                  disabled={selectedCount === 0 || isSavingPreset}
+                  onClick={() => void handleSaveAsPreset()}
+                >
+                  Save as preset
+                </Button>
+              )}
               <Button prominence="secondary" onClick={onClose}>
                 Cancel
               </Button>

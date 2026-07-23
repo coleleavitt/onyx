@@ -23,7 +23,9 @@ import json
 from sqlalchemy import select
 
 from onyx.configs.constants import DocumentSource
+from onyx.db.connected_source_governance import create_connected_knowledge_preset
 from onyx.db.connected_source_governance import upsert_connected_source_scope
+from onyx.db.models import ProjectConnectedKnowledgePreset
 from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
 from onyx.db.enums import ConnectedSourceAccessType
@@ -35,6 +37,7 @@ from shared_configs.configs import POSTGRES_DEFAULT_SCHEMA
 from shared_configs.contextvars import CURRENT_TENANT_ID_CONTEXTVAR
 
 RESTRICTED_GROUP_NAME = "OpenWebUI Parity Compliance Group"
+PARITY_PRESET_NAME = "Magellan HR starter"
 
 
 def _find_site(db_session, display_name: str, require_children: bool) -> HierarchyNode:
@@ -144,9 +147,35 @@ def main() -> None:
             )
             db_session.commit()
 
+            # Governed, PUBLIC-scope preset mirroring OpenWebUI's most common
+            # whitelist (Company Wide Files + JF), so the create-space modal's
+            # "Connected source default" picker has a real option.
+            preset = db_session.scalar(
+                select(ProjectConnectedKnowledgePreset).where(
+                    ProjectConnectedKnowledgePreset.name == PARITY_PRESET_NAME
+                )
+            )
+            preset_node_ids = [
+                node.id
+                for node in (company_wide, jf_folder)
+                if node is not None
+            ]
+            if preset is None and preset_node_ids:
+                preset = create_connected_knowledge_preset(
+                    db_session=db_session,
+                    name=PARITY_PRESET_NAME,
+                    description="Company Wide Files and JF from the Magellan HR intranet",
+                    emoji="📁",
+                    instructions=None,
+                    hierarchy_node_ids=preset_node_ids,
+                    document_ids=[],
+                    is_default=True,
+                )
+
             print(
                 json.dumps(
                     {
+                        "preset_id": preset.id if preset is not None else None,
                         "hr_site_id": hr_site.id,
                         "shared_documents_id": shared_documents.id,
                         "company_wide_id": (

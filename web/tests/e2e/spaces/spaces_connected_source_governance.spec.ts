@@ -45,8 +45,18 @@ test.describe("Spaces connected-source governance", () => {
       await expect(seededDepartment).toBeVisible();
       await seededDepartment.click();
       await expect(dialog.locator(".content-column-layout")).toBeVisible();
-      await expect(dialog.getByText(/items? selected/)).toBeVisible();
-      await dialog.getByRole("button", { name: "Save" }).click();
+      // Browsing must NOT auto-attach: the footer still shows no selections.
+      await expect(
+        dialog.getByText("No connected-source selections"),
+      ).toBeVisible();
+      // Attaching is an explicit checkbox action.
+      await dialog
+        .getByRole("checkbox", { name: "Attach TestSprite Advisor Services" })
+        .click();
+      await expect(
+        dialog.getByText("1 connected-source selection", { exact: true }),
+      ).toBeVisible();
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await spaceDetail.reload();
       await expect(page.getByText("Connected sources", { exact: true }).first()).toBeVisible();

@@ -6,10 +6,21 @@ import type { ProjectConnectedKnowledge } from "@/lib/projects/types";
 
 const mockUseCCPairs = jest.fn();
 const mockFetchHierarchyNodes = jest.fn();
+const mockUseUser = jest.fn();
+const mockCreateConnectedKnowledgePreset = jest.fn();
 const lastHierarchyBrowserProps: Record<string, unknown> = {};
 
 jest.mock("@/lib/hierarchy/svc", () => ({
   fetchHierarchyNodes: (...args: unknown[]) => mockFetchHierarchyNodes(...args),
+}));
+
+jest.mock("@/providers/UserProvider", () => ({
+  useUser: () => mockUseUser(),
+}));
+
+jest.mock("@/lib/projects/svc", () => ({
+  createConnectedKnowledgePreset: (...args: unknown[]) =>
+    mockCreateConnectedKnowledgePreset(...args),
 }));
 
 jest.mock("@/hooks/useCCPairs", () => ({
@@ -66,6 +77,8 @@ beforeEach(() => {
   for (const key of Object.keys(lastHierarchyBrowserProps)) {
     delete lastHierarchyBrowserProps[key];
   }
+  mockUseUser.mockReturnValue({ isAdmin: false });
+  mockCreateConnectedKnowledgePreset.mockResolvedValue({ id: 99 });
   mockUseCCPairs.mockReturnValue({
     ccPairs: [{ id: 1, source: ValidSources.Sharepoint, name: "SharePoint" }],
     isLoading: false,
@@ -144,8 +157,98 @@ test("space knowledge modal keeps uploads distinct from connected source selecti
   await user.click(screen.getByRole("button", { name: "Save" }));
 
   await waitFor(() => {
-    expect(onSave).toHaveBeenCalledWith(["doc-existing", "doc-new"], [3, 10, 7]);
+    // Browsing into department node 10 must NOT auto-attach it: only the
+    // pre-existing node 3 and the explicitly toggled node 7 are saved.
+    expect(onSave).toHaveBeenCalledWith(["doc-existing", "doc-new"], [3, 7]);
   });
+});
+
+test("department row click browses without attaching; the checkbox attaches and detaches", async () => {
+  const user = userEvent.setup();
+  const onSave = jest.fn().mockResolvedValue(undefined);
+  render(
+    <SpaceConnectedKnowledgeModal
+      open
+      canEdit
+      knowledge={{ documents: [], hierarchy_nodes: [] }}
+      onClose={jest.fn()}
+      onSave={onSave}
+      onUploadFiles={jest.fn()}
+    />,
+  );
+
+  await user.click(await screen.findByText("Advisor Services Intranet"));
+  expect(lastHierarchyBrowserProps.initialNodeId).toBe(10);
+
+  // Browse alone attaches nothing.
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith([], []));
+  onSave.mockClear();
+
+  // Explicit checkbox attach.
+  const checkbox = screen.getByRole("checkbox", {
+    name: "Attach Advisor Services Intranet",
+  });
+  await user.click(checkbox);
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith([], [10]));
+  onSave.mockClear();
+
+  // And it is reversible before saving.
+  await user.click(
+    screen.getByRole("checkbox", { name: "Attach Advisor Services Intranet" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(onSave).toHaveBeenCalledWith([], []));
+});
+
+test("save-as-preset is admin-only and sends the current selection", async () => {
+  const user = userEvent.setup();
+  const promptSpy = jest
+    .spyOn(window, "prompt")
+    .mockReturnValue("HR starter preset");
+  try {
+    // Non-admin: control hidden.
+    const { unmount } = render(
+      <SpaceConnectedKnowledgeModal
+        open
+        canEdit
+        knowledge={baseKnowledge}
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+        onUploadFiles={jest.fn()}
+      />,
+    );
+    await screen.findByText("Advisor Services Intranet");
+    expect(
+      screen.queryByRole("button", { name: "Save as preset" }),
+    ).not.toBeInTheDocument();
+    unmount();
+
+    // Admin: visible and issues the create request with selected ids.
+    mockUseUser.mockReturnValue({ isAdmin: true });
+    render(
+      <SpaceConnectedKnowledgeModal
+        open
+        canEdit
+        knowledge={baseKnowledge}
+        onClose={jest.fn()}
+        onSave={jest.fn()}
+        onUploadFiles={jest.fn()}
+      />,
+    );
+    await screen.findByText("Advisor Services Intranet");
+    await user.click(screen.getByRole("button", { name: "Save as preset" }));
+    await waitFor(() => {
+      expect(mockCreateConnectedKnowledgePreset).toHaveBeenCalledWith({
+        name: "HR starter preset",
+        document_ids: ["doc-existing"],
+        hierarchy_node_ids: [3],
+      });
+    });
+  } finally {
+    promptSpy.mockRestore();
+  }
 });
 
 test("space connected-source rail renders connector selections separately from uploaded files", () => {

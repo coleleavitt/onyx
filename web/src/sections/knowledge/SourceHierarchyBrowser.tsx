@@ -1029,6 +1029,7 @@ export default function SourceHierarchyBrowser({
               return (
                 <TableLayouts.TableRow
                   key={id}
+                  aria-label={`Toggle ${title}`}
                   selected={isSelected}
                   onClick={() => handleItemClick(item)}
                 >
@@ -1076,6 +1077,7 @@ export default function SourceHierarchyBrowser({
                             icon={SvgChevronRight}
                             prominence="tertiary"
                             size="sm"
+                            aria-label={`Open ${title}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleClickIntoFolder(

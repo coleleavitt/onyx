@@ -98,6 +98,32 @@ export async function fetchConnectedKnowledgePresets(): Promise<
   return response.json();
 }
 
+export interface CreateConnectedKnowledgePresetRequest {
+  name: string;
+  description?: string | null;
+  emoji?: string | null;
+  instructions?: string | null;
+  document_ids: string[];
+  hierarchy_node_ids: number[];
+}
+
+export async function createConnectedKnowledgePreset(
+  request: CreateConnectedKnowledgePresetRequest
+): Promise<ConnectedKnowledgePreset> {
+  const response = await fetch(
+    "/api/user/projects/connected-knowledge-presets",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }
+  );
+  if (!response.ok) {
+    await handleRequestError("Create connected knowledge preset", response);
+  }
+  return response.json();
+}
+
 export async function fetchConnectedSourceScopes(): Promise<
   ConnectedSourceScope[]
 > {

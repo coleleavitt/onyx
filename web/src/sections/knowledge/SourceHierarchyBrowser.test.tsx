@@ -217,7 +217,7 @@ test("hierarchy browser select-all ignores navigation-only folder scopes", async
   );
 
   await screen.findAllByText("Foundations");
-  await user.click(screen.getAllByRole("checkbox")[0]);
+  await user.click(screen.getAllByRole("checkbox")[0]!);
 
   expect(onSetFolderIds).toHaveBeenCalledWith([recommendedNode.id]);
   expect(onSetFolderIds).not.toHaveBeenCalledWith(

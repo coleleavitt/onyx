@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Field, Formik, Form } from "formik";
+import { Formik, Form } from "formik";
 import * as Yup from "yup";
-import { Button } from "@opal/components";
+import { Button, InputSelect, Text } from "@opal/components";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import { InputVertical, toast } from "@opal/layouts";
 import { useAppRouter } from "@/hooks/appNavigation";
@@ -25,6 +25,47 @@ interface CreateProjectModalProps {
   terminology?: "project" | "space";
 }
 
+const NO_PRESET_VALUE = "__none__";
+
+export function presetOptionLabel(preset: ConnectedKnowledgePreset): string {
+  return `${preset.emoji ? `${preset.emoji} ` : ""}${preset.name}`;
+}
+
+/**
+ * Human-readable summary of what a preset attaches, so users see what they
+ * are committing a new space to before creating it.
+ */
+export function presetDetailLine(
+  preset: ConnectedKnowledgePreset | undefined,
+): string | null {
+  if (!preset) return null;
+  const nodeCount = preset.connected_knowledge.hierarchy_nodes.length;
+  const documentCount = preset.connected_knowledge.documents.length;
+  const parts: string[] = [];
+  if (preset.description) parts.push(preset.description);
+  const sourceTitles = preset.connected_knowledge.hierarchy_nodes
+    .slice(0, 3)
+    .map((node) => node.title);
+  const summaryPieces: string[] = [];
+  if (nodeCount > 0) {
+    const listed = sourceTitles.join(", ");
+    summaryPieces.push(
+      nodeCount > sourceTitles.length
+        ? `${listed} +${nodeCount - sourceTitles.length} more`
+        : listed,
+    );
+  }
+  if (documentCount > 0) {
+    summaryPieces.push(
+      `${documentCount} document${documentCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (summaryPieces.length > 0) {
+    parts.push(`Includes: ${summaryPieces.join(" · ")}`);
+  }
+  return parts.length > 0 ? parts.join(" — ") : null;
+}
+
 export default function CreateProjectModal({
   initialProjectName,
   terminology = "project",
@@ -39,7 +80,10 @@ export default function CreateProjectModal({
     if (!modal.isOpen || terminology !== "space") return;
     fetchConnectedKnowledgePresets()
       .then(setPresets)
-      .catch(() => setPresets([]));
+      .catch((error) => {
+        console.error("Failed to fetch connected knowledge presets", error);
+        setPresets([]);
+      });
   }, [modal.isOpen, terminology]);
   const validationSchema = Yup.object({
     projectName: Yup.string()
@@ -97,7 +141,7 @@ export default function CreateProjectModal({
             }
           }}
         >
-          {({ isSubmitting, isValid }) => (
+          {({ isSubmitting, isValid, values, setFieldValue }) => (
             <Form>
               <Modal.Body>
                 <div className="flex items-end gap-2">
@@ -147,19 +191,42 @@ export default function CreateProjectModal({
                     suffix="optional"
                     withLabel="presetId"
                   >
-                    <Field
-                      as="select"
-                      name="presetId"
-                      className="w-full rounded-8 border border-border-02 bg-background-01 px-3 py-2 text-sm text-text-01"
+                    <InputSelect
+                      value={values.presetId || NO_PRESET_VALUE}
+                      onValueChange={(value) =>
+                        setFieldValue(
+                          "presetId",
+                          value === NO_PRESET_VALUE ? "" : value,
+                        )
+                      }
                     >
-                      <option value="">Start without a default source</option>
-                      {presets.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {preset.emoji ? `${preset.emoji} ` : ""}
-                          {preset.name}
-                        </option>
-                      ))}
-                    </Field>
+                      <InputSelect.Trigger />
+                      <InputSelect.Content>
+                        <InputSelect.Item value={NO_PRESET_VALUE}>
+                          Start without a default source
+                        </InputSelect.Item>
+                        {presets.map((preset) => (
+                          <InputSelect.Item
+                            key={preset.id}
+                            value={String(preset.id)}
+                          >
+                            {presetOptionLabel(preset)}
+                          </InputSelect.Item>
+                        ))}
+                      </InputSelect.Content>
+                    </InputSelect>
+                    {(() => {
+                      const detail = presetDetailLine(
+                        presets.find(
+                          (preset) => String(preset.id) === values.presetId,
+                        ),
+                      );
+                      return detail ? (
+                        <Text font="secondary-body" color="text-03">
+                          {detail}
+                        </Text>
+                      ) : null;
+                    })()}
                   </InputVertical>
                 )}
               </Modal.Body>

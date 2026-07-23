@@ -173,8 +173,17 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
         timeout: 15_000,
       });
       await dialog.getByText("Human Resources Intranet").first().click();
-      await expect(dialog.getByText(/items? selected/)).toBeVisible();
-      await dialog.getByRole("button", { name: "Save" }).click();
+      // Browsing must not auto-attach; attach explicitly via the checkbox.
+      await expect(
+        dialog.getByText("No connected-source selections"),
+      ).toBeVisible();
+      await dialog
+        .getByRole("checkbox", { name: "Attach Human Resources Intranet" })
+        .click();
+      await expect(
+        dialog.getByText("1 connected-source selection", { exact: true }),
+      ).toBeVisible();
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await jarrodSpace.reload();
       await expect(
