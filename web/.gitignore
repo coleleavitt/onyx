@@ -50,3 +50,8 @@ next-env.d.ts
 
 # storybook
 storybook-static
+
+# Core dumps from crashed dev processes. Must be ignored here (not just in a
+# global gitignore) so Tailwind v4's content scanner skips them — scanning a
+# binary core dump extracts garbage class candidates and corrupts generated CSS.
+core.[0-9]*
