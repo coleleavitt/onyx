@@ -3199,7 +3199,9 @@ class ChatSession(Base):
     project_visibility: Mapped[ChatSessionProjectVisibility] = mapped_column(
         Enum(ChatSessionProjectVisibility, native_enum=False),
         default=ChatSessionProjectVisibility.PRIVATE,
-        server_default=ChatSessionProjectVisibility.PRIVATE.value,
+        # native_enum=False persists the enum NAME, so the server default must
+        # be the name too or existing rows fail to load.
+        server_default=ChatSessionProjectVisibility.PRIVATE.name,
         nullable=False,
     )
 

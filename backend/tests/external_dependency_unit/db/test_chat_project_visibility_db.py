@@ -9,6 +9,7 @@ from collections.abc import Generator
 from uuid import UUID
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from onyx.db.chat import create_chat_session
@@ -137,3 +138,25 @@ def test_setter_is_owner_only(db_session: Session, tracked: _Tracked) -> None:
             user_id=peer.id,
             db_session=db_session,
         )
+
+
+def test_column_default_is_stored_in_the_form_the_orm_can_load(
+    db_session: Session,
+) -> None:
+    """The database default must be an enum NAME.
+
+    `Enum(..., native_enum=False)` persists the member name, so a default
+    written as the lowercase value loads fine for freshly inserted rows while
+    every pre-existing row raises on read. Pinning the stored form here catches
+    that mismatch instead of letting it surface as a 500 on older data.
+    """
+    column_default = db_session.execute(
+        text(
+            "SELECT column_default FROM information_schema.columns "
+            "WHERE table_name = 'chat_session' "
+            "AND column_name = 'project_visibility'"
+        )
+    ).scalar_one()
+
+    stored = column_default.split("::")[0].strip().strip("'")
+    assert stored in ChatSessionProjectVisibility.__members__

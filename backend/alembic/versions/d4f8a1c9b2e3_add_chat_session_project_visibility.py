@@ -21,15 +21,17 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # native_enum=False in the model -> stored as VARCHAR. Default 'private'
-    # backfills every existing row, which matches current per-user visibility.
+    # native_enum=False in the model stores the enum NAME (matching
+    # chat_session.shared_status), so the default is 'PRIVATE' rather than the
+    # lowercase value. It backfills every existing row, which matches current
+    # per-user visibility.
     op.add_column(
         "chat_session",
         sa.Column(
             "project_visibility",
             sa.String(),
             nullable=False,
-            server_default="private",
+            server_default="PRIVATE",
         ),
     )
 
