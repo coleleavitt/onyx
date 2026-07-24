@@ -8,6 +8,11 @@ the real world: a document indexed under ANY PUBLIC connector becomes public to
 everyone, regardless of the private per-department connectors it also belongs to
 (exactly the SharePoint config observed live — a company-wide public connector
 overlapping the per-department ones).
+
+A third test exercises the department governance-scope layer: a curated,
+group-restricted source node is browsable/selectable only by members of its
+group, so a user is isolated to their own department while admins (who bypass
+the group policy) see every curated department.
 """
 
 from collections.abc import Generator
@@ -22,10 +27,19 @@ from sqlalchemy.orm import Session
 from ee.onyx.access.access import _get_access_for_documents as get_access_for_documents
 from ee.onyx.access.access import _get_acl_for_user as get_acl_for_user
 from onyx.access.models import DocumentAccess
+from onyx.auth.schemas import UserRole
+from onyx.configs.constants import DocumentSource
 from onyx.configs.constants import PUBLIC_DOC_PAT
+from onyx.db.connected_source_governance import get_governed_hierarchy_nodes_for_source
+from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
+from onyx.db.enums import ConnectedSourceAccessType
+from onyx.db.enums import ConnectedSourceCurationStatus
+from onyx.db.enums import HierarchyNodeType
+from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import ConnectorCredentialPair
 from onyx.db.models import DocumentByConnectorCredentialPair
+from onyx.db.models import HierarchyNode
 from onyx.db.models import User
 from onyx.db.models import User__UserGroup
 from onyx.db.models import UserGroup
@@ -41,6 +55,7 @@ class _Tracked:
         self.cc_pairs: list[ConnectorCredentialPair] = []
         self.group_ids: list[int] = []
         self.user_ids: list = []
+        self.node_ids: list[int] = []
 
 
 @pytest.fixture
@@ -60,6 +75,14 @@ def tracked(db_session: Session) -> Generator[_Tracked, None, None]:
         # Removes the cc_pair's doc links and drops any doc with no remaining
         # references — safe for docs multi-homed across the test's cc_pairs.
         cleanup_cc_pair(db_session, pair)
+    if t.node_ids:
+        db_session.query(ConnectedSourceScope).filter(
+            ConnectedSourceScope.hierarchy_node_id.in_(t.node_ids)
+        ).delete(synchronize_session=False)
+        db_session.query(HierarchyNode).filter(HierarchyNode.id.in_(t.node_ids)).delete(
+            synchronize_session=False
+        )
+        db_session.commit()
     if t.group_ids:
         db_session.query(User__UserGroup).filter(
             User__UserGroup.user_group_id.in_(t.group_ids)
@@ -179,3 +202,67 @@ def test_public_multi_homed_connector_defeats_department_isolation(
     for doc_access in leaked.values():
         assert PUBLIC_DOC_PAT in doc_access.to_acl()
     assert all(_grants(outsider_acl, a) for a in leaked.values())
+
+
+def _make_dept_site(
+    db_session: Session, tracked: _Tracked, group: UserGroup, display_name: str
+) -> HierarchyNode:
+    node = HierarchyNode(
+        raw_node_id=f"dept-site-{uuid4().hex}",
+        display_name=display_name,
+        source=DocumentSource.SHAREPOINT,
+        node_type=HierarchyNodeType.SITE,
+        is_public=False,
+        parent_id=None,
+    )
+    db_session.add(node)
+    db_session.flush()
+    tracked.node_ids.append(node.id)
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=node.id,
+        curation_status=ConnectedSourceCurationStatus.DEFAULT_SAFE,
+        group_ids=[group.id],
+        access_type=ConnectedSourceAccessType.RESTRICTED,
+        excluded_hierarchy_node_ids=[],
+    )
+    return node
+
+
+def test_department_scopes_isolate_users_to_their_department(
+    db_session: Session, tracked: _Tracked
+) -> None:
+    # Josh's requirement as an executable spec: with each department intranet a
+    # group-restricted governance scope, a user only sees their own department in
+    # the picker; an admin (bypassing the group policy) sees every department.
+    group_a = _make_group(db_session, tracked, "Advisor Services")
+    group_b = _make_group(db_session, tracked, "Compliance")
+    site_a = _make_dept_site(db_session, tracked, group_a, "Advisor Services Dept")
+    site_b = _make_dept_site(db_session, tracked, group_b, "Compliance Dept")
+
+    member_a = create_test_user(db_session, "dept_a_member")
+    member_b = create_test_user(db_session, "dept_b_member")
+    outsider = create_test_user(db_session, "dept_none")
+    admin = create_test_user(db_session, "dept_admin", role=UserRole.ADMIN)
+    for user in (member_a, member_b, outsider, admin):
+        tracked.user_ids.append(user.id)
+    db_session.add(User__UserGroup(user_id=member_a.id, user_group_id=group_a.id))
+    db_session.add(User__UserGroup(user_id=member_b.id, user_group_id=group_b.id))
+    db_session.commit()
+
+    nodes = [site_a, site_b]
+
+    def selectable(user: User) -> set[str]:
+        governed = get_governed_hierarchy_nodes_for_source(
+            db_session=db_session, nodes=nodes, user=user
+        )
+        return {
+            node.display_name
+            for node in nodes
+            if governed.metadata_by_node_id[node.id].is_selectable
+        }
+
+    assert selectable(member_a) == {"Advisor Services Dept"}
+    assert selectable(member_b) == {"Compliance Dept"}
+    assert selectable(outsider) == set()
+    assert selectable(admin) == {"Advisor Services Dept", "Compliance Dept"}
