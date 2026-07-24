@@ -157,6 +157,10 @@ class UserInfo(BaseModel):
     is_anonymous_user: bool | None = None
     password_configured: bool | None = None
     tenant_info: TenantInfo | None = None
+    # Permission tokens held by this user, so the client can surface the
+    # surfaces they actually hold (e.g. delegated query-history oversight)
+    # instead of inferring capability from role alone.
+    effective_permissions: list[str] = []
 
     @classmethod
     def from_model(
@@ -178,6 +182,7 @@ class UserInfo(BaseModel):
             is_superuser=user.is_superuser,
             is_verified=user.is_verified,
             role=user.role,
+            effective_permissions=list(user.effective_permissions or []),
             password_configured=user.password_configured,
             preferences=(
                 UserPreferences(
