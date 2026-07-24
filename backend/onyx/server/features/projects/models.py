@@ -6,6 +6,7 @@ from pydantic import ConfigDict
 from pydantic import Field
 
 from onyx.configs.constants import DocumentSource
+from onyx.db.chat import is_chat_session_visible_in_project
 from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import ProjectAccessLevel
@@ -338,7 +339,7 @@ class UserProjectSnapshot(BaseModel):
                 ChatSessionDetails.from_model(chat)
                 for chat in model.chat_sessions
                 if not chat.deleted
-                and (requesting_user_id is None or chat.user_id == requesting_user_id)
+                and is_chat_session_visible_in_project(chat, requesting_user_id)
             ],
         )
 

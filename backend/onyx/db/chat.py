@@ -27,6 +27,7 @@ from onyx.context.search.models import SearchDoc as ServerSearchDoc
 from onyx.db.models import ChatMessage
 from onyx.db.models import ChatMessage__SearchDoc
 from onyx.db.models import ChatSession
+from onyx.db.models import ChatSessionProjectVisibility
 from onyx.db.models import ChatSessionSharedStatus
 from onyx.db.models import Persona
 from onyx.db.models import SearchDoc as DBSearchDoc
@@ -88,6 +89,45 @@ def get_chat_session_by_id(
     if not include_deleted and chat_session.deleted:
         raise ValueError("Chat session has been deleted")
 
+    return chat_session
+
+
+def is_chat_session_visible_in_project(
+    chat_session: ChatSession, viewer_id: UUID | None
+) -> bool:
+    """Single source of truth for per-thread visibility inside a space (project).
+
+    The owner always sees their own thread; other space members see it only once
+    it has been explicitly shared to the space (project_visibility == SHARED).
+    viewer_id is None (admin / no-auth) sees everything. Every path that lists a
+    project's threads MUST filter through this so a PRIVATE peer thread never
+    leaks.
+    """
+    if viewer_id is None:
+        return True
+    if chat_session.user_id == viewer_id:
+        return True
+    return chat_session.project_visibility == ChatSessionProjectVisibility.SHARED
+
+
+def set_chat_session_project_visibility(
+    chat_session_id: UUID,
+    visibility: ChatSessionProjectVisibility,
+    user_id: UUID | None,
+    db_session: Session,
+) -> ChatSession:
+    """Set a thread's visibility to its space. get_chat_session_by_id enforces
+    ownership, so only the thread owner can share/unshare it. The thread must
+    belong to a space to be shared."""
+    chat_session = get_chat_session_by_id(
+        chat_session_id=chat_session_id,
+        user_id=user_id,
+        db_session=db_session,
+    )
+    if chat_session.project_id is None:
+        raise ValueError("Chat session is not part of a space")
+    chat_session.project_visibility = visibility
+    db_session.commit()
     return chat_session
 
 

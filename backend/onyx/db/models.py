@@ -66,6 +66,7 @@ from onyx.db.enums import ApprovalDecidedVia
 from onyx.db.enums import ApprovalDecision
 from onyx.db.enums import ArtifactType
 from onyx.db.enums import BuildSessionStatus
+from onyx.db.enums import ChatSessionProjectVisibility
 from onyx.db.enums import ChatSessionSharedStatus
 from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
@@ -3193,6 +3194,14 @@ class ChatSession(Base):
         Enum(ChatSessionSharedStatus, native_enum=False),
         default=ChatSessionSharedStatus.PRIVATE,
     )
+    # Visibility of this thread to OTHER members of its space (project).
+    # PRIVATE (default) = owner-only; SHARED = visible to all space members.
+    project_visibility: Mapped[ChatSessionProjectVisibility] = mapped_column(
+        Enum(ChatSessionProjectVisibility, native_enum=False),
+        default=ChatSessionProjectVisibility.PRIVATE,
+        server_default=ChatSessionProjectVisibility.PRIVATE.value,
+        nullable=False,
+    )
 
     current_alternate_model: Mapped[str | None] = mapped_column(String, default=None)
 
@@ -5698,6 +5707,16 @@ class UserProject(Base):
     instructions: Mapped[str] = mapped_column(String)
     organization_permission: Mapped[ProjectSharePermission | None] = mapped_column(
         Enum(ProjectSharePermission, native_enum=False), nullable=True
+    )
+    # F2: featuring auto-surfaces a space in entitled members' sidebars. It grants
+    # NO access on its own — the space must still be shared (org/group/user) to be
+    # reachable. featured_for_group_id targets a department group; is_org_featured
+    # targets the whole org.
+    featured_for_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_group.id", ondelete="SET NULL"), nullable=True
+    )
+    is_org_featured: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
     )
     user_shares: Mapped[list[Project__User]] = relationship(
         Project__User,

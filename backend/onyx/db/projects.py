@@ -186,6 +186,45 @@ def get_pinned_project_ids(*, user: User, db_session: Session) -> set[int]:
     return set(rows)
 
 
+def get_featured_project_ids_for_user(*, user: User, db_session: Session) -> set[int]:
+    """Featured spaces the user is ENTITLED to view. Featuring only auto-surfaces
+    (pins) a space the user can already access; it never grants access, so the
+    set is intersected with the VIEW policy."""
+    if user.id is None:
+        return set()
+    group_ids = (
+        select(User__UserGroup.user_group_id)
+        .where(User__UserGroup.user_id == user.id)
+        .scalar_subquery()
+    )
+    stmt = _project_select_for_user(user=user, policy=ProjectAccessPolicy.VIEW).where(
+        or_(
+            UserProject.is_org_featured.is_(True),
+            UserProject.featured_for_group_id.in_(group_ids),
+        )
+    )
+    return {project.id for project in db_session.scalars(stmt).unique()}
+
+
+def set_project_featuring(
+    *,
+    project_id: int,
+    is_org_featured: bool,
+    featured_for_group_id: int | None,
+    db_session: Session,
+) -> UserProject:
+    """Mark a space as featured to the org and/or a department group. The caller
+    must already be authorized (admin/curator)."""
+    project = db_session.get(UserProject, project_id)
+    if project is None:
+        raise ValueError("Project not found")
+    project.is_org_featured = is_org_featured
+    project.featured_for_group_id = featured_for_group_id
+    db_session.commit()
+    db_session.refresh(project)
+    return project
+
+
 def set_project_pinned(
     *, project_id: int, user: User, pinned: bool, db_session: Session
 ) -> None:
@@ -348,7 +387,9 @@ def fetch_project_connected_knowledge(
     if project is None:
         return [], []
     documents = sorted(project.attached_documents, key=lambda doc: doc.semantic_id)
-    hierarchy_nodes = sorted(project.hierarchy_nodes, key=lambda node: node.display_name)
+    hierarchy_nodes = sorted(
+        project.hierarchy_nodes, key=lambda node: node.display_name
+    )
     return documents, hierarchy_nodes
 
 
@@ -460,6 +501,12 @@ def get_project_connected_hierarchy_node_ids(
     )
 
 
+# F5: cap explicit contributors (user + group shares) per space. Org-only-invite
+# is structural — shares are keyed by an existing workspace user_id/group_id, so
+# outside parties can never be added.
+MAX_PROJECT_CONTRIBUTORS = 100
+
+
 def replace_project_shares(
     *,
     project: UserProject,
@@ -471,6 +518,11 @@ def replace_project_shares(
     requested_user_shares = dict(user_shares)
     if project.user_id is not None:
         requested_user_shares.pop(project.user_id, None)
+    if len(requested_user_shares) + len(group_shares) > MAX_PROJECT_CONTRIBUTORS:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            f"A space can have at most {MAX_PROJECT_CONTRIBUTORS} contributors.",
+        )
 
     project.organization_permission = organization_permission
     project.user_shares = [

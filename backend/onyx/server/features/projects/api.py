@@ -1,3 +1,4 @@
+import io
 import json
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from fastapi import Response
 from fastapi import UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from starlette.datastructures import Headers
 
 from onyx.auth.permissions import require_permission
 from onyx.configs.app_configs import DISABLE_VECTOR_DB
@@ -37,6 +39,7 @@ from onyx.db.projects import create_or_reset_project_join_request
 from onyx.db.projects import fetch_latest_project_join_request_for_user
 from onyx.db.projects import fetch_project_by_id
 from onyx.db.projects import fetch_project_for_user
+from onyx.db.projects import get_featured_project_ids_for_user
 from onyx.db.projects import get_pinned_project_ids
 from onyx.db.projects import get_project_access_level
 from onyx.db.projects import get_project_token_count
@@ -46,6 +49,7 @@ from onyx.db.projects import ProjectAccessPolicy
 from onyx.db.projects import replace_project_connected_knowledge
 from onyx.db.projects import replace_project_shares
 from onyx.db.projects import resolve_project_join_request
+from onyx.db.projects import set_project_featuring
 from onyx.db.projects import set_project_pinned
 from onyx.db.projects import upload_files_to_user_files_with_indexing
 from onyx.db.projects import user_has_project_access
@@ -185,12 +189,14 @@ def get_projects(
 ) -> list[UserProjectSnapshot]:
     projects = list_projects_for_user(user=user, db_session=db_session)
     pinned_ids = get_pinned_project_ids(user=user, db_session=db_session)
+    featured_ids = get_featured_project_ids_for_user(user=user, db_session=db_session)
+    surfaced_ids = pinned_ids | featured_ids
     return [
         _project_snapshot(
             project,
             user=user,
             db_session=db_session,
-            is_pinned=project.id in pinned_ids,
+            is_pinned=project.id in surfaced_ids,
         )
         for project in projects
     ]
@@ -302,6 +308,51 @@ def upload_user_files(
             OnyxErrorCode.INTERNAL_ERROR,
             "Failed to upload files. Please try again or contact support if the issue persists.",
         )
+
+
+class PasteTextRequest(BaseModel):
+    name: str | None = None
+    content: str
+    project_id: int | None = None
+
+
+MAX_PASTE_TEXT_BYTES = 1_000_000
+
+
+@router.post("/file/paste", tags=PUBLIC_API_TAGS)
+def paste_text_file(
+    body: PasteTextRequest,
+    bg_tasks: BackgroundTasks,
+    user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> CategorizedFilesSnapshot:
+    """Save pasted/typed text as an indexed file in a space (Perplexity 'Add plaintext')."""
+    if not body.content.strip():
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Pasted text cannot be empty.")
+    encoded = body.content.encode("utf-8")
+    if len(encoded) > MAX_PASTE_TEXT_BYTES:
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            f"Pasted text exceeds the {MAX_PASTE_TEXT_BYTES // 1000} KB limit.",
+        )
+    name = (body.name or "Pasted text").strip() or "Pasted text"
+    if not name.lower().endswith(".txt"):
+        name = f"{name}.txt"
+    upload = UploadFile(
+        file=io.BytesIO(encoded),
+        size=len(encoded),
+        filename=name,
+        headers=Headers({"content-type": "text/plain"}),
+    )
+    result = upload_files_to_user_files_with_indexing(
+        files=[upload],
+        project_id=body.project_id,
+        user=user,
+        temp_id_map=None,
+        db_session=db_session,
+        background_tasks=bg_tasks if DISABLE_VECTOR_DB else None,
+    )
+    return CategorizedFilesSnapshot.from_result(result)
 
 
 @router.get("/connected-source-scopes", tags=PUBLIC_API_TAGS)
@@ -694,6 +745,32 @@ def set_project_pin(
     return _project_snapshot(
         project, user=user, db_session=db_session, is_pinned=body.pinned
     )
+
+
+class ProjectFeaturingRequest(BaseModel):
+    is_org_featured: bool = False
+    featured_for_group_id: int | None = None
+
+
+@router.put("/{project_id}/featuring", tags=PUBLIC_API_TAGS)
+def set_project_featuring_endpoint(
+    project_id: int,
+    body: ProjectFeaturingRequest,
+    user: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> UserProjectSnapshot:
+    """Admin: feature a space to a department group and/or the whole org so it
+    auto-surfaces in entitled members' sidebars. Featuring grants no access."""
+    try:
+        project = set_project_featuring(
+            project_id=project_id,
+            is_org_featured=body.is_org_featured,
+            featured_for_group_id=body.featured_for_group_id,
+            db_session=db_session,
+        )
+    except ValueError:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Project not found")
+    return _project_snapshot(project, user=user, db_session=db_session)
 
 
 @router.delete("/{project_id}", tags=PUBLIC_API_TAGS)

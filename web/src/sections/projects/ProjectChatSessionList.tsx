@@ -1,14 +1,20 @@
 "use client";
 
 import React, { useCallback, useMemo, useState } from "react";
-import { deleteChatSession } from "@/app/app/services/lib";
+import {
+  deleteChatSession,
+  setChatSessionProjectVisibility,
+} from "@/app/app/services/lib";
 import {
   moveChatSession as moveChatSessionService,
   removeChatSessionFromProject as removeChatSessionFromProjectService,
 } from "@/lib/projects/svc";
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import { useUser } from "@/providers/UserProvider";
-import { ChatSession } from "@/app/app/interfaces";
+import {
+  ChatSession,
+  ChatSessionProjectVisibility,
+} from "@/app/app/interfaces";
 import AgentAvatar from "@/refresh-components/avatars/AgentAvatar";
 import { useAgents } from "@/lib/agents/hooks";
 import useChatSessions from "@/hooks/useChatSessions";
@@ -28,7 +34,9 @@ import {
   SvgBubbleText,
   SvgFolder,
   SvgFolderIn,
+  SvgLock,
   SvgMoreHorizontal,
+  SvgShare,
   SvgSimpleLoader,
   SvgTrash,
 } from "@opal/icons";
@@ -139,6 +147,26 @@ function ProjectChatItem({
     setPopoverOpen(false);
   }, [chat.id, fetchProjects, refreshChatSessions, afterRefresh]);
 
+  const isSharedToSpace =
+    chat.project_visibility === ChatSessionProjectVisibility.Shared;
+
+  const handleToggleVisibility = useCallback(async () => {
+    const next = isSharedToSpace
+      ? ChatSessionProjectVisibility.Private
+      : ChatSessionProjectVisibility.Shared;
+    await setChatSessionProjectVisibility(chat.id, next);
+    await fetchProjects();
+    await refreshChatSessions();
+    afterRefresh();
+    setPopoverOpen(false);
+  }, [
+    chat.id,
+    isSharedToSpace,
+    fetchProjects,
+    refreshChatSessions,
+    afterRefresh,
+  ]);
+
   const popoverItems = useMemo(() => {
     if (!showMoveOptions) {
       return [
@@ -157,6 +185,14 @@ function ProjectChatItem({
           icon={SvgFolder}
           title={`Remove from ${projects.find((p) => p.id === projectId)?.name ?? "space"}`}
           onClick={noProp(handleRemoveFromProject)}
+        />,
+        <LineItemButton
+          key="visibility"
+          sizePreset="main-ui"
+          rounding="sm"
+          icon={isSharedToSpace ? SvgLock : SvgShare}
+          title={isSharedToSpace ? "Make private" : "Share to space"}
+          onClick={noProp(handleToggleVisibility)}
         />,
         null,
         <LineItemButton
@@ -198,6 +234,8 @@ function ProjectChatItem({
     filteredProjects,
     handleMoveChatSession,
     handleRemoveFromProject,
+    isSharedToSpace,
+    handleToggleVisibility,
   ]);
 
   return (

@@ -214,6 +214,18 @@ class ChatSessionSharedStatus(str, PyEnum):
     PRIVATE = "private"
 
 
+class ChatSessionProjectVisibility(str, PyEnum):
+    """Visibility of a project (space) chat session to OTHER space members.
+
+    PRIVATE: only the owner sees the thread inside the space. SHARED: every
+    member with space access sees it. Orthogonal to ChatSessionSharedStatus,
+    which governs public-link sharing.
+    """
+
+    PRIVATE = "private"
+    SHARED = "shared"
+
+
 class ConnectorCredentialPairStatus(str, PyEnum):
     SCHEDULED = "SCHEDULED"
     INITIAL_INDEXING = "INITIAL_INDEXING"

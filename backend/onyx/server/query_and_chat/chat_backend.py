@@ -55,6 +55,7 @@ from onyx.db.chat import get_chat_messages_by_session
 from onyx.db.chat import get_chat_session_by_id
 from onyx.db.chat import get_chat_sessions_by_user
 from onyx.db.chat import set_as_latest_chat_message
+from onyx.db.chat import set_chat_session_project_visibility
 from onyx.db.chat import set_preferred_response
 from onyx.db.chat import translate_db_message_to_chat_message_detail
 from onyx.db.chat import update_chat_session
@@ -64,10 +65,13 @@ from onyx.db.engine.sql_engine import get_session_with_current_tenant
 from onyx.db.enums import Permission
 from onyx.db.feedback import create_chat_message_feedback
 from onyx.db.feedback import remove_chat_message_feedback
+from onyx.db.models import ChatSessionProjectVisibility
 from onyx.db.models import ChatSessionSharedStatus
 from onyx.db.models import Persona
 from onyx.db.models import User
 from onyx.db.persona import get_persona_by_id
+from onyx.db.projects import check_project_access
+from onyx.db.projects import ProjectAccessPolicy
 from onyx.db.usage import increment_usage
 from onyx.db.usage import UsageType
 from onyx.db.user_file import get_file_id_by_user_file_id
@@ -311,18 +315,38 @@ def get_chat_session(
         if not include_deleted and existing_chat_session.deleted:
             raise HTTPException(status_code=404, detail="Chat session has been deleted")
 
-        if is_shared:
-            if existing_chat_session.shared_status != ChatSessionSharedStatus.PUBLIC:
-                raise HTTPException(
-                    status_code=403, detail="Chat session is not shared"
-                )
-        elif user_id is not None and existing_chat_session.user_id not in (
-            user_id,
-            None,
+        # A thread explicitly shared to a space is viewable by any member with
+        # access to that space, even though they do not own it.
+        if (
+            not is_shared
+            and user_id is not None
+            and existing_chat_session.project_id is not None
+            and existing_chat_session.project_visibility
+            == ChatSessionProjectVisibility.SHARED
+            and check_project_access(
+                existing_chat_session.project_id,
+                user_id,
+                db_session,
+                policy=ProjectAccessPolicy.VIEW,
+            )
         ):
-            raise HTTPException(status_code=403, detail="Access denied")
+            chat_session = existing_chat_session
+        else:
+            if is_shared:
+                if (
+                    existing_chat_session.shared_status
+                    != ChatSessionSharedStatus.PUBLIC
+                ):
+                    raise HTTPException(
+                        status_code=403, detail="Chat session is not shared"
+                    )
+            elif user_id is not None and existing_chat_session.user_id not in (
+                user_id,
+                None,
+            ):
+                raise HTTPException(status_code=403, detail="Access denied")
 
-        raise HTTPException(status_code=404, detail="Chat session not found")
+            raise HTTPException(status_code=404, detail="Chat session not found")
 
     # for chat-seeding: if the session is unassigned, assign it now. This is done here
     # to avoid another back and forth between FE -> BE before starting the first
@@ -387,6 +411,29 @@ def get_chat_session(
         packets=replay_packet_lists,
         current_run=current_run,
     )
+
+
+class UpdateChatSessionVisibilityRequest(BaseModel):
+    project_visibility: ChatSessionProjectVisibility
+
+
+@router.patch("/chat-session/{session_id}/project-visibility", tags=PUBLIC_API_TAGS)
+def update_chat_session_project_visibility(
+    session_id: UUID,
+    request: UpdateChatSessionVisibilityRequest,
+    user: User = Depends(require_permission(Permission.READ_CHAT)),
+    db_session: Session = Depends(get_session),
+) -> None:
+    """Owner-only: share a thread to its space or make it private again."""
+    try:
+        set_chat_session_project_visibility(
+            chat_session_id=session_id,
+            visibility=request.project_visibility,
+            user_id=user.id,
+            db_session=db_session,
+        )
+    except ValueError:
+        raise OnyxError(OnyxErrorCode.SESSION_NOT_FOUND, "Chat session not found")
 
 
 @router.post("/create-chat-session", tags=PUBLIC_API_TAGS)

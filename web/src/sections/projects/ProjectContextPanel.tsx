@@ -3,6 +3,7 @@
 import React, { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useProjectsContext } from "@/providers/ProjectsContext";
+import { useUser } from "@/providers/UserProvider";
 import FilePickerPopover from "@/refresh-components/popovers/FilePickerPopover";
 import {
   UserFileStatus,
@@ -21,6 +22,8 @@ import UserFilesModal from "@/sections/modals/UserFilesModal";
 import { useCreateModal } from "@/refresh-components/contexts/ModalContext";
 import { FileCard } from "@/sections/cards/FileCard";
 import SpaceDetailHeader from "@/sections/projects/SpaceDetailHeader";
+import SpacePasteTextModal from "@/sections/modals/SpacePasteTextModal";
+import SpaceFeatureModal from "@/sections/modals/SpaceFeatureModal";
 import ProjectMemoryPanel from "@/sections/projects/ProjectMemoryPanel";
 import SpaceConnectedKnowledgeModal from "@/sections/projects/SpaceConnectedKnowledgeModal";
 import SpaceConnectedSourcesSection from "@/sections/projects/SpaceConnectedSourcesSection";
@@ -36,6 +39,7 @@ import {
   SvgFileText,
   SvgFiles,
   SvgFolderOpen,
+  SvgGlobe,
   SvgPlusCircle,
   SvgSidebar,
   SvgSimpleLoader,
@@ -96,6 +100,9 @@ export default function ProjectContextPanel({
   const shareProjectModal = useCreateModal();
   const [viewInstructionsOpen, setViewInstructionsOpen] = useState(false);
   const [connectedKnowledgeOpen, setConnectedKnowledgeOpen] = useState(false);
+  const [pasteModalOpen, setPasteModalOpen] = useState(false);
+  const [featureModalOpen, setFeatureModalOpen] = useState(false);
+  const { isAdmin } = useUser();
   // Convert ProjectFile to MinimalOnyxDocument format for viewing
   const handleOnView = useCallback(
     (file: ProjectFile) => {
@@ -238,6 +245,22 @@ export default function ProjectContextPanel({
           });
         }}
       />
+
+      {currentProjectId !== null && (
+        <SpacePasteTextModal
+          open={pasteModalOpen}
+          projectId={currentProjectId}
+          onClose={() => setPasteModalOpen(false)}
+        />
+      )}
+
+      {currentProjectId !== null && (
+        <SpaceFeatureModal
+          open={featureModalOpen}
+          projectId={currentProjectId}
+          onClose={() => setFeatureModalOpen(false)}
+        />
+      )}
 
       <div
         className={cn("w-full flex flex-col pb-6", compact ? "gap-5" : "gap-6")}
@@ -591,6 +614,16 @@ export default function ProjectContextPanel({
                   onClick={() => editDetailsModal.toggle(true)}
                 />
               )}
+              {canEdit && currentProjectId !== null && (
+                <LineItemButton
+                  sizePreset="main-ui"
+                  variant="section"
+                  width="full"
+                  icon={SvgEdit}
+                  title="Add plaintext"
+                  onClick={() => setPasteModalOpen(true)}
+                />
+              )}
               {isOwner && (
                 <LineItemButton
                   sizePreset="main-ui"
@@ -599,6 +632,16 @@ export default function ProjectContextPanel({
                   icon={SvgShare}
                   title="Share space"
                   onClick={() => shareProjectModal.toggle(true)}
+                />
+              )}
+              {isAdmin && currentProjectId !== null && (
+                <LineItemButton
+                  sizePreset="main-ui"
+                  variant="section"
+                  width="full"
+                  icon={SvgGlobe}
+                  title="Feature space"
+                  onClick={() => setFeatureModalOpen(true)}
                 />
               )}
             </div>

@@ -13,6 +13,7 @@ from onyx.context.search.models import BaseFilters
 from onyx.context.search.models import SavedSearchDoc
 from onyx.context.search.models import SearchDoc
 from onyx.context.search.models import Tag
+from onyx.db.enums import ChatSessionProjectVisibility
 from onyx.db.enums import ChatSessionSharedStatus
 from onyx.db.models import ChatSession
 from onyx.file_store.models import FileDescriptor
@@ -192,6 +193,9 @@ class ChatSessionDetails(BaseModel):
     time_created: str
     time_updated: str
     shared_status: ChatSessionSharedStatus
+    project_visibility: ChatSessionProjectVisibility = (
+        ChatSessionProjectVisibility.PRIVATE
+    )
     current_alternate_model: str | None = None
     current_temperature_override: float | None = None
 
@@ -205,6 +209,7 @@ class ChatSessionDetails(BaseModel):
             time_created=model.time_created.isoformat(),
             time_updated=model.time_updated.isoformat(),
             shared_status=model.shared_status,
+            project_visibility=model.project_visibility,
             current_alternate_model=model.current_alternate_model,
             current_temperature_override=model.temperature_override,
         )

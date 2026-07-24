@@ -21,7 +21,7 @@ import type {
 
 const handleRequestError = async (
   action: string,
-  response: Response
+  response: Response,
 ): Promise<never> => {
   let info: unknown = null;
   try {
@@ -45,7 +45,7 @@ export async function fetchProjects(): Promise<Project[]> {
 }
 
 export async function createProject(
-  input: string | CreateProjectInput
+  input: string | CreateProjectInput,
 ): Promise<Project> {
   const createInput =
     typeof input === "string" ? { name: input, description: null } : input;
@@ -73,14 +73,14 @@ export async function createProject(
   if (createInput.connected_knowledge_preset_id != null) {
     params.set(
       "connected_knowledge_preset_id",
-      String(createInput.connected_knowledge_preset_id)
+      String(createInput.connected_knowledge_preset_id),
     );
   }
   const response = await fetch(
     `/api/user/projects/create?${params.toString()}`,
     {
       method: "POST",
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Create project", response);
@@ -91,7 +91,9 @@ export async function createProject(
 export async function fetchConnectedKnowledgePresets(): Promise<
   ConnectedKnowledgePreset[]
 > {
-  const response = await fetch("/api/user/projects/connected-knowledge-presets");
+  const response = await fetch(
+    "/api/user/projects/connected-knowledge-presets",
+  );
   if (!response.ok) {
     await handleRequestError("Fetch connected knowledge presets", response);
   }
@@ -108,7 +110,7 @@ export interface CreateConnectedKnowledgePresetRequest {
 }
 
 export async function createConnectedKnowledgePreset(
-  request: CreateConnectedKnowledgePresetRequest
+  request: CreateConnectedKnowledgePresetRequest,
 ): Promise<ConnectedKnowledgePreset> {
   const response = await fetch(
     "/api/user/projects/connected-knowledge-presets",
@@ -116,7 +118,7 @@ export async function createConnectedKnowledgePreset(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Create connected knowledge preset", response);
@@ -135,7 +137,7 @@ export async function fetchConnectedSourceScopes(): Promise<
 }
 
 export async function updateConnectedSourceScope(
-  scope: ConnectedSourceScope
+  scope: ConnectedSourceScope,
 ): Promise<ConnectedSourceScope> {
   const response = await fetch(
     `/api/user/projects/connected-source-scopes/${scope.hierarchy_node_id}`,
@@ -155,7 +157,7 @@ export async function updateConnectedSourceScope(
         group_ids: scope.group_ids,
         excluded_hierarchy_node_ids: scope.excluded_hierarchy_node_ids,
       }),
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Update connected source scope", response);
@@ -166,7 +168,7 @@ export async function updateConnectedSourceScope(
 export async function uploadFiles(
   files: File[],
   projectId?: number | null,
-  tempIdMap?: Map<string, string>
+  tempIdMap?: Map<string, string>,
 ): Promise<CategorizedFiles> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
@@ -176,7 +178,7 @@ export async function uploadFiles(
   if (tempIdMap !== undefined && tempIdMap !== null) {
     formData.append(
       "temp_id_map",
-      JSON.stringify(Object.fromEntries(tempIdMap))
+      JSON.stringify(Object.fromEntries(tempIdMap)),
     );
   }
 
@@ -192,6 +194,41 @@ export async function uploadFiles(
   return response.json();
 }
 
+export async function pasteTextToProject(
+  name: string,
+  content: string,
+  projectId?: number | null,
+): Promise<CategorizedFiles> {
+  const response = await fetch("/api/user/projects/file/paste", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, content, project_id: projectId ?? null }),
+  });
+  if (!response.ok) {
+    await handleRequestError("Paste text", response);
+  }
+  return response.json();
+}
+
+export async function setProjectFeaturing(
+  projectId: number,
+  isOrgFeatured: boolean,
+  featuredForGroupId: number | null,
+): Promise<Response> {
+  const response = await fetch(`/api/user/projects/${projectId}/featuring`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      is_org_featured: isOrgFeatured,
+      featured_for_group_id: featuredForGroupId,
+    }),
+  });
+  if (!response.ok) {
+    await handleRequestError("Feature space", response);
+  }
+  return response;
+}
+
 export async function getRecentFiles(): Promise<ProjectFile[]> {
   const response = await fetch(`/api/user/files/recent`);
   if (!response.ok) {
@@ -201,7 +238,7 @@ export async function getRecentFiles(): Promise<ProjectFile[]> {
 }
 
 export async function getFilesInProject(
-  projectId: number
+  projectId: number,
 ): Promise<ProjectFile[]> {
   const response = await fetch(`/api/user/projects/files/${projectId}`);
   if (!response.ok) {
@@ -219,7 +256,7 @@ export async function getProject(projectId: number): Promise<Project> {
 }
 
 export async function getProjectSharing(
-  projectId: number
+  projectId: number,
 ): Promise<ProjectSharing> {
   const response = await fetch(`/api/user/projects/${projectId}/sharing`);
   if (!response.ok) {
@@ -230,7 +267,7 @@ export async function getProjectSharing(
 
 export async function updateProjectSharing(
   projectId: number,
-  sharing: ProjectShareUpdate
+  sharing: ProjectShareUpdate,
 ): Promise<ProjectSharing> {
   const response = await fetch(`/api/user/projects/${projectId}/sharing`, {
     method: "PATCH",
@@ -246,7 +283,7 @@ export async function updateProjectSharing(
 export async function resolveProjectAccessRequest(
   projectId: number,
   requestId: number,
-  approve: boolean
+  approve: boolean,
 ): Promise<ProjectSharing> {
   const response = await fetch(
     `/api/user/projects/${projectId}/join-requests/${requestId}/resolve`,
@@ -254,7 +291,7 @@ export async function resolveProjectAccessRequest(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ approve }),
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Resolve project access request", response);
@@ -264,7 +301,7 @@ export async function resolveProjectAccessRequest(
 
 export async function updateProjectMetadata(
   projectId: number,
-  metadata: ProjectMetadataUpdate
+  metadata: ProjectMetadataUpdate,
 ): Promise<Project> {
   const response = await fetch(`/api/user/projects/${projectId}`, {
     method: "PATCH",
@@ -279,13 +316,13 @@ export async function updateProjectMetadata(
 
 export async function renameProject(
   projectId: number,
-  name: string
+  name: string,
 ): Promise<Project> {
   return updateProjectMetadata(projectId, { name });
 }
 
 export async function fetchProjectAccessState(
-  projectId: number
+  projectId: number,
 ): Promise<ProjectAccessState> {
   const response = await fetch(`/api/user/projects/${projectId}/access-state`);
   if (!response.ok) {
@@ -295,7 +332,7 @@ export async function fetchProjectAccessState(
 }
 
 export async function requestProjectAccess(
-  projectId: number
+  projectId: number,
 ): Promise<ProjectJoinRequest> {
   const response = await fetch(
     `/api/user/projects/${projectId}/request-access`,
@@ -303,7 +340,7 @@ export async function requestProjectAccess(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ requested_permission: "VIEWER" }),
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Request project access", response);
@@ -312,13 +349,13 @@ export async function requestProjectAccess(
 }
 
 export async function cancelProjectAccessRequest(
-  projectId: number
+  projectId: number,
 ): Promise<void> {
   const response = await fetch(
     `/api/user/projects/${projectId}/request-access`,
     {
       method: "DELETE",
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Cancel project access request", response);
@@ -327,7 +364,7 @@ export async function cancelProjectAccessRequest(
 
 export async function setProjectPinned(
   projectId: number,
-  pinned: boolean
+  pinned: boolean,
 ): Promise<Project> {
   const response = await fetch(`/api/user/projects/${projectId}/pin`, {
     method: "PATCH",
@@ -350,7 +387,7 @@ export async function deleteProject(projectId: number): Promise<void> {
 }
 
 export async function getProjectInstructions(
-  projectId: number
+  projectId: number,
 ): Promise<string | null> {
   const response = await fetch(`/api/user/projects/${projectId}/instructions`);
   if (!response.ok) {
@@ -362,7 +399,7 @@ export async function getProjectInstructions(
 
 export async function upsertProjectInstructions(
   projectId: number,
-  instructions: string
+  instructions: string,
 ): Promise<string | null> {
   const response = await fetch(`/api/user/projects/${projectId}/instructions`, {
     method: "POST",
@@ -377,7 +414,7 @@ export async function upsertProjectInstructions(
 }
 
 export async function getProjectDetails(
-  projectId: number
+  projectId: number,
 ): Promise<ProjectDetails> {
   const response = await fetch(`/api/user/projects/${projectId}/details`);
   if (!response.ok) {
@@ -387,10 +424,10 @@ export async function getProjectDetails(
 }
 
 export async function getProjectConnectedKnowledge(
-  projectId: number
+  projectId: number,
 ): Promise<ProjectConnectedKnowledge> {
   const response = await fetch(
-    `/api/user/projects/${encodeURIComponent(projectId)}/connected-knowledge`
+    `/api/user/projects/${encodeURIComponent(projectId)}/connected-knowledge`,
   );
   if (!response.ok) {
     await handleRequestError("Fetch project connected knowledge", response);
@@ -400,7 +437,7 @@ export async function getProjectConnectedKnowledge(
 
 export async function updateProjectConnectedKnowledge(
   projectId: number,
-  knowledge: ProjectConnectedKnowledgeUpdate
+  knowledge: ProjectConnectedKnowledgeUpdate,
 ): Promise<ProjectConnectedKnowledge> {
   const response = await fetch(
     `/api/user/projects/${encodeURIComponent(projectId)}/connected-knowledge`,
@@ -408,7 +445,7 @@ export async function updateProjectConnectedKnowledge(
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(knowledge),
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Update project connected knowledge", response);
@@ -418,13 +455,13 @@ export async function updateProjectConnectedKnowledge(
 
 export async function unlinkFileFromProject(
   projectId: number,
-  fileId: string
+  fileId: string,
 ): Promise<Response> {
   const response = await fetch(
     `/api/user/projects/${encodeURIComponent(
-      projectId
+      projectId,
     )}/files/${encodeURIComponent(fileId)}`,
-    { method: "DELETE" }
+    { method: "DELETE" },
   );
   if (!response.ok) {
     await handleRequestError("Unlink file from project", response);
@@ -434,13 +471,13 @@ export async function unlinkFileFromProject(
 
 export async function linkFileToProject(
   projectId: number,
-  fileId: string
+  fileId: string,
 ): Promise<Response> {
   const response = await fetch(
     `/api/user/projects/${encodeURIComponent(
-      projectId
+      projectId,
     )}/files/${encodeURIComponent(fileId)}`,
-    { method: "POST" }
+    { method: "POST" },
   );
   if (!response.ok) {
     await handleRequestError("Link file to project", response);
@@ -449,13 +486,13 @@ export async function linkFileToProject(
 }
 
 export async function deleteUserFile(
-  fileId: string
+  fileId: string,
 ): Promise<UserFileDeleteResult> {
   const response = await fetch(
     `/api/user/projects/file/${encodeURIComponent(fileId)}`,
     {
       method: "DELETE",
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Delete file", response);
@@ -464,7 +501,7 @@ export async function deleteUserFile(
 }
 
 export async function getUserFileStatuses(
-  fileIds: string[]
+  fileIds: string[],
 ): Promise<ProjectFile[]> {
   const response = await fetch(`/api/user/projects/file/statuses`, {
     method: "POST",
@@ -478,12 +515,12 @@ export async function getUserFileStatuses(
 }
 
 export async function getSessionProjectTokenCount(
-  chatSessionId: string
+  chatSessionId: string,
 ): Promise<number> {
   const response = await fetch(
     `/api/user/projects/session/${encodeURIComponent(
-      chatSessionId
-    )}/token-count`
+      chatSessionId,
+    )}/token-count`,
   );
   if (!response.ok) {
     return 0;
@@ -493,10 +530,10 @@ export async function getSessionProjectTokenCount(
 }
 
 export async function getProjectFilesForSession(
-  chatSessionId: string
+  chatSessionId: string,
 ): Promise<ProjectFile[]> {
   const response = await fetch(
-    `/api/user/projects/session/${encodeURIComponent(chatSessionId)}/files`
+    `/api/user/projects/session/${encodeURIComponent(chatSessionId)}/files`,
   );
   if (!response.ok) {
     return [];
@@ -506,7 +543,7 @@ export async function getProjectFilesForSession(
 
 export async function getProjectTokenCount(projectId: number): Promise<number> {
   const response = await fetch(
-    `/api/user/projects/${encodeURIComponent(projectId)}/token-count`
+    `/api/user/projects/${encodeURIComponent(projectId)}/token-count`,
   );
   if (!response.ok) {
     return 0;
@@ -516,10 +553,10 @@ export async function getProjectTokenCount(projectId: number): Promise<number> {
 }
 
 export async function getMaxSelectedDocumentTokens(
-  personaId: number
+  personaId: number,
 ): Promise<number | null> {
   const response = await fetch(
-    `/api/chat/max-selected-document-tokens?persona_id=${personaId}`
+    `/api/chat/max-selected-document-tokens?persona_id=${personaId}`,
   );
   if (!response.ok) {
     return null;
@@ -530,7 +567,7 @@ export async function getMaxSelectedDocumentTokens(
 
 export async function moveChatSession(
   projectId: number,
-  chatSessionId: string
+  chatSessionId: string,
 ): Promise<boolean> {
   const response = await fetch(
     `/api/user/projects/${projectId}/move_chat_session`,
@@ -538,7 +575,7 @@ export async function moveChatSession(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_session_id: chatSessionId }),
-    }
+    },
   );
   if (!response.ok) {
     await handleRequestError("Move chat session", response);
@@ -547,7 +584,7 @@ export async function moveChatSession(
 }
 
 export async function removeChatSessionFromProject(
-  chatSessionId: string
+  chatSessionId: string,
 ): Promise<boolean> {
   const response = await fetch(`/api/user/projects/remove_chat_session`, {
     method: "POST",
