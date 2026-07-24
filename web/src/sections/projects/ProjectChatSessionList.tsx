@@ -303,6 +303,7 @@ function ProjectChatItem({
                     icon={SvgMoreHorizontal}
                     size="sm"
                     prominence="tertiary"
+                    aria-label={`Thread actions for ${chat.name || UNNAMED_CHAT}`}
                   />
                 </Popover.Trigger>
                 <Popover.Content
