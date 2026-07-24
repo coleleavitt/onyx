@@ -7,8 +7,8 @@ import pytest
 from sqlalchemy.orm import Session
 
 from onyx.access.access import get_acl_for_user
-from onyx.auth.schemas import UserRole
 from onyx.access.utils import prefix_user_email
+from onyx.auth.schemas import UserRole
 from onyx.chat.models import SearchParams
 from onyx.chat.process_message import apply_project_connected_knowledge_to_search_params
 from onyx.configs.constants import DocumentSource
@@ -30,6 +30,7 @@ from onyx.db.enums import IndexingStatus
 from onyx.db.enums import ProjectSharePermission
 from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import Document
+from onyx.db.models import DocumentByConnectorCredentialPair
 from onyx.db.models import HierarchyNode
 from onyx.db.models import HierarchyNodeByConnectorCredentialPair
 from onyx.db.models import IndexAttempt
@@ -52,6 +53,13 @@ from onyx.tools.tool_implementations.search.search_tool import SearchTool
 from tests.external_dependency_unit.conftest import create_test_user
 from tests.external_dependency_unit.indexing_helpers import make_cc_pair
 
+# Per-worker registries of the rows the helpers create, so teardown drops exactly
+# those. xdist runs each worker in its own process, so this module-level state is
+# isolated per worker and tests within a worker run sequentially — no cross-test
+# or cross-worker interference.
+_CREATED_HIERARCHY_NODE_IDS: list[int] = []
+_CREATED_DOCUMENT_IDS: list[str] = []
+
 
 @pytest.fixture(autouse=True)
 def _clear_connected_source_governance(
@@ -59,9 +67,24 @@ def _clear_connected_source_governance(
 ) -> Generator[None, None, None]:
     db_session.query(ConnectedSourceScope).delete()
     db_session.commit()
+    _CREATED_HIERARCHY_NODE_IDS.clear()
+    _CREATED_DOCUMENT_IDS.clear()
     yield
     db_session.query(ConnectedSourceScope).delete()
+    if _CREATED_DOCUMENT_IDS:
+        db_session.query(DocumentByConnectorCredentialPair).filter(
+            DocumentByConnectorCredentialPair.id.in_(_CREATED_DOCUMENT_IDS)
+        ).delete(synchronize_session=False)
+        db_session.query(Document).filter(
+            Document.id.in_(_CREATED_DOCUMENT_IDS)
+        ).delete(synchronize_session=False)
+    if _CREATED_HIERARCHY_NODE_IDS:
+        db_session.query(HierarchyNode).filter(
+            HierarchyNode.id.in_(_CREATED_HIERARCHY_NODE_IDS)
+        ).delete(synchronize_session=False)
     db_session.commit()
+    _CREATED_HIERARCHY_NODE_IDS.clear()
+    _CREATED_DOCUMENT_IDS.clear()
 
 
 class _FilteringDocumentIndex:
@@ -178,6 +201,7 @@ def _create_hierarchy_node(
     db_session.add(node)
     db_session.commit()
     db_session.refresh(node)
+    _CREATED_HIERARCHY_NODE_IDS.append(node.id)
     return node
 
 
@@ -215,6 +239,7 @@ def _create_indexed_document(
     )
     db_session.commit()
     db_session.refresh(document)
+    _CREATED_DOCUMENT_IDS.append(document.id)
     return document
 
 
@@ -1054,3 +1079,231 @@ def test_uncurated_paused_connector_backed_scope_is_hidden_by_default(
     assert governed.nodes == []
     assert governed.metadata_by_node_id[node.id].denial_reason == "connector_not_active"
     assert governed.metadata_by_node_id[node.id].is_selectable is False
+
+
+def test_paused_connector_backed_scope_with_indexed_content_stays_visible(
+    db_session: Session,
+) -> None:
+    # A paused connector still leaves its already-indexed corpus searchable, so
+    # the space knowledge picker must keep it selectable for retrieval-scoping
+    # even though no active connector is refreshing it.
+    user = create_test_user(db_session, "project_policy_paused_indexed")
+    node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"paused-indexed-{uuid4().hex}",
+        name="Paused But Indexed Intranet",
+    )
+    cc_pair = make_cc_pair(db_session, source=node.source, commit=False)
+    cc_pair.status = ConnectorCredentialPairStatus.PAUSED
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=node.id,
+            connector_id=cc_pair.connector_id,
+            credential_id=cc_pair.credential_id,
+        )
+    )
+    db_session.commit()
+    _create_indexed_document(
+        db_session,
+        document_id=f"doc-{uuid4().hex}",
+        title="Already Indexed Handbook",
+        parent=node,
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[node],
+        user=user,
+    )
+
+    assert [visible.id for visible in governed.nodes] == [node.id]
+    metadata = governed.metadata_by_node_id[node.id]
+    assert metadata.is_visible is True
+    assert metadata.is_selectable is True
+    assert metadata.denial_reason is None
+    assert metadata.metrics.connector_statuses == (
+        ConnectorCredentialPairStatus.PAUSED.value,
+    )
+    assert metadata.metrics.has_indexed_content is True
+    assert metadata.metrics.retains_searchable_content is True
+
+
+def test_deleting_connector_backed_scope_with_indexed_content_stays_hidden(
+    db_session: Session,
+) -> None:
+    # A DELETING connector is actively removing its index, so even though its
+    # documents still momentarily exist, its nodes must NOT be offered as
+    # selectable knowledge (unlike a paused connector, which is retained).
+    user = create_test_user(db_session, "project_policy_deleting_indexed")
+    node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"deleting-indexed-{uuid4().hex}",
+        name="Deleting Intranet",
+    )
+    cc_pair = make_cc_pair(db_session, source=node.source, commit=False)
+    cc_pair.status = ConnectorCredentialPairStatus.DELETING
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=node.id,
+            connector_id=cc_pair.connector_id,
+            credential_id=cc_pair.credential_id,
+        )
+    )
+    db_session.commit()
+    _create_indexed_document(
+        db_session,
+        document_id=f"doc-{uuid4().hex}",
+        title="Doomed Handbook",
+        parent=node,
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[node],
+        user=user,
+    )
+
+    assert governed.nodes == []
+    metadata = governed.metadata_by_node_id[node.id]
+    assert metadata.is_visible is False
+    assert metadata.denial_reason == "connector_not_active"
+    assert metadata.metrics.has_indexed_content is True
+    assert metadata.metrics.has_deleting_connector is True
+    assert metadata.metrics.retains_searchable_content is False
+
+
+def test_ungoverned_ancestor_of_scoped_node_is_navigation_only(
+    db_session: Session,
+) -> None:
+    # Once any scope exists for a source, an ungoverned ancestor on the path to
+    # a governed node stays browsable (visible) but is NOT selectable, so a user
+    # cannot attach a broad parent as a shortcut around policy.
+    user = create_test_user(db_session, "project_policy_navigation_only")
+    parent = _create_hierarchy_node(
+        db_session, raw_id=f"nav-parent-{uuid4().hex}", name="Nav Parent"
+    )
+    child = _create_hierarchy_node(
+        db_session,
+        raw_id=f"nav-child-{uuid4().hex}",
+        name="Nav Child",
+        parent_id=parent.id,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=child.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session, nodes=[parent, child], user=user
+    )
+    visible_ids = {node.id for node in governed.nodes}
+
+    assert parent.id in visible_ids
+    assert child.id in visible_ids
+    parent_meta = governed.metadata_by_node_id[parent.id]
+    assert parent_meta.is_visible is True
+    assert parent_meta.is_selectable is False
+    assert parent_meta.denial_reason == "navigation_only"
+    assert governed.metadata_by_node_id[child.id].is_selectable is True
+
+
+def test_ungoverned_node_outside_policy_is_hidden(
+    db_session: Session,
+) -> None:
+    # A node with no scope that is not on the path to any governed node is hidden
+    # entirely once a policy exists for the source ("outside_policy").
+    user = create_test_user(db_session, "project_policy_outside")
+    scoped = _create_hierarchy_node(
+        db_session, raw_id=f"outside-scoped-{uuid4().hex}", name="Scoped Node"
+    )
+    unrelated = _create_hierarchy_node(
+        db_session, raw_id=f"outside-unrelated-{uuid4().hex}", name="Unrelated Node"
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=scoped.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session, nodes=[scoped, unrelated], user=user
+    )
+    visible_ids = {node.id for node in governed.nodes}
+
+    assert scoped.id in visible_ids
+    assert unrelated.id not in visible_ids
+    unrelated_meta = governed.metadata_by_node_id[unrelated.id]
+    assert unrelated_meta.is_visible is False
+    assert unrelated_meta.denial_reason == "outside_policy"
+
+
+def test_child_excluded_by_parent_scope_is_hidden(
+    db_session: Session,
+) -> None:
+    # A parent scope can carve a child out of its coverage; the excluded child is
+    # hidden while the parent itself stays visible ("excluded_by_parent_scope").
+    user = create_test_user(db_session, "project_policy_excluded")
+    parent = _create_hierarchy_node(
+        db_session, raw_id=f"excl-parent-{uuid4().hex}", name="Excl Parent"
+    )
+    child = _create_hierarchy_node(
+        db_session,
+        raw_id=f"excl-child-{uuid4().hex}",
+        name="Excl Child",
+        parent_id=parent.id,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=parent.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[child.id],
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session, nodes=[parent, child], user=user
+    )
+    visible_ids = {node.id for node in governed.nodes}
+
+    assert parent.id in visible_ids
+    assert child.id not in visible_ids
+    child_meta = governed.metadata_by_node_id[child.id]
+    assert child_meta.is_visible is False
+    assert child_meta.denial_reason == "excluded_by_parent_scope"
+
+
+def test_archived_scope_hidden_by_default_and_shown_with_include_archived(
+    db_session: Session,
+) -> None:
+    # A scope curated as ARCHIVE is hidden by default ("hidden_by_curation_status")
+    # and only surfaces when include_archived is requested.
+    user = create_test_user(db_session, "project_policy_archived")
+    node = _create_hierarchy_node(
+        db_session, raw_id=f"archived-scope-{uuid4().hex}", name="Archived Intranet"
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=node.id,
+        curation_status=ConnectedSourceCurationStatus.ARCHIVE,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    governed = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session, nodes=[node], user=user
+    )
+    assert governed.nodes == []
+    hidden_meta = governed.metadata_by_node_id[node.id]
+    assert hidden_meta.is_visible is False
+    assert hidden_meta.denial_reason == "hidden_by_curation_status"
+
+    governed_with_archived = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session, nodes=[node], user=user, include_archived=True
+    )
+    assert [visible.id for visible in governed_with_archived.nodes] == [node.id]
+    assert governed_with_archived.metadata_by_node_id[node.id].is_archived is True

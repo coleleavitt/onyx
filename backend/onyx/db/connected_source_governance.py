@@ -51,6 +51,23 @@ class ConnectedSourceScopeMetrics:
         }
         return any(status in active_statuses for status in self.connector_statuses)
 
+    @property
+    def has_deleting_connector(self) -> bool:
+        return ConnectorCredentialPairStatus.DELETING.value in self.connector_statuses
+
+    @property
+    def has_indexed_content(self) -> bool:
+        return self.document_count > 0 or self.chunk_count > 0
+
+    @property
+    def retains_searchable_content(self) -> bool:
+        # A paused (or credential-invalid) connector still leaves its
+        # already-indexed corpus searchable, so scoping retrieval over it stays
+        # valid even without an active connector refreshing it. A DELETING
+        # connector is actively tearing its index down, so its nodes must not be
+        # offered as selectable knowledge.
+        return self.has_indexed_content and not self.has_deleting_connector
+
 
 @dataclass(frozen=True)
 class ConnectedSourceScopeMetadata:
@@ -406,6 +423,7 @@ def _evaluate_source_partition(
         if (
             node_metrics.has_connector_backing
             and not node_metrics.has_active_connector
+            and not node_metrics.retains_searchable_content
             and not include_hidden
         ):
             visible = False
@@ -413,9 +431,8 @@ def _evaluate_source_partition(
             denial_reason = "connector_not_active"
 
         for scope in path_scopes:
-            if (
-                not bypass_group_policy
-                and not _scope_is_allowed_for_groups(scope, user_group_ids)
+            if not bypass_group_policy and not _scope_is_allowed_for_groups(
+                scope, user_group_ids
             ):
                 visible = False
                 selectable = False
@@ -435,6 +452,7 @@ def _evaluate_source_partition(
             if (
                 scope_metrics.has_connector_backing
                 and not scope_metrics.has_active_connector
+                and not scope_metrics.retains_searchable_content
                 and not include_hidden
             ):
                 visible = False
