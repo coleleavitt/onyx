@@ -14,6 +14,7 @@ SETUP="auto"
 INSTALL_PLAYWRIGHT="auto"
 CLEAN_ORPHANS=1
 PIDS=()
+NAMES=()
 STOPPING=0
 
 usage() {
@@ -268,6 +269,76 @@ run_migrations() {
   (cd "$BACKEND_DIR" && "$ROOT_DIR/.venv/bin/alembic" upgrade head)
 }
 
+check_disk_headroom() {
+  command -v df >/dev/null 2>&1 || return 0
+  local use
+  use="$(df --output=pcent / 2>/dev/null | tail -n 1 | tr -dc '0-9' || true)"
+  [[ -n "$use" ]] || return 0
+  if (( use >= 95 )); then
+    log "warning: disk at ${use}% — at/above OpenSearch flood-stage watermark (95%); indices can re-lock read-only. Free space (e.g. 'docker system prune -f')."
+  elif (( use >= 90 )); then
+    log "notice: disk at ${use}% — above OpenSearch high watermark (90%); approaching flood-stage (95%)."
+  fi
+}
+
+clear_opensearch_readonly_block() {
+  local base="$1"
+  # Only data indices: exclude dot-indices (.opendistro_security, .plugins-ml-config)
+  # and security-auditlog-*, which admin cannot modify — including them 403s the whole
+  # wildcard request so nothing clears.
+  local pattern='*,-.*,-security-auditlog-*'
+  local blocked
+  blocked="$(curl -sk -u "admin:${OPENSEARCH_ADMIN_PASSWORD}" \
+    "${base}/${pattern}/_settings/index.blocks.read_only_allow_delete?flat_settings=true" 2>/dev/null || true)"
+  [[ "$blocked" == *'"index.blocks.read_only_allow_delete":"true"'* ]] || return 0
+
+  log "clearing stale read-only-allow-delete block on OpenSearch data indices (disk-watermark residue)"
+  if ! curl -sk -u "admin:${OPENSEARCH_ADMIN_PASSWORD}" -X PUT \
+    "${base}/${pattern}/_settings" \
+    -H 'Content-Type: application/json' \
+    -d '{"index.blocks.read_only_allow_delete": null}' >/dev/null 2>&1; then
+    log "warning: failed to clear read-only block; check disk space (df -h /)."
+  fi
+}
+
+wait_for_opensearch() {
+  # OpenSearch has no compose healthcheck, so 'compose up --wait' returns before it is
+  # actually serving. Gate startup on a real readiness probe here, and clear any stale
+  # flood-stage read-only block left behind by prior disk pressure (it does not auto-clear).
+  if ! command -v curl >/dev/null 2>&1; then
+    log "curl not found; skipping OpenSearch readiness probe"
+    return 0
+  fi
+
+  check_disk_headroom
+
+  local host="${OPENSEARCH_HOST:-localhost}"
+  local port="${OPENSEARCH_REST_API_PORT:-9200}"
+  local deadline=$(( SECONDS + 120 ))
+  local base="" scheme code=""
+
+  log "waiting for OpenSearch to be ready at ${host}:${port}"
+  while (( SECONDS < deadline )); do
+    for scheme in https http; do
+      code="$(curl -sk -u "admin:${OPENSEARCH_ADMIN_PASSWORD}" -o /dev/null \
+        -w '%{http_code}' --max-time 4 "${scheme}://${host}:${port}/_cluster/health" 2>/dev/null || true)"
+      if [[ "$code" == "200" ]]; then
+        base="${scheme}://${host}:${port}"
+        break 2
+      fi
+    done
+    sleep 2
+  done
+
+  if [[ -z "$base" ]]; then
+    log "warning: OpenSearch not confirmed healthy within 120s (last HTTP ${code:-none}); continuing anyway"
+    return 0
+  fi
+
+  log "OpenSearch is ready (${base})"
+  clear_opensearch_readonly_block "$base"
+}
+
 matching_dev_process_groups() {
   ps -eo pid=,pgid=,cmd= | awk -v root="$ROOT_DIR" '
     {
@@ -351,6 +422,7 @@ start_service() {
   ' _ "$dir" "$@" > >(sed -u "s/^/[$name] /") 2> >(sed -u "s/^/[$name] /" >&2) &
 
   PIDS+=("$!")
+  NAMES+=("$name")
 }
 
 stop_services() {
@@ -384,6 +456,7 @@ run_source_dev() {
   setup_dependencies
   verify_web_runtime
   start_infra
+  wait_for_opensearch
   run_migrations
 
   trap stop_services EXIT
@@ -400,12 +473,22 @@ run_source_dev() {
   wait -n "${PIDS[@]}"
   local status="$?"
   set -e
+
+  local i dead="unknown"
+  for i in "${!PIDS[@]}"; do
+    if ! kill -0 "${PIDS[$i]}" 2>/dev/null; then
+      dead="${NAMES[$i]:-unknown}"
+      break
+    fi
+  done
+  log "service '${dead}' exited (status ${status}); stopping the rest"
   exit "$status"
 }
 
 run_infra_only() {
   ensure_local_env_files
   start_infra
+  wait_for_opensearch
   log "infra is running"
 }
 
