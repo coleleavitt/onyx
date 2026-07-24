@@ -1136,3 +1136,61 @@ def test_file_backed_section_emits_descriptor_chunks() -> None:
     assert "Sheet overview." in joined  # sheet descriptor
     assert "total (sum across all rows)" in joined  # numeric totals
     assert "most frequent value: US (4 occurrences)" in joined  # categorical top
+
+
+def test_every_chunk_keeps_rows_bound_to_their_own_columns() -> None:
+    """A spreadsheet split across several chunks must never let a value drift
+    from its row or its column.
+
+    This is the reported failure mode for advisor production sheets: an answer
+    quoted numbers that belonged to other rows because a mid-sheet chunk had no
+    header to bind values to columns. Each row is emitted as explicit
+    field=value pairs and every chunk repeats the column header, so a value can
+    only ever be read against its own row.
+    """
+    csv_text = (
+        "Advisor,Production,Region\n"
+        "Stewart Willis,40216752.33,West\n"
+        "Jarrod Florence,8500000.50,East\n"
+        "Raymond Chandler,12000000.00,South\n"
+        "Jess Rowland,6750000.25,North\n"
+        "Kandice Garcia,9300000.75,West\n"
+    )
+    heading = "sheet:Production"
+    # Small budget so the sheet is forced across multiple chunks.
+    content_token_limit = 120
+
+    out = _make_chunker_no_metadata().chunk_section(
+        _tabular_section(csv_text, heading=heading),
+        AccumulatorState(),
+        content_token_limit=content_token_limit,
+    )
+    texts = [payload.text for payload in out.payloads]
+
+    assert len(texts) > 1, "budget should have split the sheet across chunks"
+
+    # Every chunk — not just the first — carries the sheet and column headers.
+    for text in texts:
+        assert text.startswith(f"{heading}\nColumns: Advisor, Production, Region")
+
+    # Stewart's number travels with Stewart, in his row, on one line.
+    stewart_lines = [
+        line for text in texts for line in text.splitlines() if "Stewart Willis" in line
+    ]
+    assert stewart_lines == [
+        "Advisor=Stewart Willis, Production=40216752.33, Region=West"
+    ]
+
+    # No other advisor's production value ever appears on Stewart's line.
+    for other in ("8500000.50", "12000000.00", "6750000.25", "9300000.75"):
+        assert other not in stewart_lines[0]
+
+    # Every advisor keeps their own value.
+    joined = "\n".join(texts)
+    for advisor, production in (
+        ("Jarrod Florence", "8500000.50"),
+        ("Raymond Chandler", "12000000.00"),
+        ("Jess Rowland", "6750000.25"),
+        ("Kandice Garcia", "9300000.75"),
+    ):
+        assert f"Advisor={advisor}, Production={production}" in joined
