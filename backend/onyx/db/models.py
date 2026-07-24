@@ -5124,6 +5124,12 @@ class UserGroup(Base):
     )
     # whether this is a default group (e.g. "Basic", "Admins") that cannot be deleted
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Members of this group are never surfaced through the oversight (query
+    # history) surface, for anyone — including admins. Used to keep an
+    # executive/leadership tier's sessions private.
+    excluded_from_oversight: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     # Last time a user updated this user group
     time_last_modified_by_user: Mapped[datetime.datetime] = mapped_column(

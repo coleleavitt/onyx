@@ -14,11 +14,14 @@ from ee.onyx.db.user_group import insert_user_group
 from ee.onyx.db.user_group import prepare_user_group_for_deletion
 from ee.onyx.db.user_group import rename_user_group
 from ee.onyx.db.user_group import set_group_permission__no_commit
+from ee.onyx.db.user_group import set_user_group_oversight_exclusion
 from ee.onyx.db.user_group import update_user_curator_relationship
 from ee.onyx.db.user_group import update_user_group
 from ee.onyx.server.user_group.models import AddUsersToUserGroupRequest
 from ee.onyx.server.user_group.models import MinimalUserGroupSnapshot
 from ee.onyx.server.user_group.models import SetCuratorRequest
+from ee.onyx.server.user_group.models import SetOversightExclusionRequest
+from ee.onyx.server.user_group.models import SetOversightExclusionResponse
 from ee.onyx.server.user_group.models import SetPermissionRequest
 from ee.onyx.server.user_group.models import SetPermissionResponse
 from ee.onyx.server.user_group.models import UpdateGroupAgentsRequest
@@ -138,6 +141,29 @@ def set_user_group_permission(
     db_session.commit()
 
     return SetPermissionResponse(permission=request.permission, enabled=request.enabled)
+
+
+@router.put("/admin/user-group/{user_group_id}/oversight-exclusion")
+def set_user_group_oversight_exclusion_endpoint(
+    user_group_id: int,
+    request: SetOversightExclusionRequest,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> SetOversightExclusionResponse:
+    """Exclude a group's members from the oversight surface entirely, so a
+    sensitive tier stays private from every overseer including admins."""
+    try:
+        group = set_user_group_oversight_exclusion(
+            db_session=db_session,
+            user_group_id=user_group_id,
+            excluded_from_oversight=request.excluded_from_oversight,
+        )
+    except ValueError:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "User group not found")
+
+    return SetOversightExclusionResponse(
+        excluded_from_oversight=group.excluded_from_oversight
+    )
 
 
 @router.post("/admin/user-group")

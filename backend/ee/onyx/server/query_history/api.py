@@ -13,6 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ee.onyx.background.task_name_builders import query_history_task_name
+from ee.onyx.db.oversight import can_oversee_user
 from ee.onyx.db.query_history import get_all_query_history_export_tasks
 from ee.onyx.db.query_history import get_page_of_chat_sessions
 from ee.onyx.db.query_history import get_total_filtered_chat_sessions_count
@@ -84,6 +85,7 @@ def fetch_and_process_chat_session_history(
     start: datetime,
     end: datetime,
     limit: int | None = 500,  # noqa: ARG001
+    overseer: User | None = None,
 ) -> Generator[ChatSessionSnapshot]:
     PAGE_SIZE = 100
 
@@ -95,6 +97,7 @@ def fetch_and_process_chat_session_history(
             db_session=db_session,
             page_num=page,
             page_size=PAGE_SIZE,
+            overseer=overseer,
         )
 
         if not paged_chat_sessions:
@@ -160,9 +163,15 @@ def snapshot_from_chat_session(
 @router.get("/admin/chat-sessions")
 def admin_get_chat_sessions(
     user_id: UUID,
-    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    user: User = Depends(require_permission(Permission.READ_QUERY_HISTORY)),
     db_session: Session = Depends(get_session),
 ) -> ChatSessionsResponse:
+    if not can_oversee_user(user, user_id, db_session):
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "You do not have oversight of this user.",
+        )
+
     # we specifically don't allow this endpoint if "anonymized" since
     # this is a direct query on the user id
     ensure_query_history_is_enabled(
@@ -203,7 +212,7 @@ def get_chat_session_history(
     feedback_type: QAFeedbackType | None = None,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
-    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    user: User = Depends(require_permission(Permission.READ_QUERY_HISTORY)),
     db_session: Session = Depends(get_session),
 ) -> PaginatedReturn[ChatSessionMinimal]:
     query_history_type = ensure_query_history_is_enabled(
@@ -217,6 +226,7 @@ def get_chat_session_history(
         start_time=start_time,
         end_time=end_time,
         feedback_filter=feedback_type,
+        overseer=user,
     )
 
     total_filtered_chat_sessions_count = get_total_filtered_chat_sessions_count(
@@ -224,6 +234,7 @@ def get_chat_session_history(
         start_time=start_time,
         end_time=end_time,
         feedback_filter=feedback_type,
+        overseer=user,
     )
 
     minimal_chat_sessions: list[ChatSessionMinimal] = []
@@ -243,7 +254,7 @@ def get_chat_session_history(
 @router.get("/admin/chat-session-history/{chat_session_id}")
 def get_chat_session_admin(
     chat_session_id: UUID,
-    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    user: User = Depends(require_permission(Permission.READ_QUERY_HISTORY)),
     db_session: Session = Depends(get_session),
 ) -> ChatSessionSnapshot:
     query_history_type = ensure_query_history_is_enabled(
@@ -262,6 +273,13 @@ def get_chat_session_admin(
             HTTPStatus.BAD_REQUEST,
             f"Chat session with id '{chat_session_id}' does not exist.",
         )
+
+    if not can_oversee_user(user, chat_session.user_id, db_session):
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "You do not have oversight of this chat session.",
+        )
+
     snapshot = snapshot_from_chat_session(
         chat_session=chat_session, db_session=db_session
     )

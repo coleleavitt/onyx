@@ -48,6 +48,7 @@ interface SidebarItemEntry {
 
 interface BuildItemsOptions {
   isCurator: boolean;
+  canOverseeQueryHistory: boolean;
   enableCloud: boolean;
   tier: Tier | undefined;
   settings: Settings | null;
@@ -59,6 +60,7 @@ interface BuildItemsOptions {
 
 function buildItems({
   isCurator,
+  canOverseeQueryHistory,
   enableCloud,
   tier,
   settings,
@@ -71,7 +73,7 @@ function buildItems({
 
   const add = (
     section: string | null,
-    route: Parameters<typeof sidebarItem>[0]
+    route: Parameters<typeof sidebarItem>[0],
   ) => {
     items.push({ ...sidebarItem(route), section });
   };
@@ -79,7 +81,7 @@ function buildItems({
   const addGated = (
     section: string | null,
     route: Parameters<typeof sidebarItem>[0],
-    requiredTier: Tier
+    requiredTier: Tier,
   ) => {
     items.push({
       ...sidebarItem(route),
@@ -102,7 +104,7 @@ function buildItems({
       addGated(
         SECTIONS.UNLABELED,
         ADMIN_ROUTES.CUSTOM_ANALYTICS,
-        Tier.ENTERPRISE
+        Tier.ENTERPRISE,
       );
     }
   }
@@ -160,12 +162,16 @@ function buildItems({
     }
     addGated(SECTIONS.USAGE, ADMIN_ROUTES.USAGE, Tier.BUSINESS);
     addGated(SECTIONS.USAGE, ADMIN_ROUTES.TOKEN_RATE_LIMITS, Tier.ENTERPRISE);
-    if (
-      settings?.query_history_type !== "disabled" &&
-      !settings?.hide_query_history_from_admin_panel
-    ) {
-      addGated(SECTIONS.USAGE, ADMIN_ROUTES.QUERY_HISTORY, Tier.BUSINESS);
-    }
+  }
+
+  // Query history doubles as the oversight surface, so it is also available to
+  // a delegated overseer who holds the permission without being an admin.
+  if (
+    (!isCurator || canOverseeQueryHistory) &&
+    settings?.query_history_type !== "disabled" &&
+    !settings?.hide_query_history_from_admin_panel
+  ) {
+    addGated(SECTIONS.USAGE, ADMIN_ROUTES.QUERY_HISTORY, Tier.BUSINESS);
   }
 
   // 8. Organization (admin only)
@@ -228,10 +234,14 @@ export default function AdminSidebar() {
   const { data: licenseData, isLoading: licenseLoading } = useLicense();
   const isCurator =
     user?.role === UserRole.CURATOR || user?.role === UserRole.GLOBAL_CURATOR;
+  // Oversight can be delegated to a curator via the query-history permission.
+  const canOverseeQueryHistory = Boolean(
+    user?.effective_permissions?.includes("read:query_history"),
+  );
   const planStateLoading = billingLoading || licenseLoading;
   const hasPaidPlan = Boolean(
     (billingData && hasActiveSubscription(billingData)) ||
-    licenseData?.has_license
+    licenseData?.has_license,
   );
   const hasBundledSelfHostedFeatures =
     !NEXT_PUBLIC_CLOUD_ENABLED &&
@@ -245,6 +255,7 @@ export default function AdminSidebar() {
 
   const allItems = buildItems({
     isCurator,
+    canOverseeQueryHistory,
     enableCloud: NEXT_PUBLIC_CLOUD_ENABLED,
     tier,
     settings,
@@ -329,7 +340,7 @@ export default function AdminSidebar() {
                   tooltip={markdown(
                     requiredTier === Tier.ENTERPRISE
                       ? "This feature is available on the [Enterprise version of Onyx](/admin/billing) only."
-                      : "This feature is available on the [Business or Enterprise version of Onyx](/admin/billing) only."
+                      : "This feature is available on the [Business or Enterprise version of Onyx](/admin/billing) only.",
                   )}
                 >
                   {name}

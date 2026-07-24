@@ -16,11 +16,13 @@ from sqlalchemy.sql.expression import literal
 from sqlalchemy.sql.expression import UnaryExpression
 
 from ee.onyx.background.task_name_builders import QUERY_HISTORY_TASK_NAME_PREFIX
+from ee.onyx.db.oversight import oversight_chat_session_condition
 from onyx.configs.constants import QAFeedbackType
 from onyx.db.models import ChatMessage
 from onyx.db.models import ChatMessageFeedback
 from onyx.db.models import ChatSession
 from onyx.db.models import TaskQueueState
+from onyx.db.models import User
 from onyx.db.tasks import get_all_tasks_with_prefix
 
 
@@ -28,6 +30,7 @@ def _build_filter_conditions(
     start_time: datetime | None,
     end_time: datetime | None,
     feedback_filter: QAFeedbackType | None,
+    overseer: User | None,
 ) -> list[ColumnElement]:
     """
     Helper function to build all filter conditions for chat sessions.
@@ -35,9 +38,11 @@ def _build_filter_conditions(
     start_time: Date from which to filter
     end_time: Date to which to filter
     feedback_filter: Feedback type to filter by
+    overseer: User whose oversight scope bounds the result; None for the
+        admin-only background export, which is still subject to exclusion
     Returns: List of filter conditions
     """
-    conditions = []
+    conditions: list[ColumnElement] = [oversight_chat_session_condition(overseer)]
 
     if start_time is not None:
         conditions.append(ChatSession.time_created >= start_time)
@@ -80,8 +85,11 @@ def get_total_filtered_chat_sessions_count(
     start_time: datetime | None,
     end_time: datetime | None,
     feedback_filter: QAFeedbackType | None,
+    overseer: User | None,
 ) -> int:
-    conditions = _build_filter_conditions(start_time, end_time, feedback_filter)
+    conditions = _build_filter_conditions(
+        start_time, end_time, feedback_filter, overseer
+    )
     stmt = (
         select(func.count(distinct(ChatSession.id)))
         .select_from(ChatSession)
@@ -96,9 +104,12 @@ def get_page_of_chat_sessions(
     db_session: Session,
     page_num: int,
     page_size: int,
+    overseer: User | None,
     feedback_filter: QAFeedbackType | None = None,
 ) -> Sequence[ChatSession]:
-    conditions = _build_filter_conditions(start_time, end_time, feedback_filter)
+    conditions = _build_filter_conditions(
+        start_time, end_time, feedback_filter, overseer
+    )
 
     subquery = (
         select(ChatSession.id)

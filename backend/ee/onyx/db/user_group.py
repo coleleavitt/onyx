@@ -950,6 +950,25 @@ def rename_user_group(
     return db_user_group
 
 
+def set_user_group_oversight_exclusion(
+    db_session: Session,
+    user_group_id: int,
+    excluded_from_oversight: bool,
+) -> UserGroup:
+    """Flag a group so its members are never surfaced through the oversight
+    (query history) surface. Purely a read-scoping rule, so unlike a rename it
+    needs no document re-sync."""
+    stmt = select(UserGroup).where(UserGroup.id == user_group_id)
+    db_user_group = db_session.scalar(stmt)
+    if db_user_group is None:
+        raise ValueError(f"UserGroup with id '{user_group_id}' not found")
+
+    db_user_group.excluded_from_oversight = excluded_from_oversight
+    db_user_group.time_last_modified_by_user = func.now()
+    db_session.commit()
+    return db_user_group
+
+
 def prepare_user_group_for_deletion(db_session: Session, user_group_id: int) -> None:
     stmt = select(UserGroup).where(UserGroup.id == user_group_id)
     db_user_group = db_session.scalar(stmt)

@@ -115,6 +115,7 @@ export interface User {
   is_superuser: boolean;
   is_verified: boolean;
   role: UserRole;
+  effective_permissions?: string[];
   preferences: UserPreferences;
   token_expires_at?: string;
   is_cloud_superuser?: boolean;
@@ -551,7 +552,12 @@ export interface ConnectedSourceScopeSummary {
   link: string | null;
   parent_id: number | null;
   access_type: "PUBLIC" | "RESTRICTED";
-  curation_status: "DEFAULT_SAFE" | "STANDARD" | "ARCHIVE" | "HIDDEN" | "DIAGNOSTIC";
+  curation_status:
+    | "DEFAULT_SAFE"
+    | "STANDARD"
+    | "ARCHIVE"
+    | "HIDDEN"
+    | "DIAGNOSTIC";
   display_label: string | null;
   tenant_label: string | null;
   department_label: string | null;
@@ -575,6 +581,8 @@ export interface UserGroup {
   is_up_to_date: boolean;
   is_up_for_deletion: boolean;
   is_default: boolean;
+  // Members are never surfaced through the oversight (query history) surface.
+  excluded_from_oversight: boolean;
 }
 
 export enum ValidSources {
@@ -643,7 +651,7 @@ export enum ValidSources {
 }
 
 export const federatedSourceToRegularSource = (
-  maybeFederatedSource: ValidSources
+  maybeFederatedSource: ValidSources,
 ): ValidSources => {
   if (maybeFederatedSource === ValidSources.FederatedSlack) {
     return ValidSources.Slack;

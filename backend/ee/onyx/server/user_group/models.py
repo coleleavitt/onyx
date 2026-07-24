@@ -26,6 +26,8 @@ class UserGroup(BaseModel):
     is_up_to_date: bool
     is_up_for_deletion: bool
     is_default: bool
+    # Members are never surfaced through the oversight (query history) surface.
+    excluded_from_oversight: bool
 
     @classmethod
     def from_model(
@@ -92,6 +94,7 @@ class UserGroup(BaseModel):
             is_up_to_date=user_group_model.is_up_to_date,
             is_up_for_deletion=user_group_model.is_up_for_deletion,
             is_default=user_group_model.is_default,
+            excluded_from_oversight=user_group_model.excluded_from_oversight,
         )
 
 
@@ -147,3 +150,11 @@ class SetPermissionRequest(BaseModel):
 class SetPermissionResponse(BaseModel):
     permission: Permission
     enabled: bool
+
+
+class SetOversightExclusionRequest(BaseModel):
+    excluded_from_oversight: bool
+
+
+class SetOversightExclusionResponse(BaseModel):
+    excluded_from_oversight: bool

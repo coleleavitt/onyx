@@ -39,6 +39,10 @@ class UserRole(str, Enum):
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
     role: UserRole
+    # Permission tokens granted to this user, so the client can surface the
+    # surfaces they actually hold (e.g. delegated query-history oversight)
+    # instead of inferring capability from role alone.
+    effective_permissions: list[str] = []
 
 
 class UserCreate(schemas.BaseUserCreate):
