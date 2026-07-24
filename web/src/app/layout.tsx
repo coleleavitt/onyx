@@ -91,9 +91,8 @@ export default function Layout({ children }: LayoutProps) {
             script that runs before page scripts, so this synchronous check sees
             them; the class then persists across client-side navigations. No-op
             in a browser. */}
-        <Script
+        <script
           id="onyx-desktop-detector"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
