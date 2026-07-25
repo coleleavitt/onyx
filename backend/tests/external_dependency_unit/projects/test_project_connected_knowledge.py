@@ -1,9 +1,13 @@
 from collections.abc import Generator
+from collections.abc import Mapping
+from collections.abc import Sequence
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from onyx.access.access import get_acl_for_user
@@ -61,10 +65,39 @@ _CREATED_HIERARCHY_NODE_IDS: list[int] = []
 _CREATED_DOCUMENT_IDS: list[str] = []
 
 
+def _restore_rows(
+    db_session: Session, table: str, rows: Sequence[Mapping[str, Any]]
+) -> None:
+    """Re-insert rows verbatim, preserving their original ids."""
+    for row in rows:
+        columns = list(row.keys())
+        db_session.execute(
+            text(
+                f"INSERT INTO {table} ({', '.join(columns)}) "
+                f"VALUES ({', '.join(':' + column for column in columns)})"
+            ),
+            dict(row),
+        )
+
+
 @pytest.fixture(autouse=True)
 def _clear_connected_source_governance(
     db_session: Session,
 ) -> Generator[None, None, None]:
+    # These tests need a policy-free environment: any real governance scope
+    # would put the deployment in policy mode and reject their fixture
+    # documents. A deployment's scopes are real configuration though, so they
+    # are set aside and restored afterwards rather than destroyed.
+    saved_scopes = (
+        db_session.execute(text("SELECT * FROM connected_source_scope"))
+        .mappings()
+        .all()
+    )
+    saved_scope_groups = (
+        db_session.execute(text("SELECT * FROM connected_source_scope__user_group"))
+        .mappings()
+        .all()
+    )
     db_session.query(ConnectedSourceScope).delete()
     db_session.commit()
     _CREATED_HIERARCHY_NODE_IDS.clear()
@@ -82,6 +115,15 @@ def _clear_connected_source_governance(
         db_session.query(HierarchyNode).filter(
             HierarchyNode.id.in_(_CREATED_HIERARCHY_NODE_IDS)
         ).delete(synchronize_session=False)
+    db_session.commit()
+    _restore_rows(db_session, "connected_source_scope", saved_scopes)
+    _restore_rows(db_session, "connected_source_scope__user_group", saved_scope_groups)
+    db_session.execute(
+        text(
+            "SELECT setval(pg_get_serial_sequence('connected_source_scope', 'id'), "
+            "GREATEST(COALESCE((SELECT MAX(id) FROM connected_source_scope), 1), 1))"
+        )
+    )
     db_session.commit()
     _CREATED_HIERARCHY_NODE_IDS.clear()
     _CREATED_DOCUMENT_IDS.clear()
