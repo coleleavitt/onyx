@@ -21,6 +21,7 @@ from sqlalchemy import ColumnElement
 from sqlalchemy import or_
 from sqlalchemy import Select
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import get_effective_permissions
@@ -51,13 +52,39 @@ def _excluded_user_ids() -> Select:
 
 
 def _curated_user_ids(overseer_id: UUID) -> Select:
-    curated_groups = (
-        select(User__UserGroup.user_group_id)
+    """Everyone below ``overseer_id`` in the curation tree.
+
+    Oversight follows the reporting line, so it cascades: a director observes
+    their managers' reports as well as the managers themselves. The walk starts
+    at the groups the overseer curates and repeatedly adds the groups curated
+    by anyone already reachable, so depth is not capped. UNION dedupes, which
+    also makes a cycle terminate rather than spin.
+    """
+    reachable_groups = (
+        select(User__UserGroup.user_group_id.label("user_group_id"))
         .where(User__UserGroup.user_id == overseer_id)
         .where(User__UserGroup.is_curator.is_(True))
+        .cte("reachable_curated_groups", recursive=True)
+    )
+    member = aliased(User__UserGroup)
+    curated_by_member = aliased(User__UserGroup)
+    reachable_groups = reachable_groups.union(
+        select(curated_by_member.user_group_id)
+        .select_from(reachable_groups)
+        .join(
+            member,
+            member.user_group_id == reachable_groups.c.user_group_id,
+        )
+        .join(
+            curated_by_member,
+            and_(
+                curated_by_member.user_id == member.user_id,
+                curated_by_member.is_curator.is_(True),
+            ),
+        )
     )
     return select(User__UserGroup.user_id).where(
-        User__UserGroup.user_group_id.in_(curated_groups)
+        User__UserGroup.user_group_id.in_(select(reachable_groups.c.user_group_id))
     )
 
 

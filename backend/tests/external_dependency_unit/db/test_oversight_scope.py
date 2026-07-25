@@ -253,3 +253,64 @@ def test_ownerless_sessions_are_admin_only(
     assert anonymous_session.id not in _visible_session_ids(db_session, overseer)
     assert can_oversee_user(admin, None, db_session)
     assert not can_oversee_user(overseer, None, db_session)
+
+
+def test_oversight_cascades_down_the_reporting_line(
+    db_session: Session, tracked: _Tracked
+) -> None:
+    """A department head observes the whole subtree, not just direct reports.
+
+    Mirrors Compliance: a director curates the group holding two managers, and
+    each manager curates their own analysts. The director must reach the
+    analysts even though he curates no group containing them, while a manager
+    stays confined to their own branch.
+    """
+    director = _user(
+        db_session,
+        tracked,
+        "ovs_director",
+        role=UserRole.CURATOR,
+        permissions=[Permission.READ_QUERY_HISTORY],
+    )
+    manager_one = _user(db_session, tracked, "ovs_mgr1", role=UserRole.CURATOR)
+    manager_two = _user(db_session, tracked, "ovs_mgr2", role=UserRole.CURATOR)
+    analyst_one = _user(db_session, tracked, "ovs_analyst1")
+    analyst_two = _user(db_session, tracked, "ovs_analyst2")
+    outsider = _user(db_session, tracked, "ovs_unrelated")
+
+    director_group = _group(db_session, tracked, "Dept Head")
+    team_one = _group(db_session, tracked, "Team One")
+    team_two = _group(db_session, tracked, "Team Two")
+    _add_member(db_session, director, director_group, is_curator=True)
+    _add_member(db_session, manager_one, director_group)
+    _add_member(db_session, manager_two, director_group)
+    _add_member(db_session, manager_one, team_one, is_curator=True)
+    _add_member(db_session, analyst_one, team_one)
+    _add_member(db_session, manager_two, team_two, is_curator=True)
+    _add_member(db_session, analyst_two, team_two)
+
+    sessions = {
+        name: _session_for(db_session, tracked, person)
+        for name, person in (
+            ("manager_one", manager_one),
+            ("analyst_one", analyst_one),
+            ("analyst_two", analyst_two),
+            ("outsider", outsider),
+        )
+    }
+
+    visible = _visible_session_ids(db_session, director)
+    # The head reaches two levels down, not just his own group.
+    assert sessions["manager_one"].id in visible
+    assert sessions["analyst_one"].id in visible
+    assert sessions["analyst_two"].id in visible
+    assert sessions["outsider"].id not in visible
+
+    assert can_oversee_user(director, analyst_one.id, db_session)
+    assert can_oversee_user(director, analyst_two.id, db_session)
+    assert not can_oversee_user(director, outsider.id, db_session)
+
+    # A manager still sees only their own branch, never the sibling's.
+    manager_view = _visible_session_ids(db_session, manager_one)
+    assert sessions["analyst_one"].id in manager_view
+    assert sessions["analyst_two"].id not in manager_view
