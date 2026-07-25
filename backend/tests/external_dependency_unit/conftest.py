@@ -14,6 +14,9 @@ from onyx.file_store.file_store import get_default_file_store
 from shared_configs.configs import POSTGRES_DEFAULT_SCHEMA_STANDARD_VALUE
 from shared_configs.contextvars import CURRENT_TENANT_ID_CONTEXTVAR
 from tests.external_dependency_unit.full_setup import ensure_full_deployment_setup
+from tests.external_dependency_unit.user_cleanup import delete_test_users
+from tests.external_dependency_unit.user_cleanup import drain_recorded_user_ids
+from tests.external_dependency_unit.user_cleanup import record_test_user
 
 # Opt into the shared @pytest.mark.secrets / test_secrets infrastructure.
 from tests.utils.pytest_secrets import (
@@ -21,6 +24,22 @@ from tests.utils.pytest_secrets import (
 )
 from tests.utils.pytest_secrets import pytest_configure as pytest_configure
 from tests.utils.pytest_secrets import test_secrets as test_secrets
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_created_test_users() -> Generator[None, None, None]:
+    """Drop every user create_test_user made once the session ends."""
+    yield
+    unique_ids = drain_recorded_user_ids()
+    if not unique_ids:
+        return
+    token = CURRENT_TENANT_ID_CONTEXTVAR.set(POSTGRES_DEFAULT_SCHEMA_STANDARD_VALUE)
+    try:
+        SqlEngine.init_engine(pool_size=2, max_overflow=2)
+        with get_session_with_current_tenant() as session:
+            delete_test_users(session, unique_ids)
+    finally:
+        CURRENT_TENANT_ID_CONTEXTVAR.reset(token)
 
 
 @pytest.fixture(scope="function")
@@ -85,6 +104,7 @@ def create_test_user(
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
+    record_test_user(user.id)
     return user
 
 
