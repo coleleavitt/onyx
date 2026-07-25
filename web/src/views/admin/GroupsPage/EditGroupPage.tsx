@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 import useGroupMemberCandidates from "./useGroupMemberCandidates";
-import { Table, Button, Divider } from "@opal/components";
+import { Table, Button, Divider, Switch } from "@opal/components";
 import { IllustrationContent, InputHorizontal, toast } from "@opal/layouts";
 import {
   SvgUsers,
@@ -37,6 +37,7 @@ import {
   updateDocSetGroupSharing,
   updateConnectedSourceScopeGroupSharing,
   saveTokenLimits,
+  setGroupOversightExclusion,
 } from "./svc";
 import { SWR_KEYS } from "@/lib/swr-keys";
 import SharedGroupResources from "@/views/admin/GroupsPage/SharedGroupResources";
@@ -59,7 +60,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const settings = useSettings();
   const isEnterpriseTier = tierAtLeast(settings.tier, Tier.ENTERPRISE);
   const tokenLimitsDisabledTooltip = markdown(
-    "Token rate limits are available on the [Enterprise version of Onyx](/admin/billing) only."
+    "Token rate limits are available on the [Enterprise version of Onyx](/admin/billing) only.",
   );
 
   // Fetch the group data — poll every 5s while syncing so the UI updates
@@ -77,7 +78,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
 
   const group = useMemo(
     () => groups?.find((g) => g.id === groupId) ?? null,
-    [groups, groupId]
+    [groups, groupId],
   );
 
   const isSyncing = group != null && !group.is_up_to_date;
@@ -93,6 +94,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
 
   // Form state
   const [groupName, setGroupName] = useState("");
+  const [excludedFromOversight, setExcludedFromOversight] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -100,7 +102,9 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const [selectedCcPairIds, setSelectedCcPairIds] = useState<number[]>([]);
   const [selectedDocSetIds, setSelectedDocSetIds] = useState<number[]>([]);
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
-  const [selectedSourceScopeIds, setSelectedSourceScopeIds] = useState<number[]>([]);
+  const [selectedSourceScopeIds, setSelectedSourceScopeIds] = useState<
+    number[]
+  >([]);
   const [tokenLimits, setTokenLimits] = useState<TokenLimit[]>([
     { tokenBudget: null, periodHours: null },
   ]);
@@ -126,6 +130,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   useEffect(() => {
     if (group && !initialized) {
       setGroupName(group.name);
+      setExcludedFromOversight(group.excluded_from_oversight);
       setSelectedUserIds(group.users.map((u) => u.id));
       setSelectedCcPairIds(group.cc_pairs.map((cc) => cc.id));
       const docSetIds = group.document_sets.map((ds) => ds.id);
@@ -134,7 +139,9 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       const agentIds = group.personas.map((p) => p.id);
       setSelectedAgentIds(agentIds);
       initialAgentIdsRef.current = agentIds;
-      const sourceScopeIds = group.connected_source_scopes.map((scope) => scope.id);
+      const sourceScopeIds = group.connected_source_scopes.map(
+        (scope) => scope.id,
+      );
       setSelectedSourceScopeIds(sourceScopeIds);
       initialSourceScopeIdsRef.current = sourceScopeIds;
       setInitialized(true);
@@ -148,7 +155,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         tokenRateLimits.map((trl) => ({
           tokenBudget: trl.token_budget,
           periodHours: trl.period_hours,
-        }))
+        })),
       );
     }
   }, [tokenRateLimits]);
@@ -186,7 +193,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         ),
       }),
     ],
-    [handleRemoveMember]
+    [handleRemoveMember],
   );
 
   // IDs of members not visible in the add-mode table (e.g. inactive users).
@@ -205,7 +212,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       if (!initialized) return;
       setSelectedUserIds([...ids, ...hiddenMemberIds]);
     },
-    [initialized, hiddenMemberIds]
+    [initialized, hiddenMemberIds],
   );
 
   async function handleSave() {
@@ -219,12 +226,12 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
 
     // Re-fetch group to check sync status before saving
     const freshGroups = await fetch(SWR_KEYS.adminUserGroups).then((r) =>
-      r.json()
+      r.json(),
     );
     const freshGroup = freshGroups.find((g: UserGroup) => g.id === groupId);
     if (freshGroup && !freshGroup.is_up_to_date) {
       toast.error(
-        "This group is currently syncing. Please wait a moment and try again."
+        "This group is currently syncing. Please wait a moment and try again.",
       );
       return;
     }
@@ -244,26 +251,32 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       await updateAgentGroupSharing(
         groupId,
         initialAgentIdsRef.current,
-        selectedAgentIds
+        selectedAgentIds,
       );
 
       // Update document set sharing (add/remove this group from changed doc sets)
       await updateDocSetGroupSharing(
         groupId,
         initialDocSetIdsRef.current,
-        selectedDocSetIds
+        selectedDocSetIds,
       );
 
       // Update connected source scope visibility for this group
       await updateConnectedSourceScopeGroupSharing(
         groupId,
         initialSourceScopeIdsRef.current,
-        selectedSourceScopeIds
+        selectedSourceScopeIds,
       );
 
       // Save token rate limits (create/update/delete) — Enterprise-only
       if (isEnterpriseTier) {
         await saveTokenLimits(groupId, tokenLimits, tokenRateLimits ?? []);
+      }
+
+      // Oversight exclusion is a read-scoping rule, saved independently of
+      // membership so it applies the moment it is toggled.
+      if (excludedFromOversight !== (group?.excluded_from_oversight ?? false)) {
+        await setGroupOversightExclusion(groupId, excludedFromOversight);
       }
 
       // Update refs so subsequent saves diff correctly
@@ -378,6 +391,37 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
                 />
               </Section>
 
+              <Divider paddingParallel="fit" paddingPerpendicular="fit" />
+
+              {/* Oversight exclusion */}
+              <Section
+                gap={0.5}
+                height="auto"
+                alignItems="stretch"
+                justifyContent="start"
+              >
+                <Section
+                  flexDirection="row"
+                  gap={0.5}
+                  height="auto"
+                  alignItems="center"
+                  justifyContent="start"
+                >
+                  <Switch
+                    checked={excludedFromOversight}
+                    onCheckedChange={setExcludedFromOversight}
+                    aria-label="Exclude members from oversight"
+                  />
+                  <Text mainUiBody text04>
+                    Exclude members from oversight
+                  </Text>
+                </Section>
+                <Text secondaryBody text03>
+                  Chats belonging to members of this group are never shown in
+                  Query History, including to admins. Use this for a leadership
+                  or legal tier whose conversations must stay private.
+                </Text>
+              </Section>
               <Divider paddingParallel="fit" paddingPerpendicular="fit" />
 
               {/* Members table */}

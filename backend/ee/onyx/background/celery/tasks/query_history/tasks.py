@@ -64,6 +64,11 @@ def export_query_history_task(
                 db_session=db_session,
                 start=start,
                 end=end,
+                # Background export has no requesting user. It is reachable
+                # only from the admin-only export endpoint, and tier exclusion
+                # still applies, so this unscoped read is stated explicitly
+                # rather than inherited from a default.
+                overseer=None,
             )
 
             query_history_type = load_settings().query_history_type

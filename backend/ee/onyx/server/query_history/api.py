@@ -84,8 +84,8 @@ def fetch_and_process_chat_session_history(
     db_session: Session,
     start: datetime,
     end: datetime,
+    overseer: User | None,
     limit: int | None = 500,  # noqa: ARG001
-    overseer: User | None = None,
 ) -> Generator[ChatSessionSnapshot]:
     PAGE_SIZE = 100
 

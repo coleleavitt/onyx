@@ -99,3 +99,46 @@ test("a manager can administer the group they curate", async ({ page }) => {
   expect(names).toContain("Compliance — Jeff Dow");
   expect(names).not.toContain("Compliance — Kamara Gibson");
 });
+
+test("an admin can exclude a tier from oversight in the group UI", async ({
+  page,
+}) => {
+  await apiLogin(page, "admin_user@example.com", PASSWORD);
+
+  const listed = await page.request.get("/api/manage/admin/user-group");
+  const groups = await listed.json();
+  const target = groups.find(
+    (group: { name: string }) => group.name === "Compliance Managers",
+  );
+  expect(target, "seed-compliance-oversight.py must have run").toBeTruthy();
+
+  await page.goto(`/admin/groups/${target.id}`);
+  await page.waitForLoadState("networkidle");
+
+  const toggle = page.getByRole("switch", {
+    name: "Exclude members from oversight",
+  });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+  await toggle.click();
+  await page.screenshot({ path: "artifacts/e2e-oversight-exclusion-on.png" });
+  await page.getByRole("button", { name: "Save Changes" }).first().click();
+
+  // The flag reaches the server, not just local component state.
+  await expect
+    .poll(async () => {
+      const after = await page.request.get("/api/manage/admin/user-group");
+      const groupsAfter = await after.json();
+      return groupsAfter.find((group: { id: number }) => group.id === target.id)
+        ?.excluded_from_oversight;
+    })
+    .toBe(true);
+
+  // Leave the seeded fixture as it was.
+  const reset = await page.request.put(
+    `/api/manage/admin/user-group/${target.id}/oversight-exclusion`,
+    { data: { excluded_from_oversight: false } },
+  );
+  expect(reset.ok()).toBeTruthy();
+});

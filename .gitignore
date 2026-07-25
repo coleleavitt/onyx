@@ -90,3 +90,7 @@ plans/
 /*-continued-from-a-previous-c.txt
 /search-error-surfaced.png
 /sharepoint-holiday-fixed.png
+
+# Local QA evidence (screenshots, test reports) — not source
+artifacts/
+web/artifacts/
