@@ -12,6 +12,7 @@ from onyx.db.models import User
 from onyx.db.models import User__UserGroup
 from onyx.db.models import UserGroup
 from tests.external_dependency_unit.user_cleanup import record_test_group
+from tests.external_dependency_unit.user_cleanup import record_test_persona
 
 
 def create_test_persona(
@@ -39,6 +40,7 @@ def create_test_persona(
     db_session.add(persona)
     db_session.commit()
     db_session.refresh(persona)
+    record_test_persona(persona.id)
     return persona
 
 

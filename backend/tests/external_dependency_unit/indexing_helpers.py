@@ -198,6 +198,12 @@ def cleanup_cc_pair(db_session: Session, pair: ConnectorCredentialPair) -> None:
                 DBDocument.id.in_(orphan_doc_ids)
             ).delete(synchronize_session="fetch")
 
+    # Index attempts hold a non-cascading FK to the pair, so a run that
+    # produced one would otherwise fail this teardown and leak everything the
+    # test made.
+    db_session.query(IndexAttempt).filter(
+        IndexAttempt.connector_credential_pair_id == pair.id
+    ).delete(synchronize_session="fetch")
     db_session.query(ConnectorCredentialPair).filter(
         ConnectorCredentialPair.id == pair.id
     ).delete(synchronize_session="fetch")

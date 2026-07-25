@@ -6,6 +6,7 @@ from onyx.db.chat import get_chat_session_by_id
 from onyx.db.models import Persona
 from onyx.db.models import UserProject
 from tests.external_dependency_unit.conftest import create_test_user
+from tests.external_dependency_unit.user_cleanup import record_test_persona
 
 
 def test_eager_load_persona_loads_relationships(db_session: Session) -> None:
@@ -15,6 +16,7 @@ def test_eager_load_persona_loads_relationships(db_session: Session) -> None:
     project = UserProject(name="eager-load-project", user_id=user.id)
     db_session.add_all([persona, project])
     db_session.flush()
+    record_test_persona(persona.id)
 
     chat_session = create_chat_session(
         db_session=db_session,

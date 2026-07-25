@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 # xdist gives each worker its own process, so this is per-worker state.
 CREATED_TEST_USER_IDS: list[UUID] = []
 CREATED_TEST_GROUP_IDS: list[int] = []
+CREATED_TEST_PERSONA_IDS: list[int] = []
 
 # Most references to "user" cascade on delete, but a handful are NO ACTION and
 # would raise instead, so those rows are cleared first. Order matters.
@@ -50,6 +51,10 @@ def record_test_user(user_id: UUID) -> None:
 
 def record_test_group(group_id: int) -> None:
     CREATED_TEST_GROUP_IDS.append(group_id)
+
+
+def record_test_persona(persona_id: int) -> None:
+    CREATED_TEST_PERSONA_IDS.append(persona_id)
 
 
 def delete_test_users(session: Session, user_ids: list[UUID]) -> None:
@@ -97,4 +102,32 @@ def delete_test_groups(session: Session, group_ids: list[int]) -> None:
 def drain_recorded_group_ids() -> list[int]:
     unique_ids = list(dict.fromkeys(CREATED_TEST_GROUP_IDS))
     CREATED_TEST_GROUP_IDS.clear()
+    return unique_ids
+
+
+# Agents created by tests, cleaned up on the same schedule.
+_PERSONA_CLEANUP_STATEMENTS = [
+    "DELETE FROM persona__user WHERE persona_id IN :ids",
+    "DELETE FROM persona__user_group WHERE persona_id IN :ids",
+    "DELETE FROM persona__document_set WHERE persona_id IN :ids",
+    "DELETE FROM persona__tool WHERE persona_id IN :ids",
+    "UPDATE chat_session SET persona_id = NULL WHERE persona_id IN :ids",
+    "DELETE FROM persona WHERE id IN :ids",
+]
+
+
+def delete_test_personas(session: Session, persona_ids: list[int]) -> None:
+    if not persona_ids:
+        return
+    for statement in _PERSONA_CLEANUP_STATEMENTS:
+        session.execute(
+            text(statement).bindparams(bindparam("ids", expanding=True)),
+            {"ids": persona_ids},
+        )
+    session.commit()
+
+
+def drain_recorded_persona_ids() -> list[int]:
+    unique_ids = list(dict.fromkeys(CREATED_TEST_PERSONA_IDS))
+    CREATED_TEST_PERSONA_IDS.clear()
     return unique_ids
