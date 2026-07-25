@@ -338,6 +338,46 @@ async function setGroupOversightExclusion(
   }
 }
 
+// Grants a capability to everyone in the group. Oversight is delegated this
+// way so it can be given to managers without making them admins.
+async function setGroupPermission(
+  groupId: number,
+  permission: string,
+  enabled: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `/api/manage/admin/user-group/${groupId}/permissions`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ permission, enabled }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error("Failed to update group permission");
+  }
+}
+
+// A curator administers this group and, for oversight, observes everyone
+// beneath it in the reporting line.
+async function setGroupCurator(
+  groupId: number,
+  userId: string,
+  isCurator: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `/api/manage/admin/user-group/${groupId}/set-curator`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, is_curator: isCurator }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error("Failed to update curator");
+  }
+}
+
 export {
   renameGroup,
   createGroup,
@@ -348,4 +388,6 @@ export {
   updateConnectedSourceScopeGroupSharing,
   saveTokenLimits,
   setGroupOversightExclusion,
+  setGroupPermission,
+  setGroupCurator,
 };

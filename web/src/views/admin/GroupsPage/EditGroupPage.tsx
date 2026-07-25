@@ -24,6 +24,9 @@ import Text from "@/refresh-components/texts/Text";
 import ConfirmationModalLayout from "@/refresh-components/layouts/ConfirmationModalLayout";
 import { errorHandlingFetcher, skipRetryOnAuthError } from "@/lib/fetcher";
 import type { UserGroup } from "@/lib/types";
+
+// Delegated oversight of the query-history surface.
+const OVERSIGHT_PERMISSION = "read:query_history";
 import { useSettings } from "@/lib/settings/hooks";
 import { Tier } from "@/lib/settings/types";
 import { tierAtLeast } from "@/lib/tiers";
@@ -38,6 +41,8 @@ import {
   updateConnectedSourceScopeGroupSharing,
   saveTokenLimits,
   setGroupOversightExclusion,
+  setGroupPermission,
+  setGroupCurator,
 } from "./svc";
 import { SWR_KEYS } from "@/lib/swr-keys";
 import SharedGroupResources from "@/views/admin/GroupsPage/SharedGroupResources";
@@ -83,6 +88,14 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
 
   const isSyncing = group != null && !group.is_up_to_date;
 
+  // Which capabilities this group already grants, so the oversight switch can
+  // reflect server state rather than guessing.
+  const { data: groupPermissions } = useSWR<string[]>(
+    groupId ? `/api/manage/admin/user-group/${groupId}/permissions` : null,
+    errorHandlingFetcher,
+    { onErrorRetry: skipRetryOnAuthError },
+  );
+
   // Fetch token rate limits for this group. Skip retry on tier-gated 402
   // (BUSINESS-tier tenants don't have access) so SWR doesn't churn the form
   // by repeatedly flipping its isLoading state.
@@ -95,6 +108,8 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   // Form state
   const [groupName, setGroupName] = useState("");
   const [excludedFromOversight, setExcludedFromOversight] = useState(false);
+  const [oversightGranted, setOversightGranted] = useState(false);
+  const [curatorIds, setCuratorIds] = useState<string[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -126,11 +141,19 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const isLoading = groupLoading || candidatesLoading || tokenLimitsLoading;
   const error = groupError ?? candidatesError;
 
+  // Permissions load on their own schedule, so mirror them separately.
+  useEffect(() => {
+    if (groupPermissions) {
+      setOversightGranted(groupPermissions.includes(OVERSIGHT_PERMISSION));
+    }
+  }, [groupPermissions]);
+
   // Pre-populate form when group data loads
   useEffect(() => {
     if (group && !initialized) {
       setGroupName(group.name);
       setExcludedFromOversight(group.excluded_from_oversight);
+      setCuratorIds(group.curator_ids);
       setSelectedUserIds(group.users.map((u) => u.id));
       setSelectedCcPairIds(group.cc_pairs.map((cc) => cc.id));
       const docSetIds = group.document_sets.map((ds) => ds.id);
@@ -171,6 +194,16 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
     return sel;
   }, [selectedUserIds]);
 
+  const handleToggleCurator = useCallback((userId: string, next: boolean) => {
+    setCuratorIds((prev) =>
+      next
+        ? prev.includes(userId)
+          ? prev
+          : [...prev, userId]
+        : prev.filter((id) => id !== userId),
+    );
+  }, []);
+
   const handleRemoveMember = useCallback((userId: string) => {
     setSelectedUserIds((prev) => prev.filter((id) => id !== userId));
   }, []);
@@ -178,6 +211,18 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const memberColumns = useMemo(
     () => [
       ...baseColumns,
+      tc.column((row) => row.id ?? row.email, {
+        id: "curator",
+        header: "Curator",
+        weight: 12,
+        cell: (value: string) => (
+          <Switch
+            checked={curatorIds.includes(value)}
+            onCheckedChange={(next) => handleToggleCurator(value, next)}
+            aria-label="Curator"
+          />
+        ),
+      }),
       tc.actions({
         showSorting: false,
         showColumnVisibility: false,
@@ -193,7 +238,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         ),
       }),
     ],
-    [handleRemoveMember],
+    [handleRemoveMember, handleToggleCurator, curatorIds],
   );
 
   // IDs of members not visible in the add-mode table (e.g. inactive users).
@@ -277,6 +322,29 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       // membership so it applies the moment it is toggled.
       if (excludedFromOversight !== (group?.excluded_from_oversight ?? false)) {
         await setGroupOversightExclusion(groupId, excludedFromOversight);
+      }
+
+      const grantedNow =
+        groupPermissions?.includes(OVERSIGHT_PERMISSION) ?? false;
+      if (oversightGranted !== grantedNow) {
+        await setGroupPermission(
+          groupId,
+          OVERSIGHT_PERMISSION,
+          oversightGranted,
+        );
+      }
+
+      // Curation is per member, so only the changed ones are written.
+      const previousCurators = group?.curator_ids ?? [];
+      for (const userId of curatorIds) {
+        if (!previousCurators.includes(userId)) {
+          await setGroupCurator(groupId, userId, true);
+        }
+      }
+      for (const userId of previousCurators) {
+        if (!curatorIds.includes(userId)) {
+          await setGroupCurator(groupId, userId, false);
+        }
       }
 
       // Update refs so subsequent saves diff correctly
@@ -392,6 +460,36 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
               </Section>
 
               <Divider paddingParallel="fit" paddingPerpendicular="fit" />
+
+              {/* Oversight */}
+              <Section
+                gap={0.5}
+                height="auto"
+                alignItems="stretch"
+                justifyContent="start"
+              >
+                <Section
+                  flexDirection="row"
+                  gap={0.5}
+                  height="auto"
+                  alignItems="center"
+                  justifyContent="start"
+                >
+                  <Switch
+                    checked={oversightGranted}
+                    onCheckedChange={setOversightGranted}
+                    aria-label="Grant oversight"
+                  />
+                  <Text mainUiBody text04>
+                    Grant oversight
+                  </Text>
+                </Section>
+                <Text secondaryBody text03>
+                  Members can open Query History. Each curator below sees the
+                  people in this group and everyone beneath them in the
+                  reporting line, so a department head covers the whole tree.
+                </Text>
+              </Section>
 
               {/* Oversight exclusion */}
               <Section
