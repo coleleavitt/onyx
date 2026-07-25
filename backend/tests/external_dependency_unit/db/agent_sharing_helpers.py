@@ -11,6 +11,7 @@ from onyx.db.models import Persona__UserGroup
 from onyx.db.models import User
 from onyx.db.models import User__UserGroup
 from onyx.db.models import UserGroup
+from tests.external_dependency_unit.user_cleanup import record_test_group
 
 
 def create_test_persona(
@@ -61,6 +62,7 @@ def create_test_user_group(
     group = UserGroup(name=f"agent-sharing-group-{uuid4().hex[:8]}")
     db_session.add(group)
     db_session.flush()
+    record_test_group(group.id)
     curator_ids = {user.id for user in (curators or [])}
     for member in members:
         db_session.add(
