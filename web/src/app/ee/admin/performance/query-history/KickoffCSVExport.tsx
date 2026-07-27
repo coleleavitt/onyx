@@ -124,7 +124,7 @@ export default function KickoffCSVExport({
             : SvgPlayCircle
         }
       >
-        {spinnerStatus === "spinning" ? "Cancel" : "Kickoff Export"}
+        {spinnerStatus === "spinning" ? "Cancel" : "Export CSV"}
       </Button>
     </div>
   );

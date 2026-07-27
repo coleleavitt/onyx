@@ -29,7 +29,10 @@ import { ErrorCallout } from "@/components/ErrorCallout";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import useSWR from "swr";
 import { TaskQueueState } from "@/app/ee/admin/performance/query-history/types";
-import { withRequestId } from "@/app/ee/admin/performance/query-history/utils";
+import {
+  toPreviewText,
+  withRequestId,
+} from "@/app/ee/admin/performance/query-history/utils";
 import {
   DOWNLOAD_QUERY_HISTORY_URL,
   LIST_QUERY_HISTORY_URL,
@@ -60,24 +63,31 @@ function QueryHistoryTableRow({
       key={chatSessionMinimal.id}
       className="hover:bg-accent-background cursor-pointer relative select-none"
     >
-      <TableCell className="max-w-xs">
-        <Text className="whitespace-normal line-clamp-5">
+      <TableCell className="max-w-3xs align-top">
+        <Text className="whitespace-normal line-clamp-2">
           {chatSessionMinimal.first_user_message ||
             chatSessionMinimal.name ||
             "-"}
         </Text>
       </TableCell>
-      <TableCell>
-        <Text className="whitespace-normal line-clamp-5">
-          {chatSessionMinimal.first_ai_message || "-"}
+      <TableCell className="max-w-3xs align-top">
+        {/* Assistant messages are markdown; rendered raw they drag citation
+            syntax and percent-encoded URLs into the cell and blow the column
+            past the width of every other one combined. */}
+        <Text className="whitespace-normal line-clamp-2">
+          {toPreviewText(chatSessionMinimal.first_ai_message) || "-"}
         </Text>
       </TableCell>
       <TableCell>
         <FeedbackBadge feedback={chatSessionMinimal.feedback_type} />
       </TableCell>
-      <TableCell>{chatSessionMinimal.user_email || "-"}</TableCell>
-      <TableCell>{chatSessionMinimal.assistant_name || "Unknown"}</TableCell>
-      <TableCell>
+      <TableCell className="max-w-3xs truncate align-top">
+        {chatSessionMinimal.user_email || "-"}
+      </TableCell>
+      <TableCell className="max-w-3xs truncate align-top">
+        {chatSessionMinimal.assistant_name || "Unknown"}
+      </TableCell>
+      <TableCell className="whitespace-nowrap align-top">
         {timestampToReadableDate(chatSessionMinimal.time_created)}
       </TableCell>
       {/* Wrapping in <td> to avoid console warnings */}
@@ -101,32 +111,36 @@ function SelectFeedbackType({
   onValueChange: (value: Feedback | "all") => void;
 }) {
   return (
-    <Section alignItems="start" gap={0.25}>
-      <Text as="p" className="font-medium">
-        Feedback Type
-      </Text>
-      <InputSelect
-        value={value}
-        onValueChange={onValueChange as (value: string) => void}
-      >
-        <InputSelect.Trigger />
+    // Section spans its container by default, which made the select consume
+    // the whole toolbar row and push the date picker onto a line of its own.
+    <div className="w-56">
+      <Section alignItems="start" gap={0.25}>
+        <Text as="p" className="font-medium">
+          Feedback Type
+        </Text>
+        <InputSelect
+          value={value}
+          onValueChange={onValueChange as (value: string) => void}
+        >
+          <InputSelect.Trigger />
 
-        <InputSelect.Content>
-          <InputSelect.Item value="all" icon={SvgMinusCircle}>
-            Any
-          </InputSelect.Item>
-          <InputSelect.Item value="like" icon={SvgThumbsUp}>
-            Like
-          </InputSelect.Item>
-          <InputSelect.Item value="dislike" icon={SvgThumbsDown}>
-            Dislike
-          </InputSelect.Item>
-          <InputSelect.Item value="mixed" icon={SvgMinus}>
-            Mixed
-          </InputSelect.Item>
-        </InputSelect.Content>
-      </InputSelect>
-    </Section>
+          <InputSelect.Content>
+            <InputSelect.Item value="all" icon={SvgMinusCircle}>
+              Any
+            </InputSelect.Item>
+            <InputSelect.Item value="like" icon={SvgThumbsUp}>
+              Like
+            </InputSelect.Item>
+            <InputSelect.Item value="dislike" icon={SvgThumbsDown}>
+              Dislike
+            </InputSelect.Item>
+            <InputSelect.Item value="mixed" icon={SvgMinus}>
+              Mixed
+            </InputSelect.Item>
+          </InputSelect.Content>
+        </InputSelect>
+      </Section>
+    </div>
   );
 }
 
@@ -299,8 +313,12 @@ export function QueryHistoryTable() {
   return (
     <>
       <CardSection className="mt-8">
-        <div className="flex">
-          <div className="gap-y-3 flex flex-col">
+        {/* Filters lead, actions trail. The previous shape stacked the two
+            filters in a column beside a `w-full` action row, which pushed the
+            buttons to the far edge and left the date picker orphaned on a
+            second line under the select. */}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap items-end gap-3">
             <SelectFeedbackType
               value={filters.feedback_type || "all"}
               onValueChange={(value) => {
@@ -321,7 +339,7 @@ export function QueryHistoryTable() {
               onValueChange={onTimeRangeChange}
             />
           </div>
-          <div className="flex flex-row w-full items-center gap-x-2">
+          <div className="flex flex-row items-center gap-x-2">
             <KickoffCSVExport dateRange={dateRange} />
             <Button prominence="secondary" onClick={() => setShowModal(true)}>
               {PREVIOUS_CSV_TASK_BUTTON_NAME}
@@ -330,15 +348,19 @@ export function QueryHistoryTable() {
         </div>
         <Divider />
         <Section>
-          <Table className="mt-5">
+          {/* table-fixed: under auto layout a cell's max-width is advisory, so
+              one long message could still stretch its column past every other
+              one combined. Fixed layout makes the shares below authoritative
+              and lets the clamping actually clamp. */}
+          <Table className="mt-5 table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>First User Message</TableHead>
-                <TableHead>First AI Response</TableHead>
-                <TableHead>Feedback</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Persona</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead className="w-[17%]">First User Message</TableHead>
+                <TableHead className="w-[26%]">First AI Response</TableHead>
+                <TableHead className="w-[9%]">Feedback</TableHead>
+                <TableHead className="w-[15%]">User</TableHead>
+                <TableHead className="w-[13%]">Persona</TableHead>
+                <TableHead className="w-[20%]">Date</TableHead>
               </TableRow>
             </TableHeader>
             {isLoading ? (
