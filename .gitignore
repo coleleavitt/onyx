@@ -94,3 +94,6 @@ plans/
 # Local QA evidence (screenshots, test reports) — not source
 artifacts/
 web/artifacts/
+
+# Agent session transcript dumps (source of truth lives in ~/.grok/sessions)
+idk.txt
