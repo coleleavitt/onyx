@@ -65,7 +65,7 @@ export default function SpaceConnectedSourcesSection({
       groups.set(document.source, current);
     }
     return Array.from(groups.entries()).sort(([, left], [, right]) =>
-      left.label.localeCompare(right.label),
+      left.label.localeCompare(right.label)
     );
   }, [knowledge.documents, knowledge.hierarchy_nodes]);
 
@@ -125,7 +125,9 @@ export default function SpaceConnectedSourcesSection({
                 title={group.label}
                 description={description}
                 width="full"
+                sizePreset="main-ui"
                 variant="section"
+                titleMaxLines={1}
                 onClick={onOpenPicker}
               />
             );
@@ -137,7 +139,9 @@ export default function SpaceConnectedSourcesSection({
               title={node.title}
               description={getSourceMetadata(node.source).displayName}
               width="full"
+              sizePreset="main-ui"
               variant="section"
+              titleMaxLines={1}
               onClick={onOpenPicker}
             />
           ))}
@@ -152,7 +156,9 @@ export default function SpaceConnectedSourcesSection({
                   : "Indexed document"
               }
               width="full"
+              sizePreset="main-ui"
               variant="section"
+              titleMaxLines={1}
               onClick={onOpenPicker}
               rightChildren={
                 document.link ? (

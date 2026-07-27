@@ -38,7 +38,7 @@ interface SpaceConnectedKnowledgeModalProps {
 }
 
 function toAgentAttachedDocument(
-  document: ProjectConnectedDocument,
+  document: ProjectConnectedDocument
 ): AgentAttachedDocument {
   return {
     id: document.id,
@@ -53,7 +53,7 @@ function toAgentAttachedDocument(
 
 function selectedSourceCounts(
   documents: ProjectConnectedDocument[],
-  nodes: ProjectConnectedHierarchyNode[],
+  nodes: ProjectConnectedHierarchyNode[]
 ): Map<ValidSources, number> {
   const counts = new Map<ValidSources, number>();
   for (const document of documents) {
@@ -75,7 +75,9 @@ function sharePointNodeLabel(node: HierarchyNodeSummary): string {
   return node.governance?.display_label ?? node.title;
 }
 
-function sharePointNodeDescription(node: HierarchyNodeSummary): string | undefined {
+function sharePointNodeDescription(
+  node: HierarchyNodeSummary
+): string | undefined {
   const parts = [
     node.governance?.department_label,
     node.governance?.is_archived ? "Archive" : null,
@@ -86,7 +88,7 @@ function sharePointNodeDescription(node: HierarchyNodeSummary): string | undefin
 }
 
 function groupSharePointDepartments(
-  nodes: HierarchyNodeSummary[],
+  nodes: HierarchyNodeSummary[]
 ): SharePointDepartmentGroup[] {
   const groups = new Map<string, HierarchyNodeSummary[]>();
   for (const node of nodes) {
@@ -105,7 +107,9 @@ function groupSharePointDepartments(
         const leftOrder = left.governance?.sort_order ?? 0;
         const rightOrder = right.governance?.sort_order ?? 0;
         if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-        return sharePointNodeLabel(left).localeCompare(sharePointNodeLabel(right));
+        return sharePointNodeLabel(left).localeCompare(
+          sharePointNodeLabel(right)
+        );
       }),
     }))
     .sort((left, right) => left.tenant.localeCompare(right.tenant));
@@ -130,7 +134,7 @@ export default function SpaceConnectedKnowledgeModal({
 
   const initialSourceCounts = useMemo(
     () => selectedSourceCounts(knowledge.documents, knowledge.hierarchy_nodes),
-    [knowledge.documents, knowledge.hierarchy_nodes],
+    [knowledge.documents, knowledge.hierarchy_nodes]
   );
   const [activeSource, setActiveSource] = useState<ValidSources | null>(null);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
@@ -139,15 +143,19 @@ export default function SpaceConnectedKnowledgeModal({
   >([]);
   const [sourceCounts, setSourceCounts] =
     useState<Map<ValidSources, number>>(initialSourceCounts);
-  const [sharePointNodes, setSharePointNodes] = useState<HierarchyNodeSummary[]>([]);
-  const [activeSharePointNodeId, setActiveSharePointNodeId] = useState<number | null>(null);
+  const [sharePointNodes, setSharePointNodes] = useState<
+    HierarchyNodeSummary[]
+  >([]);
+  const [activeSharePointNodeId, setActiveSharePointNodeId] = useState<
+    number | null
+  >(null);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setSelectedDocumentIds(knowledge.documents.map((document) => document.id));
     setSelectedHierarchyNodeIds(
-      knowledge.hierarchy_nodes.map((node) => node.id),
+      knowledge.hierarchy_nodes.map((node) => node.id)
     );
     setSourceCounts(initialSourceCounts);
   }, [
@@ -160,7 +168,7 @@ export default function SpaceConnectedKnowledgeModal({
   useEffect(() => {
     if (!open || activeSource !== null || connectedSources.length === 0) return;
     const selectedSource = connectedSources.find(
-      (source) => (initialSourceCounts.get(source) ?? 0) > 0,
+      (source) => (initialSourceCounts.get(source) ?? 0) > 0
     );
     setActiveSource(selectedSource ?? connectedSources[0] ?? null);
   }, [activeSource, connectedSources, initialSourceCounts, open]);
@@ -187,12 +195,12 @@ export default function SpaceConnectedKnowledgeModal({
 
   const sharePointDepartmentGroups = useMemo(
     () => groupSharePointDepartments(sharePointNodes),
-    [sharePointNodes],
+    [sharePointNodes]
   );
 
   const initialAttachedDocuments = useMemo(
     () => knowledge.documents.map(toAgentAttachedDocument),
-    [knowledge.documents],
+    [knowledge.documents]
   );
 
   function openLocalUploadPicker({ directory }: { directory: boolean }) {
@@ -227,7 +235,7 @@ export default function SpaceConnectedKnowledgeModal({
       toast.error(
         error instanceof Error
           ? error.message
-          : "Failed to update connected sources.",
+          : "Failed to update connected sources."
       );
     } finally {
       setIsSaving(false);
@@ -238,13 +246,13 @@ export default function SpaceConnectedKnowledgeModal({
     setSelectedDocumentIds((current) =>
       current.includes(documentId)
         ? current.filter((id) => id !== documentId)
-        : [...current, documentId],
+        : [...current, documentId]
     );
   }
 
   async function handleSaveAsPreset() {
     const name = window.prompt(
-      "Preset name (visible to everyone who can use these sources):",
+      "Preset name (visible to everyone who can use these sources):"
     );
     if (!name || !name.trim()) return;
     setIsSavingPreset(true);
@@ -257,7 +265,7 @@ export default function SpaceConnectedKnowledgeModal({
       toast.success(`Saved preset "${name.trim()}"`);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to save preset.",
+        error instanceof Error ? error.message : "Failed to save preset."
       );
     } finally {
       setIsSavingPreset(false);
@@ -268,7 +276,7 @@ export default function SpaceConnectedKnowledgeModal({
     setSelectedHierarchyNodeIds((current) =>
       current.includes(folderId)
         ? current.filter((id) => id !== folderId)
-        : [...current, folderId],
+        : [...current, folderId]
     );
   }
 
@@ -282,7 +290,7 @@ export default function SpaceConnectedKnowledgeModal({
         return next;
       });
     },
-    [],
+    []
   );
 
   const selectedCount =
@@ -326,7 +334,10 @@ export default function SpaceConnectedKnowledgeModal({
                           <div key={source} className="flex flex-col gap-1">
                             {sharePointDepartmentGroups.length > 0 ? (
                               sharePointDepartmentGroups.map((group) => (
-                                <div key={group.tenant} className="flex flex-col gap-1">
+                                <div
+                                  key={group.tenant}
+                                  className="flex flex-col gap-1"
+                                >
                                   <Text font="secondary-body" color="text-03">
                                     {group.tenant}
                                   </Text>
@@ -335,9 +346,13 @@ export default function SpaceConnectedKnowledgeModal({
                                       key={node.id}
                                       icon={metadata.icon}
                                       title={sharePointNodeLabel(node)}
-                                      description={sharePointNodeDescription(node)}
+                                      description={sharePointNodeDescription(
+                                        node
+                                      )}
                                       width="full"
+                                      sizePreset="main-ui"
                                       variant="section"
+                                      titleMaxLines={1}
                                       selectVariant="select-light"
                                       state={
                                         activeSharePointNodeId === node.id
@@ -355,7 +370,7 @@ export default function SpaceConnectedKnowledgeModal({
                                         <Checkbox
                                           aria-label={`Attach ${sharePointNodeLabel(node)}`}
                                           checked={selectedHierarchyNodeIds.includes(
-                                            node.id,
+                                            node.id
                                           )}
                                           onCheckedChange={() =>
                                             handleToggleFolder(node.id)
@@ -371,9 +386,13 @@ export default function SpaceConnectedKnowledgeModal({
                                 icon={metadata.icon}
                                 title={metadata.displayName}
                                 width="full"
+                                sizePreset="main-ui"
                                 variant="section"
+                                titleMaxLines={1}
                                 selectVariant="select-light"
-                                state={activeSource === source ? "selected" : "empty"}
+                                state={
+                                  activeSource === source ? "selected" : "empty"
+                                }
                                 onClick={() => {
                                   setActiveSource(source);
                                   setActiveSharePointNodeId(null);
@@ -396,7 +415,9 @@ export default function SpaceConnectedKnowledgeModal({
                           icon={metadata.icon}
                           title={metadata.displayName}
                           width="full"
+                          sizePreset="main-ui"
                           variant="section"
+                          titleMaxLines={1}
                           selectVariant="select-light"
                           state={activeSource === source ? "selected" : "empty"}
                           onClick={() => {
@@ -433,7 +454,7 @@ export default function SpaceConnectedKnowledgeModal({
                         initialAttachedDocuments={initialAttachedDocuments}
                         initialNodeId={
                           activeSource === ValidSources.Sharepoint
-                            ? activeSharePointNodeId ?? undefined
+                            ? (activeSharePointNodeId ?? undefined)
                             : undefined
                         }
                         onSelectionCountChange={handleSelectionCountChange}
