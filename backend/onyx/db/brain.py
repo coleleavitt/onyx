@@ -94,6 +94,16 @@ def list_brain_enabled_user_ids(db_session: Session) -> list[UUID]:
     )
 
 
+def is_brain_enabled_for_user(db_session: Session, user_id: UUID) -> bool:
+    """Whether *user_id* has opted into brain runs.
+
+    Re-read here rather than taken from a caller's ``User`` because the chat
+    turn's user object is detached by the time the post-turn trigger fires.
+    """
+    user = db_session.get(User, user_id)
+    return user is not None and user.brain_enabled
+
+
 # ---------------------------------------------------------------------------
 # Related-pages graph edges
 # ---------------------------------------------------------------------------

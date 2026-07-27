@@ -6,9 +6,8 @@ from fastapi import Query
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
-from onyx.configs.constants import OnyxCeleryPriority
-from onyx.configs.constants import OnyxCeleryQueues
-from onyx.configs.constants import OnyxCeleryTask
+from onyx.background.celery.tasks.brain.trigger import BRAIN_MANUAL_RUN_COOLDOWN_SECONDS
+from onyx.background.celery.tasks.brain.trigger import queue_brain_run_for_user
 from onyx.db.brain import BrainSettings
 from onyx.db.brain import get_memory_graph
 from onyx.db.brain import get_memory_sources
@@ -33,7 +32,6 @@ from onyx.db.projects import ProjectAccessPolicy
 from onyx.db.projects import user_has_project_access
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
-from onyx.redis.redis_pool import get_redis_client
 from onyx.server.features.memory.models import BrainRunTriggerResponse
 from onyx.server.features.memory.models import BrainSettingsUpdateRequest
 from onyx.server.features.memory.models import MemoryCreateRequest
@@ -47,11 +45,6 @@ from onyx.server.features.memory.models import RelatedMemory
 from shared_configs.contextvars import get_current_tenant_id
 
 router = APIRouter(prefix="/memory")
-
-# A manual brain refresh is expensive (LLM extraction over recent sessions), so
-# repeat requests inside the cooldown are rejected instead of queued.
-BRAIN_MANUAL_RUN_COOLDOWN_SECONDS = 5 * 60
-BRAIN_MANUAL_RUN_TASK_EXPIRES_SECONDS = 60 * 60
 
 
 def _user_id(user: User) -> UUID:
@@ -187,7 +180,11 @@ def trigger_current_user_brain_run(
     tenant_id: str = Depends(get_current_tenant_id),
 ) -> BrainRunTriggerResponse:
     """Queue an on-demand brain run for the current user (the scheduled nightly
-    sweep still happens); a Redis guard rate-limits repeat requests."""
+    sweep still happens); a Redis guard rate-limits repeat requests.
+
+    The guard is shared with the automatic post-chat trigger, so a refresh that
+    just ran on its own also suppresses a manual one — the memories are already
+    current either way."""
     if not user.brain_enabled:
         raise OnyxError(
             OnyxErrorCode.INVALID_INPUT,
@@ -199,30 +196,17 @@ def trigger_current_user_brain_run(
             "Memory creation is disabled for this organization",
         )
 
-    # NX+EX = atomic dedupe (a queued-but-unstarted run can't be double-queued)
-    # and cooldown in one call.
-    redis_client = get_redis_client(tenant_id=tenant_id)
-    guard_set = redis_client.set(
-        f"brain_manual_run:{_user_id(user)}",
-        1,
-        nx=True,
-        ex=BRAIN_MANUAL_RUN_COOLDOWN_SECONDS,
+    queued = queue_brain_run_for_user(
+        user_id=_user_id(user),
+        tenant_id=tenant_id,
+        cooldown_seconds=BRAIN_MANUAL_RUN_COOLDOWN_SECONDS,
     )
-    if not guard_set:
+    if not queued:
         raise OnyxError(
             OnyxErrorCode.RATE_LIMITED,
-            "A brain refresh was requested recently — try again in a few minutes",
+            "A brain refresh ran recently — try again in a few minutes",
         )
 
-    from onyx.background.celery.versioned_apps.client import app as client_app
-
-    client_app.send_task(
-        OnyxCeleryTask.BRAIN_SELF_IMPROVEMENT_USER,
-        kwargs={"user_id": str(_user_id(user)), "tenant_id": tenant_id},
-        queue=OnyxCeleryQueues.PRIMARY,
-        priority=OnyxCeleryPriority.HIGH,
-        expires=BRAIN_MANUAL_RUN_TASK_EXPIRES_SECONDS,
-    )
     return BrainRunTriggerResponse(
         queued=True,
         cooldown_seconds=BRAIN_MANUAL_RUN_COOLDOWN_SECONDS,

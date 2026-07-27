@@ -22,6 +22,10 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from onyx.background.celery.tasks.brain.trigger import (
+    BRAIN_PASSIVE_RUN_COOLDOWN_SECONDS,
+)
+from onyx.background.celery.tasks.brain.trigger import queue_brain_run_for_user
 from onyx.cache.factory import get_cache_backend
 from onyx.chat.chat_processing_checker import set_processing_status
 from onyx.chat.chat_state import AvailableFiles
@@ -68,21 +72,25 @@ from onyx.configs.constants import MessageType
 from onyx.configs.constants import MilestoneRecordType
 from onyx.context.search.models import BaseFilters
 from onyx.context.search.models import SearchDoc
+from onyx.db.brain import is_brain_enabled_for_user
 from onyx.db.chat import create_new_chat_message
 from onyx.db.chat import get_chat_session_by_id
 from onyx.db.chat import get_or_create_root_message
 from onyx.db.chat import reserve_message_id
 from onyx.db.chat import reserve_multi_model_message_ids
+from onyx.db.connected_source_governance import (
+    get_project_connected_excluded_hierarchy_node_ids,
+)
 from onyx.db.document_set import filter_document_set_names_by_user_access
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
 from onyx.db.enums import HookPoint
 from onyx.db.enums import UserFileStatus
 from onyx.db.memory import get_memories
+from onyx.db.memory import is_memory_creation_allowed
 from onyx.db.models import ChatMessage
 from onyx.db.models import Persona
 from onyx.db.models import User
 from onyx.db.models import UserFile
-from onyx.db.connected_source_governance import get_project_connected_excluded_hierarchy_node_ids
 from onyx.db.projects import get_project_connected_document_ids
 from onyx.db.projects import get_project_connected_hierarchy_node_ids
 from onyx.db.projects import get_user_files_from_project
@@ -630,7 +638,10 @@ def apply_project_connected_knowledge_to_search_params(
             db_session=db_session,
         )
     )
-    if search_params.project_attached_document_ids or search_params.project_hierarchy_node_ids:
+    if (
+        search_params.project_attached_document_ids
+        or search_params.project_hierarchy_node_ids
+    ):
         search_params.search_usage = SearchToolUsage.ENABLED
     return search_params
 
@@ -1168,6 +1179,40 @@ _CANCEL_POLL_INTERVAL_S: Final[float] = 0.05
 _FENCE_REFRESH_INTERVAL_S: Final[float] = 60.0
 
 
+def _queue_passive_brain_run(user_id: UUID | None) -> None:
+    """Ask for a brain run now that a chat turn has produced new material.
+
+    Perplexity-style memory forms from the conversation itself rather than
+    waiting for the nightly sweep or for the model to choose the memory tool.
+    The run is queued, never executed inline: it is an LLM extraction pass, and
+    the user is already waiting on this turn's response. A shared Redis
+    cooldown keeps a busy conversation from spending one pass per message.
+
+    Never raises — a chat turn that answered correctly must not be reported as
+    failed because a follow-up could not be queued.
+
+    :param user_id: Owner of the memories the run would update. ``None`` for an
+        anonymous turn, which has no memories to build.
+    """
+    if user_id is None:
+        return
+
+    try:
+        with get_session_with_current_tenant() as db_session:
+            if not is_memory_creation_allowed(db_session):
+                return
+            if not is_brain_enabled_for_user(db_session, user_id):
+                return
+
+        queue_brain_run_for_user(
+            user_id=user_id,
+            tenant_id=get_current_tenant_id(),
+            cooldown_seconds=BRAIN_PASSIVE_RUN_COOLDOWN_SECONDS,
+        )
+    except Exception:
+        logger.exception("post-turn brain run could not be queued")
+
+
 def _run_models(
     setup: ChatTurnSetup,
     user: User,
@@ -1314,6 +1359,7 @@ def _run_models(
             )
         except Exception:
             logger.exception("post-steps processing status reset failed")
+        _queue_passive_brain_run(setup.user_memory_context.user_id)
 
     def _run_model(model_idx: int) -> None:
         """Run one LLM loop inside a worker thread, writing packets to ``merged_queue``."""
