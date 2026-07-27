@@ -16,6 +16,10 @@ CLEAN_ORPHANS=1
 PIDS=()
 NAMES=()
 STOPPING=0
+CLAIMED_PORTS=()
+RESOLVED_PORT=""
+RESOLVED_PORT_MOVED=0
+COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-onyx}"
 
 usage() {
   cat <<'USAGE'
@@ -254,6 +258,170 @@ check_source_dev() {
   log "source dev command check passed"
 }
 
+port_in_use() {
+  local port="$1"
+  local claimed
+
+  for claimed in "${CLAIMED_PORTS[@]:-}"; do
+    [[ "$claimed" == "$port" ]] && return 0
+  done
+
+  if command -v ss >/dev/null 2>&1; then
+    [[ -n "$(ss -ltnH "sport = :${port}" 2>/dev/null)" ]]
+    return
+  fi
+
+  if (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null; then
+    exec 3<&-
+    return 0
+  fi
+
+  return 1
+}
+
+port_holder() {
+  local port="$1"
+  local holder=""
+
+  if command -v docker >/dev/null 2>&1; then
+    holder="$(docker ps --filter "publish=${port}" --format '{{.Names}}' 2>/dev/null | paste -sd, - || true)"
+  fi
+
+  if [[ -z "$holder" ]] && command -v ss >/dev/null 2>&1; then
+    holder="$(ss -ltnpH "sport = :${port}" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -n 1 || true)"
+  fi
+
+  printf '%s' "$holder"
+}
+
+port_owned_by_service() {
+  local port="$1"
+  local service="$2"
+
+  [[ -n "$service" ]] || return 1
+  command -v docker >/dev/null 2>&1 || return 1
+  docker ps --filter "publish=${port}" --format '{{.Names}}' 2>/dev/null |
+    grep -qE "^${COMPOSE_PROJECT}-${service}-[0-9]+$"
+}
+
+next_free_port() {
+  local port="$1"
+  local limit=$(( port + 50 ))
+
+  while (( port <= limit )); do
+    if ! port_in_use "$port"; then
+      printf '%s' "$port"
+      return 0
+    fi
+    port=$(( port + 1 ))
+  done
+
+  return 1
+}
+
+# Resolve one host port, stepping off the default when a foreign process owns it.
+# Result lands in RESOLVED_PORT; RESOLVED_PORT_MOVED records whether it changed.
+resolve_host_port() {
+  local var="$1"
+  local default="$2"
+  local service="$3"
+  local label="$4"
+  local port="${!var:-$default}"
+  local holder replacement
+
+  RESOLVED_PORT_MOVED=0
+
+  if port_in_use "$port" && ! port_owned_by_service "$port" "$service"; then
+    holder="$(port_holder "$port")"
+    replacement="$(next_free_port "$(( port + 1 ))")" ||
+      die "${label} host port ${port} is in use${holder:+ by ${holder}} and no free port was found nearby; free it or set ${var}"
+    log "${label} host port ${port} is in use${holder:+ by ${holder}}; using ${replacement} instead (pin with ${var})"
+    port="$replacement"
+    RESOLVED_PORT_MOVED=1
+  fi
+
+  CLAIMED_PORTS+=("$port")
+  RESOLVED_PORT="$port"
+}
+
+require_free_host_port() {
+  local port="$1"
+  local label="$2"
+  local holder
+
+  port_in_use "$port" || return 0
+  holder="$(port_holder "$port")"
+  die "${label} port ${port} is already in use${holder:+ by ${holder}}; this port is fixed (web proxy and auth callbacks assume it), so stop that process and retry"
+}
+
+persist_env_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local current
+
+  [[ -f "$file" ]] || return 0
+  current="$(grep -E "^${key}=" "$file" 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
+  current="$(strip_quotes "$(trim "$current")")"
+  [[ "$current" == "$value" ]] && return 0
+  set_env_value "$file" "$key" "$value"
+  log "pinned ${key}=${value} in ${file#"$ROOT_DIR/"}"
+}
+
+# Keep the ports compose publishes and the ports the source-dev processes dial in
+# sync. Unrelated local stacks routinely squat on 5432/6379/9000, and a silent
+# remap would otherwise leave pytest and the VSCode debugger pointed at them.
+resolve_service_ports() {
+  local minio_api minio_default
+
+  minio_default="${MINIO_API_HOST_PORT:-}"
+  if [[ -z "$minio_default" && "${S3_ENDPOINT_URL:-}" =~ :([0-9]+)/?$ ]]; then
+    minio_default="${BASH_REMATCH[1]}"
+  fi
+
+  resolve_host_port POSTGRES_HOST_PORT "${POSTGRES_PORT:-5432}" relational_db "Postgres"
+  export POSTGRES_HOST_PORT="$RESOLVED_PORT" POSTGRES_PORT="$RESOLVED_PORT"
+  if (( RESOLVED_PORT_MOVED )); then
+    persist_env_value "$VSCODE_ENV" POSTGRES_PORT "$RESOLVED_PORT"
+    persist_env_value "$DOCKER_ENV" POSTGRES_HOST_PORT "$RESOLVED_PORT"
+  fi
+
+  resolve_host_port REDIS_HOST_PORT "${REDIS_PORT:-6379}" cache "Redis"
+  export REDIS_HOST_PORT="$RESOLVED_PORT" REDIS_PORT="$RESOLVED_PORT"
+  if (( RESOLVED_PORT_MOVED )); then
+    persist_env_value "$VSCODE_ENV" REDIS_PORT "$RESOLVED_PORT"
+    persist_env_value "$DOCKER_ENV" REDIS_HOST_PORT "$RESOLVED_PORT"
+  fi
+
+  resolve_host_port OPENSEARCH_HOST_PORT "${OPENSEARCH_REST_API_PORT:-9200}" opensearch "OpenSearch"
+  export OPENSEARCH_HOST_PORT="$RESOLVED_PORT" OPENSEARCH_REST_API_PORT="$RESOLVED_PORT"
+  if (( RESOLVED_PORT_MOVED )); then
+    persist_env_value "$VSCODE_ENV" OPENSEARCH_REST_API_PORT "$RESOLVED_PORT"
+    persist_env_value "$DOCKER_ENV" OPENSEARCH_HOST_PORT "$RESOLVED_PORT"
+  fi
+
+  resolve_host_port MINIO_API_HOST_PORT "${minio_default:-9004}" minio "MinIO"
+  minio_api="$RESOLVED_PORT"
+  export MINIO_API_HOST_PORT="$minio_api" S3_ENDPOINT_URL="http://localhost:${minio_api}"
+  if (( RESOLVED_PORT_MOVED )); then
+    persist_env_value "$VSCODE_ENV" S3_ENDPOINT_URL "$S3_ENDPOINT_URL"
+    persist_env_value "$DOCKER_ENV" MINIO_API_HOST_PORT "$minio_api"
+  fi
+
+  resolve_host_port MINIO_CONSOLE_HOST_PORT "${MINIO_CONSOLE_HOST_PORT:-9005}" minio "MinIO console"
+  export MINIO_CONSOLE_HOST_PORT="$RESOLVED_PORT"
+  if (( RESOLVED_PORT_MOVED )); then
+    persist_env_value "$DOCKER_ENV" MINIO_CONSOLE_HOST_PORT "$RESOLVED_PORT"
+  fi
+
+  resolve_host_port MODEL_SERVER_HOST_PORT "${MODEL_SERVER_PORT:-9000}" "" "Model server"
+  export MODEL_SERVER_HOST_PORT="$RESOLVED_PORT" MODEL_SERVER_PORT="$RESOLVED_PORT"
+  if (( RESOLVED_PORT_MOVED )); then
+    persist_env_value "$VSCODE_ENV" MODEL_SERVER_PORT "$RESOLVED_PORT"
+    persist_env_value "$DOCKER_ENV" MODEL_SERVER_HOST_PORT "$RESOLVED_PORT"
+  fi
+}
+
 compose() {
   (cd "$COMPOSE_DIR" && docker compose -f docker-compose.yml -f docker-compose.dev.yml "$@")
 }
@@ -453,6 +621,9 @@ stop_services() {
 run_source_dev() {
   ensure_local_env_files
   cleanup_orphan_dev_processes
+  resolve_service_ports
+  require_free_host_port 3000 "Web"
+  require_free_host_port 8080 "API"
   setup_dependencies
   verify_web_runtime
   start_infra
@@ -464,7 +635,7 @@ run_source_dev() {
 
   log "starting source dev services"
   start_service "web" "$WEB_DIR" bun run dev
-  start_service "model" "$BACKEND_DIR" "$ROOT_DIR/.venv/bin/uvicorn" model_server.main:app --reload --port 9000
+  start_service "model" "$BACKEND_DIR" "$ROOT_DIR/.venv/bin/uvicorn" model_server.main:app --reload --port "$MODEL_SERVER_PORT"
   start_service "jobs" "$BACKEND_DIR" "$ROOT_DIR/.venv/bin/python" ./scripts/dev_run_background_jobs.py
   start_service "api" "$BACKEND_DIR" env AUTH_TYPE="$AUTH_TYPE" "$ROOT_DIR/.venv/bin/uvicorn" onyx.main:app --reload --port 8080
 
@@ -487,6 +658,7 @@ run_source_dev() {
 
 run_infra_only() {
   ensure_local_env_files
+  resolve_service_ports
   start_infra
   wait_for_opensearch
   log "infra is running"
