@@ -119,6 +119,71 @@ beforeEach(() => {
   });
 });
 
+test("two tenants sharing a label stay distinguishable in the picker", async () => {
+  // Real data: fiwealth and magellanfinancial both publish a
+  // "HumanResourcesIntranet" and an operator labelled both tenant_label
+  // "Foundations". Attaching the wrong company's HR site is a permissions
+  // mistake, so the rows must not render identically.
+  const hrGovernance = {
+    curation_status: "DEFAULT_SAFE",
+    is_default: true,
+    is_archived: false,
+    is_hidden: false,
+    is_diagnostic: false,
+    is_selectable: true,
+    denial_reason: null,
+    display_label: "Human Resources Intranet",
+    tenant_label: "Foundations",
+    department_label: "Human Resources",
+    sort_order: 1,
+    size_bytes: null,
+    document_count_estimate: null,
+    indexed_document_count: 0,
+    indexed_chunk_count: 0,
+    indexing_status: null,
+    last_synced_at: null,
+    warning: null,
+    allowed_group_ids: [],
+    excluded_hierarchy_node_ids: [],
+  };
+  mockFetchHierarchyNodes.mockResolvedValue({
+    nodes: [
+      {
+        id: 369,
+        title: "HumanResourcesIntranet",
+        link: "https://fiwealth.sharepoint.com/sites/HumanResourcesIntranet",
+        parent_id: 1,
+        governance: hrGovernance,
+      },
+      {
+        id: 596,
+        title: "HumanResourcesIntranet",
+        link: "https://magellanfinancial.sharepoint.com/sites/HumanResourcesIntranet",
+        parent_id: 1,
+        governance: hrGovernance,
+      },
+    ],
+  });
+
+  render(
+    <SpaceConnectedKnowledgeModal
+      open
+      canEdit
+      knowledge={{ documents: [], hierarchy_nodes: [] }}
+      onClose={jest.fn()}
+      onSave={jest.fn()}
+      onUploadFiles={jest.fn()}
+    />
+  );
+
+  await screen.findAllByText("Human Resources Intranet");
+  // The owning tenant is what tells them apart.
+  expect(screen.getByText(/fiwealth/)).toBeVisible();
+  expect(screen.getByText(/magellanfinancial/)).toBeVisible();
+  // Every node here is is_default, so the badge would distinguish nothing.
+  expect(screen.queryByText(/Recommended/)).not.toBeInTheDocument();
+});
+
 test("space knowledge modal keeps uploads distinct from connected source selections and saves hierarchy toggles", async () => {
   const user = userEvent.setup();
   const onSave = jest.fn().mockResolvedValue(undefined);
@@ -130,7 +195,7 @@ test("space knowledge modal keeps uploads distinct from connected source selecti
       onClose={jest.fn()}
       onSave={onSave}
       onUploadFiles={jest.fn()}
-    />,
+    />
   );
 
   expect(screen.getByRole("tab", { name: "Connected sources" })).toBeVisible();
@@ -140,18 +205,18 @@ test("space knowledge modal keeps uploads distinct from connected source selecti
   expect(lastHierarchyBrowserProps.initialNodeId).toBe(10);
   await user.click(screen.getByRole("tab", { name: "Uploaded files" }));
   expect(
-    screen.getByText("Uploaded files are copied into this space"),
+    screen.getByText("Uploaded files are copied into this space")
   ).toBeVisible();
   expect(
-    screen.getByRole("button", { name: "Upload local files" }),
+    screen.getByRole("button", { name: "Upload local files" })
   ).toBeVisible();
   expect(
-    screen.getByRole("button", { name: "Upload local folder" }),
+    screen.getByRole("button", { name: "Upload local folder" })
   ).toBeVisible();
 
   await user.click(screen.getByRole("tab", { name: "Connected sources" }));
   await user.click(
-    screen.getByRole("button", { name: "Toggle mock document" }),
+    screen.getByRole("button", { name: "Toggle mock document" })
   );
   await user.click(screen.getByRole("button", { name: "Toggle mock folder" }));
   await user.click(screen.getByRole("button", { name: "Save" }));
@@ -174,7 +239,7 @@ test("department row click browses without attaching; the checkbox attaches and 
       onClose={jest.fn()}
       onSave={onSave}
       onUploadFiles={jest.fn()}
-    />,
+    />
   );
 
   await user.click(await screen.findByText("Advisor Services Intranet"));
@@ -196,7 +261,7 @@ test("department row click browses without attaching; the checkbox attaches and 
 
   // And it is reversible before saving.
   await user.click(
-    screen.getByRole("checkbox", { name: "Attach Advisor Services Intranet" }),
+    screen.getByRole("checkbox", { name: "Attach Advisor Services Intranet" })
   );
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(onSave).toHaveBeenCalledWith([], []));
@@ -217,11 +282,11 @@ test("save-as-preset is admin-only and sends the current selection", async () =>
         onClose={jest.fn()}
         onSave={jest.fn()}
         onUploadFiles={jest.fn()}
-      />,
+      />
     );
     await screen.findByText("Advisor Services Intranet");
     expect(
-      screen.queryByRole("button", { name: "Save as preset" }),
+      screen.queryByRole("button", { name: "Save as preset" })
     ).not.toBeInTheDocument();
     unmount();
 
@@ -235,7 +300,7 @@ test("save-as-preset is admin-only and sends the current selection", async () =>
         onClose={jest.fn()}
         onSave={jest.fn()}
         onUploadFiles={jest.fn()}
-      />,
+      />
     );
     await screen.findByText("Advisor Services Intranet");
     await user.click(screen.getByRole("button", { name: "Save as preset" }));
@@ -259,7 +324,7 @@ test("space connected-source rail renders connector selections separately from u
       canEdit
       compact={false}
       onOpenPicker={onOpenPicker}
-    />,
+    />
   );
 
   expect(screen.getByText("Connected sources")).toBeVisible();

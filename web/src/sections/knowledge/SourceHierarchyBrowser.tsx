@@ -58,7 +58,14 @@ function formatLinkSubtitle(link: string | null): string | null {
     .replace(/^https?:\/\//i, "")
     .replace(/^www\./i, "")
     .replace(/\/+$/, "");
-  return stripped || null;
+  if (!stripped) return null;
+  // SharePoint paths arrive percent-encoded; "Shared%20Documents" is noise to
+  // every human reading this row.
+  try {
+    return decodeURI(stripped);
+  } catch {
+    return stripped;
+  }
 }
 
 function formatByteSize(bytes: number | null | undefined): string | null {
@@ -69,7 +76,9 @@ function formatByteSize(bytes: number | null | undefined): string | null {
   return `${mib.toFixed(0)} MiB`;
 }
 
-function formatIndexingStatus(status: string | null | undefined): string | null {
+function formatIndexingStatus(
+  status: string | null | undefined
+): string | null {
   if (!status) return null;
   return status
     .split("_")
@@ -91,9 +100,8 @@ function governanceBadges(node: HierarchyNodeSummary): string[] {
   } else if (governance.document_count_estimate) {
     badges.push(`~${governance.document_count_estimate} docs`);
   }
-  if (governance.indexed_chunk_count > 0) {
-    badges.push(`${governance.indexed_chunk_count} chunks`);
-  }
+  // Chunks are an indexing-pipeline unit, not something a person picking
+  // knowledge reasons about; the document count already answers "how much".
   const status = formatIndexingStatus(governance.indexing_status);
   if (status) badges.push(status);
   const lastSynced = timeAgo(governance.last_synced_at);
@@ -114,14 +122,27 @@ function HierarchyBreadcrumb({
   const sourceMetadata = getSourceMetadata(source);
   const MAX_VISIBLE_SEGMENTS = 3;
 
+  // The crumb already opens with the source, and a connector's root node is
+  // usually named after it too ("Sharepoint › SharePoint › …"), which reads as
+  // a typo rather than a path. Drop the root when it just repeats the source.
+  const effectivePath =
+    path.length > 0 &&
+    path[0]!.title.trim().toLowerCase() ===
+      sourceMetadata.displayName.trim().toLowerCase()
+      ? path.slice(1)
+      : path;
+
   // Determine which segments to show
-  const shouldCollapse = path.length > MAX_VISIBLE_SEGMENTS;
+  const shouldCollapse = effectivePath.length > MAX_VISIBLE_SEGMENTS;
   const visiblePath = shouldCollapse
-    ? path.slice(path.length - MAX_VISIBLE_SEGMENTS + 1)
-    : path;
+    ? effectivePath.slice(effectivePath.length - MAX_VISIBLE_SEGMENTS + 1)
+    : effectivePath;
   const collapsedCount = shouldCollapse
-    ? path.length - MAX_VISIBLE_SEGMENTS + 1
+    ? effectivePath.length - MAX_VISIBLE_SEGMENTS + 1
     : 0;
+  // onNavigateToNode truncates the *original* path, so every index handed back
+  // has to be shifted by whatever we hid off the front.
+  const hiddenRootCount = path.length - effectivePath.length;
 
   return (
     <GeneralLayouts.Section
@@ -132,7 +153,7 @@ function HierarchyBreadcrumb({
       height="auto"
     >
       {/* Root source link */}
-      {path.length > 0 ? (
+      {effectivePath.length > 0 ? (
         <Button prominence="tertiary" onClick={onNavigateToRoot}>
           {sourceMetadata.displayName}
         </Button>
@@ -152,9 +173,9 @@ function HierarchyBreadcrumb({
 
       {/* Visible path segments */}
       {visiblePath.map((node, visibleIndex) => {
-        const actualIndex = shouldCollapse
-          ? collapsedCount + visibleIndex
-          : visibleIndex;
+        const actualIndex =
+          (shouldCollapse ? collapsedCount + visibleIndex : visibleIndex) +
+          hiddenRootCount;
         const isLast = actualIndex === path.length - 1;
 
         return (
@@ -192,7 +213,7 @@ function documentFetchErrorMessage(error: unknown): string {
 
 function buildPathToNode(
   targetId: number,
-  nodes: HierarchyNodeSummary[],
+  nodes: HierarchyNodeSummary[]
 ): HierarchyNodeSummary[] | null {
   const node = nodes.find((n) => n.id === targetId);
   if (!node) return null;
@@ -286,7 +307,7 @@ export default function SourceHierarchyBrowser({
     return (
       allNodes.find(
         (node) =>
-          node.parent_id === null && rootNames.has(normalize(node.title)),
+          node.parent_id === null && rootNames.has(normalize(node.title))
       ) ?? null
     );
   }, [allNodes, source, sourceMetadata.displayName]);
@@ -314,7 +335,7 @@ export default function SourceHierarchyBrowser({
         setAllNodes(response.nodes);
       } catch (error) {
         setNodesError(
-          error instanceof Error ? error.message : "Failed to load folders",
+          error instanceof Error ? error.message : "Failed to load folders"
         );
       } finally {
         setIsLoadingNodes(false);
@@ -472,7 +493,7 @@ export default function SourceHierarchyBrowser({
     const missingDetails = documents.filter(
       (doc) =>
         selectedDocumentIds.includes(doc.id) &&
-        !selectedDocumentDetails.has(doc.id),
+        !selectedDocumentDetails.has(doc.id)
     );
 
     if (missingDetails.length > 0) {
@@ -565,7 +586,7 @@ export default function SourceHierarchyBrowser({
         .map((docId) => selectedDocumentDetails.get(docId))
         .filter((doc): doc is DocumentSummary => doc !== undefined)
         .filter(
-          (doc) => doc.parent_id !== null && nodeIdsInSource.has(doc.parent_id),
+          (doc) => doc.parent_id !== null && nodeIdsInSource.has(doc.parent_id)
         )
         .map((doc) => ({ type: "document" as const, data: doc }));
 
@@ -579,7 +600,7 @@ export default function SourceHierarchyBrowser({
     if (searchValue) {
       const lower = searchValue.toLowerCase();
       result = result.filter((item) =>
-        item.data.title.toLowerCase().includes(lower),
+        item.data.title.toLowerCase().includes(lower)
       );
     }
 
@@ -598,7 +619,7 @@ export default function SourceHierarchyBrowser({
   const currentSourceSelectedCount = useMemo(() => {
     // Folders: count how many selectedFolderIds are in allNodes (source-specific)
     const folderCount = allNodes.filter((node) =>
-      selectedFolderIds.includes(node.id),
+      selectedFolderIds.includes(node.id)
     ).length;
 
     // Documents: count how many selected documents have parent in this source
@@ -629,9 +650,9 @@ export default function SourceHierarchyBrowser({
         (item) =>
           item.type !== "folder" ||
           (item.data as HierarchyNodeSummary).governance?.is_selectable !==
-            false,
+            false
       ),
-    [filteredItems],
+    [filteredItems]
   );
 
   // Header checkbox state: count how many visible selectable items are selected
@@ -649,31 +670,32 @@ export default function SourceHierarchyBrowser({
     selectableFilteredItems.length > 0 &&
     visibleSelectedCount === selectableFilteredItems.length;
   const someVisibleSelected =
-    visibleSelectedCount > 0 && visibleSelectedCount < selectableFilteredItems.length;
+    visibleSelectedCount > 0 &&
+    visibleSelectedCount < selectableFilteredItems.length;
 
   // Handler for header checkbox click
   const handleHeaderCheckboxClick = () => {
     // Get visible folders and documents
     const visibleFolders = selectableFilteredItems.filter(
-      (item) => item.type === "folder",
+      (item) => item.type === "folder"
     );
     const visibleDocs = selectableFilteredItems.filter(
-      (item) => item.type === "document",
+      (item) => item.type === "document"
     );
     const visibleFolderIds = visibleFolders.map(
-      (item) => item.data.id as number,
+      (item) => item.data.id as number
     );
     const visibleDocumentIds = visibleDocs.map(
-      (item) => item.data.id as string,
+      (item) => item.data.id as string
     );
 
     if (allVisibleSelected) {
       // Deselect all visible items by removing them from the selected arrays
       const newFolderIds = selectedFolderIds.filter(
-        (id) => !visibleFolderIds.includes(id),
+        (id) => !visibleFolderIds.includes(id)
       );
       const newDocumentIds = selectedDocumentIds.filter(
-        (id) => !visibleDocumentIds.includes(id),
+        (id) => !visibleDocumentIds.includes(id)
       );
       onSetFolderIds(newFolderIds);
       onSetDocumentIds(newDocumentIds);
@@ -729,7 +751,7 @@ export default function SourceHierarchyBrowser({
       // Exit view selected mode and navigate to the folder
       // We need to build the path to this folder from root
       const buildPathToFolder = (
-        targetId: number,
+        targetId: number
       ): HierarchyNodeSummary[] | null => {
         const node = allNodes.find((n) => n.id === targetId);
         if (!node) return null;
@@ -1032,8 +1054,7 @@ export default function SourceHierarchyBrowser({
               const badges = isFolder
                 ? governanceBadges(item.data as HierarchyNodeSummary)
                 : [];
-              const title =
-                folderGovernance?.display_label || item.data.title;
+              const title = folderGovernance?.display_label || item.data.title;
               const departmentPath = [
                 folderGovernance?.tenant_label,
                 folderGovernance?.department_label,
@@ -1104,7 +1125,7 @@ export default function SourceHierarchyBrowser({
                             onClick={(e) => {
                               e.stopPropagation();
                               handleClickIntoFolder(
-                                item.data as HierarchyNodeSummary,
+                                item.data as HierarchyNodeSummary
                               );
                             }}
                           />
@@ -1117,7 +1138,7 @@ export default function SourceHierarchyBrowser({
                       {isFolder
                         ? "—"
                         : timeAgo(
-                            (item.data as DocumentSummary).last_modified,
+                            (item.data as DocumentSummary).last_modified
                           ) || "—"}
                     </Text>
                   </TableLayouts.TableCell>

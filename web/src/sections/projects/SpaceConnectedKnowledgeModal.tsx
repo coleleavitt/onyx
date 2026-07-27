@@ -75,16 +75,44 @@ function sharePointNodeLabel(node: HierarchyNodeSummary): string {
   return node.governance?.display_label ?? node.title;
 }
 
+/** Short host of the node's own tenant, e.g. `fiwealth`.
+ *
+ * `tenant_label` is operator-authored free text and nothing ties it to the
+ * site it labels, so two sites from different Microsoft tenants can carry the
+ * same label and render identically. The host is ground truth, and attaching
+ * the wrong company's site is a permissions mistake, not a cosmetic one.
+ */
+function sharePointTenantHost(node: HierarchyNodeSummary): string | undefined {
+  if (!node.link) return undefined;
+  try {
+    return new URL(node.link).hostname.split(".")[0] || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function sharePointNodeDescription(
-  node: HierarchyNodeSummary
+  node: HierarchyNodeSummary,
+  { showRecommended }: { showRecommended: boolean }
 ): string | undefined {
   const parts = [
+    sharePointTenantHost(node),
     node.governance?.department_label,
     node.governance?.is_archived ? "Archive" : null,
-    node.governance?.is_default ? "Recommended" : null,
+    // A badge every row carries distinguishes nothing; only spend the line on
+    // it when some sibling lacks it.
+    showRecommended && node.governance?.is_default ? "Recommended" : null,
     node.governance?.warning,
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+/** Whether "Recommended" tells the reader anything within this group. */
+function recommendedIsDistinguishing(nodes: HierarchyNodeSummary[]): boolean {
+  return (
+    nodes.some((node) => node.governance?.is_default) &&
+    !nodes.every((node) => node.governance?.is_default)
+  );
 }
 
 function groupSharePointDepartments(
@@ -346,9 +374,24 @@ export default function SpaceConnectedKnowledgeModal({
                                       key={node.id}
                                       icon={metadata.icon}
                                       title={sharePointNodeLabel(node)}
-                                      description={sharePointNodeDescription(
-                                        node
-                                      )}
+                                      description={[
+                                        sharePointNodeDescription(node, {
+                                          showRecommended:
+                                            recommendedIsDistinguishing(
+                                              group.nodes
+                                            ),
+                                        }),
+                                        // The row highlight marks what you are
+                                        // browsing, so attachment needs to be
+                                        // legible without reading the checkbox.
+                                        selectedHierarchyNodeIds.includes(
+                                          node.id
+                                        )
+                                          ? "Attached"
+                                          : null,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")}
                                       width="full"
                                       sizePreset="main-ui"
                                       variant="section"
@@ -504,10 +547,8 @@ export default function SpaceConnectedKnowledgeModal({
           <div className="flex w-full items-center justify-between gap-3">
             <Text font="secondary-body" color="text-03">
               {selectedCount === 0
-                ? "No connected-source selections"
-                : `${selectedCount} connected-source selection${
-                    selectedCount === 1 ? "" : "s"
-                  }`}
+                ? "Nothing selected"
+                : `${selectedCount} selected`}
             </Text>
             <div className="flex items-center gap-2">
               {isAdmin && (
