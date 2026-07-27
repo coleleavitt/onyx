@@ -21,8 +21,36 @@ interface SpaceConnectedSourcesSectionProps {
   onOpenPicker: () => void;
 }
 
+// Beyond this the list stops being a summary and starts being a file browser —
+// the picker is the file browser.
+const MAX_VISIBLE_ITEMS = 5;
+
+interface ConnectedItem {
+  key: string;
+  title: string;
+  icon: IconFunctionComponent;
+  description?: string;
+  link?: string | null;
+}
+
 function totalSelections(knowledge: ProjectConnectedKnowledge): number {
   return knowledge.documents.length + knowledge.hierarchy_nodes.length;
+}
+
+function countLabel(count: number, singular: string): string {
+  return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+/** Distinct sources across every selection, used to decide if rows need a source label. */
+function distinctSources(
+  knowledge: ProjectConnectedKnowledge
+): Set<ValidSources> {
+  const sources = new Set<ValidSources>();
+  for (const node of knowledge.hierarchy_nodes) sources.add(node.source);
+  for (const document of knowledge.documents) {
+    if (document.source) sources.add(document.source);
+  }
+  return sources;
 }
 
 export default function SpaceConnectedSourcesSection({
@@ -31,45 +59,41 @@ export default function SpaceConnectedSourcesSection({
   compact = false,
   onOpenPicker,
 }: SpaceConnectedSourcesSectionProps) {
-  const grouped = useMemo(() => {
-    const groups = new Map<
-      ValidSources,
-      {
-        documents: number;
-        folders: number;
-        icon: IconFunctionComponent;
-        label: string;
-      }
-    >();
-    for (const node of knowledge.hierarchy_nodes) {
-      const meta = getSourceMetadata(node.source);
-      const current = groups.get(node.source) ?? {
-        documents: 0,
-        folders: 0,
-        icon: meta.icon,
-        label: meta.displayName,
-      };
-      current.folders += 1;
-      groups.set(node.source, current);
-    }
-    for (const document of knowledge.documents) {
-      if (!document.source) continue;
-      const meta = getSourceMetadata(document.source);
-      const current = groups.get(document.source) ?? {
-        documents: 0,
-        folders: 0,
-        icon: meta.icon,
-        label: meta.displayName,
-      };
-      current.documents += 1;
-      groups.set(document.source, current);
-    }
-    return Array.from(groups.entries()).sort(([, left], [, right]) =>
-      left.label.localeCompare(right.label)
-    );
-  }, [knowledge.documents, knowledge.hierarchy_nodes]);
+  // One row per thing actually connected. The previous shape also rendered a
+  // per-source summary row above the items, so a single connected folder
+  // produced two rows naming the same source twice.
+  const items = useMemo<ConnectedItem[]>(() => {
+    // With one source the name is already implied by the section and the icon;
+    // it only earns a row's description line when sources are mixed.
+    const labelSources = distinctSources(knowledge).size > 1;
+
+    const folders = knowledge.hierarchy_nodes.map((node) => ({
+      key: `node-${node.id}`,
+      title: node.title,
+      icon: getSourceMetadata(node.source).icon,
+      description: labelSources
+        ? getSourceMetadata(node.source).displayName
+        : undefined,
+    }));
+
+    const documents = knowledge.documents.map((document) => ({
+      key: `document-${document.id}`,
+      title: document.title,
+      icon: document.source
+        ? getSourceMetadata(document.source).icon
+        : SvgFileText,
+      description:
+        labelSources && document.source
+          ? getSourceMetadata(document.source).displayName
+          : undefined,
+      link: document.link,
+    }));
+
+    return [...folders, ...documents];
+  }, [knowledge]);
 
   const count = totalSelections(knowledge);
+  const overflow = items.length - MAX_VISIBLE_ITEMS;
 
   return (
     <div className="flex flex-col gap-2">
@@ -110,60 +134,21 @@ export default function SpaceConnectedSourcesSection({
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {grouped.map(([source, group]) => {
-            const Icon = group.icon;
-            const description = [
-              group.folders ? `${group.folders} folder/site` : null,
-              group.documents ? `${group.documents} document` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <LineItemButton
-                key={source}
-                icon={Icon}
-                title={group.label}
-                description={description}
-                width="full"
-                sizePreset="main-ui"
-                variant="section"
-                titleMaxLines={1}
-                onClick={onOpenPicker}
-              />
-            );
-          })}
-          {knowledge.hierarchy_nodes.slice(0, 3).map((node) => (
+          {items.slice(0, MAX_VISIBLE_ITEMS).map((item) => (
             <LineItemButton
-              key={`node-${node.id}`}
-              icon={SvgFolder}
-              title={node.title}
-              description={getSourceMetadata(node.source).displayName}
-              width="full"
-              sizePreset="main-ui"
-              variant="section"
-              titleMaxLines={1}
-              onClick={onOpenPicker}
-            />
-          ))}
-          {knowledge.documents.slice(0, 3).map((document) => (
-            <LineItemButton
-              key={`document-${document.id}`}
-              icon={SvgFileText}
-              title={document.title}
-              description={
-                document.source
-                  ? getSourceMetadata(document.source).displayName
-                  : "Indexed document"
-              }
+              key={item.key}
+              icon={item.icon}
+              title={item.title}
+              description={item.description}
               width="full"
               sizePreset="main-ui"
               variant="section"
               titleMaxLines={1}
               onClick={onOpenPicker}
               rightChildren={
-                document.link ? (
+                item.link ? (
                   <Button
-                    href={document.link}
+                    href={item.link}
                     target="_blank"
                     icon={SvgExternalLink}
                     prominence="tertiary"
@@ -174,6 +159,27 @@ export default function SpaceConnectedSourcesSection({
               }
             />
           ))}
+          {overflow > 0 && (
+            <LineItemButton
+              icon={SvgFolder}
+              title={`${overflow} more`}
+              description={[
+                knowledge.hierarchy_nodes.length
+                  ? countLabel(knowledge.hierarchy_nodes.length, "folder")
+                  : null,
+                knowledge.documents.length
+                  ? countLabel(knowledge.documents.length, "document")
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              width="full"
+              sizePreset="main-ui"
+              variant="section"
+              titleMaxLines={1}
+              onClick={onOpenPicker}
+            />
+          )}
         </div>
       )}
     </div>
