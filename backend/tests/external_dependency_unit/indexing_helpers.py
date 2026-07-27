@@ -12,6 +12,8 @@ the body is just `make_cc_pair` + `cleanup_cc_pair`.
 from io import BytesIO
 from uuid import uuid4
 
+from sqlalchemy import or_
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from onyx.configs.constants import DocumentSource
@@ -214,6 +216,58 @@ def cleanup_cc_pair(db_session: Session, pair: ConnectorCredentialPair) -> None:
         synchronize_session="fetch"
     )
     db_session.commit()
+
+
+# Index-name prefixes owned by the isolated search-settings fixtures below.
+# `test_defer_*` comes from test_port_metadata_defer_e2e.
+TEST_SEARCH_SETTINGS_PREFIXES = ("test_future_", "test_defer_")
+
+
+def purge_orphaned_test_search_settings(db_session: Session) -> int:
+    """Drop leftover fixture SearchSettings rows from earlier runs.
+
+    Every fixture that creates one already tears it down in a ``finally``, but
+    a hard kill (SIGKILL, OOM, a disk-full abort mid-suite) runs no teardown at
+    all. The leftover row is not inert: ``get_secondary_search_settings`` takes
+    the newest FUTURE row, which makes ``check_for_indexing`` believe an
+    embedding switchover is underway — and a REINDEX switchover deliberately
+    schedules indexing for *every* connector, including paused ones. One
+    orphan therefore silently re-indexes the whole deployment and makes the
+    admin connector list report paused connectors as indexing.
+
+    Sweeping at session start makes a killed run self-healing instead of
+    poisoning every later run and the developer's own environment.
+
+    :param db_session: Session bound to the tenant being cleaned.
+    :returns: Number of SearchSettings rows deleted.
+    """
+    stale_ids = [
+        row_id
+        for row_id in db_session.scalars(
+            select(SearchSettings.id).where(
+                or_(
+                    *(
+                        SearchSettings.index_name.like(f"{prefix}%")
+                        for prefix in TEST_SEARCH_SETTINGS_PREFIXES
+                    )
+                )
+            )
+        ).all()
+    ]
+    if not stale_ids:
+        return 0
+
+    # index_attempt.search_settings_id is ON DELETE SET NULL, so the attempts
+    # would survive as orphans pointing at no settings. Drop them explicitly.
+    # (port_attempt cascades on its own.)
+    db_session.query(IndexAttempt).filter(
+        IndexAttempt.search_settings_id.in_(stale_ids)
+    ).delete(synchronize_session="fetch")
+    db_session.query(SearchSettings).filter(SearchSettings.id.in_(stale_ids)).delete(
+        synchronize_session="fetch"
+    )
+    db_session.commit()
+    return len(stale_ids)
 
 
 def make_future_search_settings(

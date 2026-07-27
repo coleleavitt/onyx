@@ -32,7 +32,10 @@ import { SourceIcon } from "@/components/SourceIcon";
 import { getSourceDisplayName } from "@/lib/sources";
 import { useTierAtLeast } from "@/hooks/useTierAtLeast";
 import { Tier } from "@/lib/settings/types";
-import { ConnectorCredentialPairStatus } from "../../connector/[ccPairId]/types";
+import {
+  ConnectorCredentialPairStatus,
+  resolveCCPairDisplayStatus,
+} from "../../connector/[ccPairId]/types";
 import { PageSelector } from "@/components/PageSelector";
 import { ConnectorStaggeredSkeleton } from "./ConnectorRowSkeleton";
 import { Button } from "@opal/components";
@@ -174,13 +177,11 @@ function ConnectorRow({
       </TableCell>
       <TableCell>
         <CCPairStatus
-          ccPairStatus={
-            ccPairsIndexingStatus.last_finished_status !== null
-              ? ccPairsIndexingStatus.cc_pair_status
-              : ccPairsIndexingStatus.last_status == "not_started"
-                ? ConnectorCredentialPairStatus.SCHEDULED
-                : ConnectorCredentialPairStatus.INITIAL_INDEXING
-          }
+          ccPairStatus={resolveCCPairDisplayStatus(
+            ccPairsIndexingStatus.cc_pair_status,
+            ccPairsIndexingStatus.last_finished_status,
+            ccPairsIndexingStatus.last_status
+          )}
           inRepeatedErrorState={ccPairsIndexingStatus.in_repeated_error_state}
           lastIndexAttemptStatus={ccPairsIndexingStatus.last_status}
         />

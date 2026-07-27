@@ -14,6 +14,9 @@ from onyx.file_store.file_store import get_default_file_store
 from shared_configs.configs import POSTGRES_DEFAULT_SCHEMA_STANDARD_VALUE
 from shared_configs.contextvars import CURRENT_TENANT_ID_CONTEXTVAR
 from tests.external_dependency_unit.full_setup import ensure_full_deployment_setup
+from tests.external_dependency_unit.indexing_helpers import (
+    purge_orphaned_test_search_settings,
+)
 from tests.external_dependency_unit.user_cleanup import delete_test_groups
 from tests.external_dependency_unit.user_cleanup import delete_test_personas
 from tests.external_dependency_unit.user_cleanup import delete_test_users
@@ -30,10 +33,33 @@ from tests.utils.pytest_secrets import pytest_configure as pytest_configure
 from tests.utils.pytest_secrets import test_secrets as test_secrets
 
 
+def _sweep_orphaned_test_search_settings() -> None:
+    """Best-effort purge of fixture SearchSettings left by a killed run."""
+    token = CURRENT_TENANT_ID_CONTEXTVAR.set(POSTGRES_DEFAULT_SCHEMA_STANDARD_VALUE)
+    try:
+        SqlEngine.init_engine(pool_size=2, max_overflow=2)
+        with get_session_with_current_tenant() as session:
+            purge_orphaned_test_search_settings(session)
+    except Exception:
+        # Never block the suite on cleanup of a previous run's debris.
+        pass
+    finally:
+        CURRENT_TENANT_ID_CONTEXTVAR.reset(token)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup_created_test_users() -> Generator[None, None, None]:
-    """Drop every user create_test_user made once the session ends."""
+    """Drop every user create_test_user made once the session ends.
+
+    Also sweeps fixture-owned SearchSettings rows on both sides of the suite.
+    Before: a previously killed run leaves a FUTURE row behind. After: a test
+    whose own teardown misses one must not leave it for the next run — a
+    surviving FUTURE row makes the scheduler behave as though an embedding
+    switchover were underway and re-index every connector, paused included.
+    """
+    _sweep_orphaned_test_search_settings()
     yield
+    _sweep_orphaned_test_search_settings()
     unique_ids = drain_recorded_user_ids()
     group_ids = drain_recorded_group_ids()
     persona_ids = drain_recorded_persona_ids()

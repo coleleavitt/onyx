@@ -38,6 +38,39 @@ export function statusIsNotCurrentlyActive(
   );
 }
 
+/**
+ * Status to display for a connector row in the admin list.
+ *
+ * `ccPairStatus` is the administrative state an operator set. The
+ * attempt-derived fallback exists only to tell "queued" apart from "first
+ * index running" for a connector that has never finished an attempt — it must
+ * never mask an explicit PAUSED/INVALID/DELETING. A secondary-index
+ * (embedding switchover) run deliberately indexes paused connectors, so
+ * without this guard a paused connector reports itself as "Initial Indexing"
+ * in the list while its own detail page correctly reads "Paused".
+ */
+export function resolveCCPairDisplayStatus(
+  ccPairStatus: ConnectorCredentialPairStatus,
+  lastFinishedStatus: ValidStatuses | null,
+  lastStatus: ValidStatuses | null
+): ConnectorCredentialPairStatus {
+  if (
+    ccPairStatus === ConnectorCredentialPairStatus.PAUSED ||
+    ccPairStatus === ConnectorCredentialPairStatus.INVALID ||
+    ccPairStatus === ConnectorCredentialPairStatus.DELETING
+  ) {
+    return ccPairStatus;
+  }
+
+  if (lastFinishedStatus !== null) {
+    return ccPairStatus;
+  }
+
+  return lastStatus === "not_started"
+    ? ConnectorCredentialPairStatus.SCHEDULED
+    : ConnectorCredentialPairStatus.INITIAL_INDEXING;
+}
+
 export interface CCPairFullInfo {
   id: number;
   name: string;

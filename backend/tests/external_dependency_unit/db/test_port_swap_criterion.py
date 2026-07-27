@@ -400,4 +400,11 @@ def test_cancel_active_port_attempts_is_two_phase(
         db_session.query(PortAttempt).filter(
             PortAttempt.search_settings_id == future_id
         ).delete(synchronize_session="fetch")
+        # The FUTURE row must go too: get_secondary_search_settings picks the
+        # newest one, so a survivor makes the running deployment behave as
+        # though an embedding switchover were underway and re-index every
+        # connector, paused ones included.
+        db_session.query(SearchSettings).filter(SearchSettings.id == future_id).delete(
+            synchronize_session="fetch"
+        )
         db_session.commit()
