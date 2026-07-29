@@ -48,7 +48,7 @@ export default function StageMetricsPanel({
       <MessageCard
         variant="warning"
         title="Failed to load stage metrics"
-        description="Stage timing data could not be loaded for this attempt. The pipeline runs even when metric recording is unavailable, so this does not indicate a problem with the indexing run itself."
+        description="Onyx could not load the stage timing data for this attempt. The pipeline still runs when it cannot record metrics, so the indexing run itself is not affected."
       />
     );
   }

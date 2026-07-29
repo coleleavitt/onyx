@@ -185,7 +185,7 @@ export function ModelSpecFields({
         title="Query Prefix"
         suffix="optional"
         placeholder="e.g., 'query: '"
-        subDescription="This is prepended to search queries before passing to the model, if required by your embedding model. Incorrect or missing prefixes will degrade embedding quality."
+        subDescription="Onyx adds this to the start of each search query before it sends the query to the model. Some embedding models require it. A wrong or missing prefix degrades embedding quality."
       />
 
       <TextField
@@ -193,7 +193,7 @@ export function ModelSpecFields({
         title="Passage Prefix"
         suffix="optional"
         placeholder="e.g., 'passage: '"
-        subDescription="This is prepended to indexed document chunks before passing to the model, if required by your embedding model. Incorrect or missing prefixes will degrade embedding quality."
+        subDescription="Onyx adds this to the start of each document chunk before it sends the chunk to the model. Some embedding models require it. A wrong or missing prefix degrades embedding quality."
       />
 
       <InputHorizontal

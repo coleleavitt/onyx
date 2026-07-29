@@ -60,13 +60,12 @@ export default function IndexAttemptErrorsModal({
         <Modal.Body height="full">
           <div className="flex flex-col gap-2 shrink-0">
             <Text as="p">
-              Below are the errors encountered during indexing. Each row
-              represents a failed document or entity.
+              Each row is a document or entity that failed to index.
             </Text>
             <Text as="p">
               {supportsTargetedReindex
-                ? "Click the button below to re-fetch only the failing documents. Much faster than a full re-index."
-                : "Click the button below to kick off a full re-index to try and resolve these errors. This full re-index may take much longer than a normal update."}
+                ? "Re-fetch only the failed documents. This is much faster than a full re-index."
+                : "Start a full re-index to resolve these errors. A full re-index takes much longer than a normal update."}
             </Text>
           </div>
 

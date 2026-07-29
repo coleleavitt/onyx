@@ -980,7 +980,7 @@ export default function IndexSettingsPage() {
                         }
                         description={markdown(
                           contextualRagModelMissing
-                            ? "Contextual Retrieval is enabled but no model is selected. Pick a Contextual Retrieval LLM below before re-indexing — without one, the re-index cannot run."
+                            ? "Contextual Retrieval is on, but no model is selected. Select a Contextual Retrieval LLM below. The re-index cannot run without one."
                             : "Modifying embedding or retrieval settings requires a full re-index of all documents to take effect, which may take **hours or days** depending on corpus size. [Learn More](https://docs.onyx.app/security/architecture/data_flows)"
                         )}
                         bottomChildren={
@@ -1542,7 +1542,7 @@ export default function IndexSettingsPage() {
                         >
                           <InputHorizontal
                             title="Extract & Caption Images"
-                            description="Extract embedded images from uploaded files (PDFs, DOCX, etc.) and summarize them with a vision-capable LLM so image-only documents become searchable and answerable. Requires a vision-capable default LLM."
+                            description="Extract embedded images from uploaded files such as PDFs and DOCX. A vision-capable LLM then summarizes each image, which makes image-only documents searchable. Requires a vision-capable default LLM."
                             withLabel
                           >
                             <Switch
@@ -1562,7 +1562,7 @@ export default function IndexSettingsPage() {
                           >
                             <InputHorizontal
                               title="Captioning LLM"
-                              description="This model will be used to analyze images during indexing. Only vision-capable models can be selected. Updates apply to documents indexed going forward — existing captions are baked into prior embeddings."
+                              description="This model analyzes images during indexing. You can select only vision-capable models. A change applies to documents indexed from now on, because prior embeddings already contain their captions."
                               disabled={!imageProcessingEnabled}
                               withLabel
                             >
