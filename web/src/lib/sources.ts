@@ -9,7 +9,13 @@ import { SourceCategory, SourceMetadata } from "@/lib/search/interfaces";
 import { Agent } from "@/lib/agents/types";
 import React from "react";
 import { DOCS_ADMINS_PATH, DOCS_BASE_URL } from "@/lib/constants";
-import { SvgFileText, SvgGlobe, SvgUploadCloud, SvgMail } from "@opal/icons";
+import {
+  SvgFileText,
+  SvgGlobe,
+  SvgNetworkGraph,
+  SvgUploadCloud,
+  SvgMail,
+} from "@opal/icons";
 import {
   SvgAirtable,
   SvgAsana,
@@ -436,6 +442,11 @@ export const SOURCE_METADATA_MAP: SourceMap = {
   braintrust: {
     icon: BraintrustIcon,
     displayName: "Braintrust",
+    category: SourceCategory.Other,
+  },
+  ers: {
+    icon: SvgNetworkGraph,
+    displayName: "ERS",
     category: SourceCategory.Other,
   },
 

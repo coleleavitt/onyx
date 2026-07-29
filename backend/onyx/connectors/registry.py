@@ -224,6 +224,10 @@ CONNECTOR_CLASS_MAP = {
         module_path="onyx.connectors.lumapps.connector",
         class_name="LumAppsConnector",
     ),
+    DocumentSource.ERS: ConnectorMapping(
+        module_path="onyx.connectors.ers.connector",
+        class_name="ErsConnector",
+    ),
     # just for integration tests
     DocumentSource.MOCK_CONNECTOR: ConnectorMapping(
         module_path="onyx.connectors.mock_connector.connector",

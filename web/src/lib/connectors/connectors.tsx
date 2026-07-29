@@ -1839,6 +1839,51 @@ For example, specifying .*-alerts as a "channel to exclude" will cause the conne
       },
     ],
   },
+  ers: {
+    description: "Configure ERS connector",
+    values: [
+      {
+        type: "list",
+        query: "Enter advisor names to restrict indexing to:",
+        label: "Advisors",
+        name: "advisors",
+        optional: true,
+        description:
+          "Only index clients, advisors, and policies for these advisors. Leave empty to index the whole book.",
+      },
+    ],
+    advanced_values: [
+      {
+        type: "text",
+        query: "Enter the ERS API base URL:",
+        label: "Base URL",
+        name: "base_url",
+        optional: true,
+        default: "https://api-ers.fiwealth.com",
+        description:
+          "Override only to point at a non-production ERS instance, e.g. http://localhost:9200",
+      },
+      {
+        type: "checkbox",
+        query: "Index contact details?",
+        label: "Include Contact PII",
+        name: "include_contact_pii",
+        optional: true,
+        default: false,
+        description:
+          "Adds owner and beneficiary emails, addresses, phone numbers, and dates of birth to indexed policies. This copies PII into the search index — leave off unless you need it.",
+      },
+      {
+        type: "number",
+        query: "Enter the page size:",
+        label: "Page Size",
+        name: "batch_size",
+        optional: true,
+        default: 200,
+        description: "Rows fetched per GraphQL request.",
+      },
+    ],
+  },
   canvas: {
     description: "Configure Canvas connector",
     values: [

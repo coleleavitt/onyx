@@ -641,6 +641,7 @@ export enum ValidSources {
   TestRail = "testrail",
   Braintrust = "braintrust",
   Lumapps = "lumapps",
+  Ers = "ers",
   Canvas = "canvas",
 
   // Craft-specific sources
@@ -651,7 +652,7 @@ export enum ValidSources {
 }
 
 export const federatedSourceToRegularSource = (
-  maybeFederatedSource: ValidSources,
+  maybeFederatedSource: ValidSources
 ): ValidSources => {
   if (maybeFederatedSource === ValidSources.FederatedSlack) {
     return ValidSources.Slack;

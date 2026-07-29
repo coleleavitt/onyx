@@ -259,6 +259,11 @@ export interface BraintrustCredentialJson {
   braintrust_api_key: string;
 }
 
+export interface ErsCredentialJson {
+  ers_key_id: string;
+  ers_private_key: string;
+}
+
 export interface CanvasCredentialJson {
   canvas_access_token: string;
 }
@@ -469,6 +474,10 @@ export const credentialTemplates: Record<ValidSources, any> = {
   braintrust: {
     braintrust_api_key: "",
   } as BraintrustCredentialJson,
+  ers: {
+    ers_key_id: "",
+    ers_private_key: "",
+  } as ErsCredentialJson,
   canvas: {
     canvas_access_token: "",
   } as CanvasCredentialJson,
@@ -676,6 +685,10 @@ export const credentialDisplayNames: Record<string, string> = {
 
   // Braintrust
   braintrust_api_key: "Braintrust API Key",
+
+  // ERS
+  ers_key_id: "ERS Key ID",
+  ers_private_key: "ERS Ed25519 Private Key (base64url seed)",
 
   // Canvas
   canvas_access_token: "Canvas Access Token",
