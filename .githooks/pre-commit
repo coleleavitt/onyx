@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Repo-local pre-commit hook.
+#
+# Onyx's gates live in .pre-commit-config.yaml, but `pre-commit install` writes
+# to .git/hooks/, which git ignores entirely whenever core.hooksPath is set --
+# and a global hooksPath (lefthook, husky, …) is common enough that the gates
+# silently stop running. Shipping the hook in-tree and pointing core.hooksPath
+# here makes the wiring explicit and survives a global setting.
+#
+# Enable with:  git config --local core.hooksPath .githooks
+# Bypass once:  ONYX_SKIP_PRECOMMIT=1 git commit …
+
+set -euo pipefail
+
+if [[ "${ONYX_SKIP_PRECOMMIT:-0}" == "1" ]]; then
+    echo "pre-commit: skipped (ONYX_SKIP_PRECOMMIT=1)"
+    exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+
+if ! command -v pre-commit >/dev/null 2>&1; then
+    echo "pre-commit: 'pre-commit' not on PATH — activate the venv or 'uv sync --frozen'" >&2
+    echo "pre-commit: refusing to pass silently; set ONYX_SKIP_PRECOMMIT=1 to override" >&2
+    exit 1
+fi
+
+exec pre-commit run --hook-stage pre-commit

@@ -1,0 +1,52 @@
+name: Pre-commit Checks
+concurrency:
+  group: Pre-commit-${{ github.workflow }}-${{ github.head_ref || github.event.workflow_run.head_branch || github.run_id }}
+  cancel-in-progress: true
+
+# .pre-commit-config.yaml defines ruff, ripsecrets (secret scanning), the env
+# drift gate, golangci-lint and more, but nothing ran them: `pre-commit install`
+# writes to .git/hooks/, which git ignores whenever core.hooksPath is set, and no
+# workflow invoked pre-commit either. .githooks/pre-commit fixes the local half;
+# this job makes CI the backstop so a broken local setup cannot silently disable
+# secret scanning again.
+
+on:
+  merge_group:
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # ratchet:actions/checkout@v6
+        with:
+          # pre-commit --from-ref/--to-ref needs both sides of the PR range.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Python and Install Dependencies
+        uses: ./.github/actions/setup-python-and-install-dependencies
+        with:
+          requirements: |
+            backend/requirements/default.txt
+            backend/requirements/dev.txt
+
+      - name: Run pre-commit on changed files
+        env:
+          TERM: xterm-256color
+          # Via env rather than inline ${{ }} so workflow context never lands in
+          # the shell command itself.
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          pre-commit run --show-diff-on-failure --color=always \
+            --from-ref "$BASE_SHA" --to-ref "$HEAD_SHA"
