@@ -1,0 +1,254 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e16]:
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - img "Logo" [ref=e24]
+            - generic [ref=e25]:
+              - paragraph [ref=e28]: Foundations AI
+              - generic:
+                - paragraph: Foundations AI
+          - button [ref=e29] [cursor=pointer]:
+            - img [ref=e32]
+        - generic [ref=e34]:
+          - generic [ref=e37] [cursor=pointer]:
+            - link [ref=e38]:
+              - /url: /app
+            - generic [ref=e42]:
+              - img [ref=e44]
+              - generic "New Session" [ref=e46]
+          - generic "Open chat search" [ref=e47]:
+            - generic [ref=e53] [cursor=pointer]:
+              - img [ref=e55]
+              - generic "Search Chats" [ref=e57]
+          - generic [ref=e60] [cursor=pointer]:
+            - link [ref=e61]:
+              - /url: /craft/v1
+            - generic [ref=e65]:
+              - img [ref=e67]
+              - generic "Craft" [ref=e69]
+      - generic [ref=e72]:
+        - generic [ref=e74]:
+          - generic [ref=e76] [cursor=pointer]:
+            - link [ref=e77]:
+              - /url: /app/agents
+            - generic [ref=e81]:
+              - img [ref=e83]
+              - generic "Agents" [ref=e86]
+          - button "Expand Agents":
+            - img
+        - status [ref=e87]
+        - generic [ref=e89]:
+          - generic [ref=e91] [cursor=pointer]:
+            - link [ref=e92]:
+              - /url: /app/spaces
+            - generic [ref=e93]:
+              - generic:
+                - button:
+                  - generic:
+                    - generic:
+                      - img
+            - generic [ref=e97]:
+              - img [ref=e99]
+              - generic "Spaces" [ref=e101]
+          - button "Expand Spaces":
+            - img
+        - generic [ref=e105] [cursor=pointer]:
+          - link [ref=e106]:
+            - /url: /app/artifacts
+          - generic [ref=e110]:
+            - img [ref=e112]
+            - generic "Artifacts" [ref=e114]
+        - generic [ref=e116]:
+          - generic [ref=e118] [cursor=pointer]:
+            - link [ref=e119]:
+              - /url: /app/customize/skills
+            - generic [ref=e123]:
+              - img [ref=e125]
+              - generic "Customize" [ref=e128]
+          - button "Expand Customize":
+            - img
+        - generic [ref=e130]:
+          - generic [ref=e131]:
+            - generic [ref=e137] [cursor=pointer]:
+              - img [ref=e139]
+              - generic "Recents" [ref=e141]
+            - button "Collapse Recents" [expanded]:
+              - img
+          - generic [ref=e142]:
+            - button "memory demo d59233fb" [ref=e143]:
+              - generic [ref=e146] [cursor=pointer]:
+                - link [ref=e147]:
+                  - /url: /app?chatId=22cf2054-bcd0-4b95-92ab-1646f4ec9ead
+                - generic "memory demo d59233fb" [ref=e152]
+            - button "Next Company Holiday" [ref=e153]:
+              - generic [ref=e156] [cursor=pointer]:
+                - link [ref=e157]:
+                  - /url: /app?chatId=ad01242e-de20-4413-8879-677465e3ab97
+                - generic "Next Company Holiday" [ref=e162]
+            - button "memory demo 20f90cbb" [ref=e163]:
+              - generic [ref=e166] [cursor=pointer]:
+                - link [ref=e167]:
+                  - /url: /app?chatId=c8ebaf8c-d6d5-4f61-bdc6-f5a85cd08426
+                - generic "memory demo 20f90cbb" [ref=e172]
+            - button "memory demo 4c671729" [ref=e173]:
+              - generic [ref=e176] [cursor=pointer]:
+                - link [ref=e177]:
+                  - /url: /app?chatId=55478cb3-48d7-4a90-9fd1-716703414b7b
+                - generic "memory demo 4c671729" [ref=e182]
+            - button "Counting 1 to 40" [ref=e183]:
+              - generic [ref=e186] [cursor=pointer]:
+                - link [ref=e187]:
+                  - /url: /app?chatId=f44c09b2-d741-43b9-bf10-00e08674bb24
+                - generic "Counting 1 to 40" [ref=e192]
+            - button "Preview Check" [ref=e193]:
+              - generic [ref=e196] [cursor=pointer]:
+                - link [ref=e197]:
+                  - /url: /app?chatId=4441574c-ba03-48e4-9a5e-0cccb6e6e809
+                - generic "Preview Check" [ref=e202]
+            - button "Preview Check" [ref=e203]:
+              - generic [ref=e206] [cursor=pointer]:
+                - link [ref=e207]:
+                  - /url: /app?chatId=bac103ce-8c06-489f-95c9-9dcdd9300d33
+                - generic "Preview Check" [ref=e212]
+            - button "Stewart Willis 2025 Business" [ref=e213]:
+              - generic [ref=e216] [cursor=pointer]:
+                - link [ref=e217]:
+                  - /url: /app?chatId=f5ff9e5a-7afd-45a4-b9ce-fd632672b4e6
+                - generic "Stewart Willis 2025 Business" [ref=e222]
+            - button "Stewart Willis 2025 Business" [ref=e223]:
+              - generic [ref=e226] [cursor=pointer]:
+                - link [ref=e227]:
+                  - /url: /app?chatId=14e3322b-9067-4aa1-b7a2-8de0cdc80182
+                - generic "Stewart Willis 2025 Business" [ref=e232]
+            - button "New Chat" [ref=e233]:
+              - generic [ref=e236] [cursor=pointer]:
+                - link [ref=e237]:
+                  - /url: /app?chatId=53361c78-9775-42ee-a58d-ef4cedad0716
+                - generic "New Chat" [ref=e242]
+            - button "Stewart Willis 2025 Business" [ref=e243]:
+              - generic [ref=e246] [cursor=pointer]:
+                - link [ref=e247]:
+                  - /url: /app?chatId=063658ba-caf9-4ad7-846a-9fd43500c2d6
+                - generic "Stewart Willis 2025 Business" [ref=e252]
+            - button "Stewart Willis 2025 Business" [ref=e253]:
+              - generic [ref=e256] [cursor=pointer]:
+                - link [ref=e257]:
+                  - /url: /app?chatId=793fd818-c4a2-4557-98a7-ef4f596d1edb
+                - generic "Stewart Willis 2025 Business" [ref=e262]
+            - button "Stewart Willis Business" [ref=e263]:
+              - generic [ref=e266] [cursor=pointer]:
+                - link [ref=e267]:
+                  - /url: /app?chatId=948f5711-d17b-430b-bfde-98e51b585c8d
+                - generic "Stewart Willis Business" [ref=e272]
+            - button "Stewart Willis 2025 Business" [ref=e273]:
+              - generic [ref=e276] [cursor=pointer]:
+                - link [ref=e277]:
+                  - /url: /app?chatId=901e1c78-0597-4c4c-b795-febabb5fec89
+                - generic "Stewart Willis 2025 Business" [ref=e282]
+            - button "Stewart Willis 2025 Business" [ref=e283]:
+              - generic [ref=e286] [cursor=pointer]:
+                - link [ref=e287]:
+                  - /url: /app?chatId=ce56e4d0-f93a-4982-8905-8811214b8f47
+                - generic "Stewart Willis 2025 Business" [ref=e292]
+            - button "New Chat" [ref=e293]:
+              - generic [ref=e296] [cursor=pointer]:
+                - link [ref=e297]:
+                  - /url: /app?chatId=6afa9348-7242-488f-96e6-fa1ee322b9c2
+                - generic "New Chat" [ref=e302]
+            - button "New Chat" [ref=e303]:
+              - generic [ref=e306] [cursor=pointer]:
+                - link [ref=e307]:
+                  - /url: /app?chatId=d32e1680-6976-42db-b055-abdf371f9ab1
+                - generic "New Chat" [ref=e312]
+            - button "Next Company Holiday" [ref=e313]:
+              - generic [ref=e316] [cursor=pointer]:
+                - link [ref=e317]:
+                  - /url: /app?chatId=d8195230-6ce0-434a-b225-969fedc55fa4
+                - generic "Next Company Holiday" [ref=e322]
+            - button "New Chat" [ref=e323]:
+              - generic [ref=e326] [cursor=pointer]:
+                - link [ref=e327]:
+                  - /url: /app?chatId=66ccbf4c-1d7e-4167-bf94-d23e510ec76e
+                - generic "New Chat" [ref=e332]
+            - button "Next Company Holiday" [ref=e333]:
+              - generic [ref=e336] [cursor=pointer]:
+                - link [ref=e337]:
+                  - /url: /app?chatId=15bbdbc6-6fca-4c6c-858c-37e4ed4f2bf6
+                - generic "Next Company Holiday" [ref=e342]
+            - button "New Chat" [ref=e343]:
+              - generic [ref=e346] [cursor=pointer]:
+                - link [ref=e347]:
+                  - /url: /app?chatId=ac71e722-def1-4cf2-abe6-b31535be8f3f
+                - generic "New Chat" [ref=e352]
+            - button "New Chat" [ref=e353]:
+              - generic [ref=e356] [cursor=pointer]:
+                - link [ref=e357]:
+                  - /url: /app?chatId=2713b9b1-e912-4159-899d-b4c2cf595d43
+                - generic "New Chat" [ref=e362]
+            - button "New Chat" [ref=e363]:
+              - generic [ref=e366] [cursor=pointer]:
+                - link [ref=e367]:
+                  - /url: /app?chatId=d86fd06a-8263-42a9-8e4b-47362b0ec4e6
+                - generic "New Chat" [ref=e372]
+            - button "New Chat" [ref=e373]:
+              - generic [ref=e376] [cursor=pointer]:
+                - link [ref=e377]:
+                  - /url: /app?chatId=31813eb4-f187-4df3-8753-391a395f424f
+                - generic "New Chat" [ref=e382]
+            - button "New Chat" [ref=e383]:
+              - generic [ref=e386] [cursor=pointer]:
+                - link [ref=e387]:
+                  - /url: /app?chatId=e8c0a81d-99ea-497d-b1a5-ffe0eeed8839
+                - generic "New Chat" [ref=e392]
+            - button "New Chat" [ref=e393]:
+              - generic [ref=e396] [cursor=pointer]:
+                - link [ref=e397]:
+                  - /url: /app?chatId=68e8b66f-b7c0-447b-95cf-7956836fc261
+                - generic "New Chat" [ref=e402]
+            - button "New Chat" [ref=e403]:
+              - generic [ref=e406] [cursor=pointer]:
+                - link [ref=e407]:
+                  - /url: /app?chatId=5947b719-ba0c-4e93-93c9-5d5ecd503339
+                - generic "New Chat" [ref=e412]
+            - button "New Chat" [ref=e413]:
+              - generic [ref=e416] [cursor=pointer]:
+                - link [ref=e417]:
+                  - /url: /app?chatId=1b014a9e-ea75-4268-b7cd-96dd3f7c94c8
+                - generic "New Chat" [ref=e422]
+        - status [ref=e423]
+      - generic [ref=e426]:
+        - generic [ref=e428] [cursor=pointer]:
+          - link [ref=e429]:
+            - /url: /admin/configuration/language-models
+          - generic [ref=e433]:
+            - img [ref=e435]
+            - generic "Admin Panel" [ref=e439]
+        - button "9+ admin_user@example.com avatar Admin" [ref=e442] [cursor=pointer]:
+          - generic [ref=e447]: 9+
+          - generic [ref=e451]:
+            - img "admin_user@example.com avatar" [ref=e454]:
+              - generic [ref=e455]: AD
+            - generic "Admin" [ref=e456]
+    - generic [ref=e460]:
+      - banner [ref=e461]
+      - generic [ref=e466]:
+        - generic [ref=e469]:
+          - generic [ref=e470]:
+            - img [ref=e471]
+            - generic [ref=e475]:
+              - paragraph [ref=e476]: Access denied
+              - paragraph [ref=e477]: You don't have permission to view this chat session.
+          - link "Start a new chat" [ref=e478] [cursor=pointer]:
+            - /url: /app
+            - generic [ref=e480]: Start a new chat
+        - text: How can I help you today?
+      - contentinfo [ref=e481]:
+        - generic [ref=e484]:
+          - link "Onyx Development" [ref=e485] [cursor=pointer]:
+            - /url: https://www.onyx.app/
+          - text: "- Open Source AI Platform"
+  - button "Open Next.js Dev Tools" [ref=e10] [cursor=pointer]:
+    - img [ref=e11]
+  - alert [ref=e14]

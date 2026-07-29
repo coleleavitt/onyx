@@ -1,0 +1,73 @@
+- generic [ref=f18e1] [box=0,0,2048,1156]:
+  - generic [ref=f18e5] [box=0,0,2048,1156]:
+    - generic [ref=f18e7] [box=0,0,200,1148]:
+      - generic [ref=f18e8] [box=0,0,200,172]:
+        - generic [ref=f18e10] [box=8,12,184,28]:
+          - generic [ref=f18e122] [box=12,12,148,28]
+          - button [ref=f18e18] [cursor=pointer] [box=160,12,28,28]
+        - generic [ref=f18e23] [box=0,56,200,108]:
+          - generic [ref=f18e26] [cursor=pointer] [box=8,56,184,36]
+          - generic "Open chat search" [ref=f18e36] [box=8,92,184,36]
+          - generic [ref=f18e49] [cursor=pointer] [box=8,128,184,36]
+      - generic [ref=f18e61] [box=0,172,200,1184]:
+        - generic [ref=f18e130] [box=8,172,184,36]:
+          - generic [ref=f18e132] [cursor=pointer] [box=8,172,184,36]
+          - button "Expand Agents" [box=12,172,24,36]
+        - status [ref=f18e143] [box=-1,-1,1,1]
+        - generic [ref=f18e145] [box=8,216,184,36]:
+          - generic [ref=f18e147] [cursor=pointer] [box=8,216,184,36]
+          - button "Expand Spaces" [box=12,216,24,36]
+        - generic [ref=f18e161] [cursor=pointer] [box=8,260,184,36]:
+          - link [ref=f18e162] [box=8,260,184,36]:
+            - /url: /app/artifacts
+          - generic [ref=f18e166] [box=16,268,168,20]
+        - generic [ref=f18e172] [box=8,304,184,36]:
+          - generic [ref=f18e174] [cursor=pointer] [box=8,304,184,36]
+          - button "Expand Customize" [box=12,304,24,36]
+        - generic [ref=f18e186] [box=8,348,184,1008]:
+          - generic [ref=f18e187] [box=8,348,184,36]
+          - generic [ref=f18e198] [box=8,384,184,972]
+        - status [ref=f18e469] [box=-1,-1,1,1]
+      - generic [ref=f18e64] [box=8,1076,184,72]:
+        - generic [ref=f18e66] [cursor=pointer] [box=8,1076,184,36]:
+          - link [ref=f18e67] [box=8,1076,184,36]:
+            - /url: /admin/configuration/language-models
+          - generic [ref=f18e71] [box=16,1084,168,20]
+        - button "cole@unwrap.rs avatar Cole" [ref=f18e80] [cursor=pointer] [box=8,1112,184,36]:
+          - generic [ref=f18e84] [box=16,1119,168,22]
+    - generic [ref=f18e91] [box=200,0,1848,1156]:
+      - generic [ref=f18e93] [box=200,0,1400,1156]:
+        - banner [ref=f18e94] [box=200,0,1400,52]
+        - generic [ref=f18e474] [box=436,52,928,1072]:
+          - generic [ref=f18e475] [box=436,72,928,447]
+          - generic [ref=f18e593] [box=692,535,672,88]
+        - contentinfo [ref=f18e107] [box=200,1124,1400,32]:
+          - generic [ref=f18e110] [box=776,1132,248,16]
+      - generic [ref=f18e626] [box=1621,20,408,787]:
+        - generic [ref=f18e628] [box=1621,20,408,36]:
+          - button "Edit details" [ref=f18e629] [cursor=pointer] [box=1621,20,120,36]
+          - button "Share" [ref=f18e635] [cursor=pointer] [box=1749,20,86,36]
+        - generic [ref=f18e641] [box=1621,76,408,90]:
+          - generic [ref=f18e642] [box=1634,89,382,16]
+          - generic [ref=f18e646] [box=1634,113,382,16]
+          - generic [ref=f18e650] [box=1634,137,382,16]: "Access: owner"
+        - generic [ref=f18e654] [box=1621,207,408,82]:
+          - generic [ref=f18e656] [box=1621,207,408,36]
+          - button "Add instructions..." [ref=f18e663] [cursor=pointer] [box=1622,252,406,36]
+        - generic [ref=f18e676] [box=1621,309,408,36]:
+          - generic [ref=f18e679] [box=1621,309,286,36]
+          - button "Add Files" [ref=f18e686] [cursor=pointer] [box=1923,309,106,36]
+        - button "Choose File" [ref=f18e693] [box=1621,309,1,1]
+        - paragraph [ref=f18e695] [box=1634,364,382,32]: Add documents, texts, or images to use in the space. Drag & drop supported.
+        - generic [ref=f18e696] [box=1621,435,408,92]:
+          - generic [ref=f18e697] [box=1621,435,408,36]
+          - paragraph [ref=f18e715] [box=1634,495,180,16]: No skills added to this space yet.
+        - generic [ref=f18e716] [box=1621,547,408,108]:
+          - generic [ref=f18e717] [box=1621,547,408,52]
+          - paragraph [ref=f18e735] [box=1634,623,298,16]: No links yet. Add websites this space should reference.
+        - generic [ref=f18e736] [box=1621,675,408,108]:
+          - generic [ref=f18e737] [box=1621,675,408,52]
+          - paragraph [ref=f18e755] [box=1634,751,207,16]: No scheduled tasks for this space yet.
+  - button "Open Next.js Dev Tools" [ref=f18e117] [cursor=pointer] [box=22,1102,32,32]:
+    - img [ref=f18e118] [box=22,1098,40,40]
+  - alert [ref=f18e121] [box=-1,1155,1,1]
