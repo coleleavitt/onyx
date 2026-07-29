@@ -30,7 +30,7 @@ test.describe("Spaces inline chat navigation", () => {
     const spaceName = `E2E Inline Chat Space ${stamp}`;
     const projectId = await apiClient.createProject(
       spaceName,
-      "Space inline chat navigation regression",
+      "Space inline chat navigation regression"
     );
 
     const answer = "Mocked Space answer visible inline.";
@@ -44,7 +44,7 @@ test.describe("Spaces inline chat navigation", () => {
         (response) =>
           response.url().includes("/api/chat/create-chat-session") &&
           response.request().method() === "POST" &&
-          response.status() === 200,
+          response.status() === 200
       );
 
       await spaceDetail.inputBox.fill("Ask something in this Space");
@@ -57,14 +57,14 @@ test.describe("Spaces inline chat navigation", () => {
       // Navigation stays on the Space route (bug navigated to /app).
       await page.waitForURL(
         (url) => url.searchParams.get("chatId") === chatSessionId,
-        { timeout: 30_000 },
+        { timeout: 30_000 }
       );
       expect(new URL(page.url()).pathname).toMatch(/^\/app\/spaces\//);
 
       // The answer renders inline (not stuck "Thinking…").
       await expect(page.getByTestId("onyx-ai-message").last()).toContainText(
         answer,
-        { timeout: 30_000 },
+        { timeout: 30_000 }
       );
     } finally {
       await apiClient.deleteProject(projectId);

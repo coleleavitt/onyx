@@ -194,9 +194,7 @@ def set_sync_disabled(
                 update_document_metadata__no_commit(db_session, child.id, child_meta)
 
 
-def delete_user_file(
-    db_session: Session, doc: DbDocument, user_id: UUID
-) -> list[str]:
+def delete_user_file(db_session: Session, doc: DbDocument, user_id: UUID) -> list[str]:
     """Delete a library file/directory record and return blobs to clean after commit."""
     docs_to_delete = [doc]
     meta = doc.doc_metadata or {}

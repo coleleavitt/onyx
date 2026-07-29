@@ -21,7 +21,9 @@ test.describe("Internal search SharePoint live retrieval", () => {
     await page.context().clearCookies();
     await loginAs(page, "admin");
 
-    const indexedSources = await page.request.get("/api/manage/indexed-sources");
+    const indexedSources = await page.request.get(
+      "/api/manage/indexed-sources"
+    );
     expect(indexedSources.ok()).toBeTruthy();
     expect(
       ((await indexedSources.json()) as { sources: string[] }).sources

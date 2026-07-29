@@ -24,7 +24,9 @@ test.describe("Settings navigation smoke", () => {
       await page.goto(pageInfo.path);
       await page.waitForLoadState("networkidle");
 
-      await expect(page).toHaveURL(new RegExp(pageInfo.path.replaceAll("/", "\\/")));
+      await expect(page).toHaveURL(
+        new RegExp(pageInfo.path.replaceAll("/", "\\/"))
+      );
       await expect(
         page
           .locator(".opal-content-md-header")
@@ -32,7 +34,9 @@ test.describe("Settings navigation smoke", () => {
           .first()
       ).toBeVisible();
       await expect(page.locator("body")).not.toContainText("Application error");
-      await expect(page.locator("body")).not.toContainText("Internal Server Error");
+      await expect(page.locator("body")).not.toContainText(
+        "Internal Server Error"
+      );
     });
   }
 
@@ -41,10 +45,14 @@ test.describe("Settings navigation smoke", () => {
       await page.goto(pageInfo.path);
       await page.waitForLoadState("networkidle");
 
-      await expect(page).toHaveURL(new RegExp(pageInfo.path.replaceAll("/", "\\/")));
+      await expect(page).toHaveURL(
+        new RegExp(pageInfo.path.replaceAll("/", "\\/"))
+      );
       await expect(page.getByText(pageInfo.title).first()).toBeVisible();
       await expect(page.locator("body")).not.toContainText("Application error");
-      await expect(page.locator("body")).not.toContainText("Internal Server Error");
+      await expect(page.locator("body")).not.toContainText(
+        "Internal Server Error"
+      );
     });
   }
 });

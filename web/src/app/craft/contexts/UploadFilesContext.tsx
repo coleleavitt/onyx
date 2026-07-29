@@ -723,7 +723,9 @@ export function UploadFilesProvider({ children }: UploadFilesProviderProps) {
           error: "Folders cannot be attached directly.",
         };
       }
-      if (currentMessageFiles.some((file) => file.libraryDocumentId === entry.id)) {
+      if (
+        currentMessageFiles.some((file) => file.libraryDocumentId === entry.id)
+      ) {
         const existing = currentMessageFiles.find(
           (file) => file.libraryDocumentId === entry.id
         );

@@ -63,7 +63,7 @@ export default function SpaceScheduledTasksSection({
   const { data, isLoading } = useSWR<ScheduledTaskListResponse>(
     SWR_KEYS.scheduledTasks,
     errorHandlingFetcher,
-    { revalidateOnFocus: false },
+    { revalidateOnFocus: false }
   );
 
   const { active, paused } = useMemo(() => {
@@ -132,7 +132,7 @@ export default function SpaceScheduledTasksSection({
                 <SvgChevronRight
                   className={cn(
                     "h-3.5 w-3.5 shrink-0 stroke-text-03 transition-transform",
-                    showPaused && "rotate-90",
+                    showPaused && "rotate-90"
                   )}
                 />
                 <Text font="secondary-action" color="text-03">

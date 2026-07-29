@@ -17,7 +17,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 async function groupByName(
   page: import("@playwright/test").Page,
-  name: string,
+  name: string
 ) {
   const response = await page.request.get("/api/manage/admin/user-group");
   expect(response.ok()).toBeTruthy();
@@ -25,17 +25,17 @@ async function groupByName(
   const match = groups.find((group: { name: string }) => group.name === name);
   expect(
     match,
-    `${name} must exist (seed-compliance-oversight.py)`,
+    `${name} must exist (seed-compliance-oversight.py)`
   ).toBeTruthy();
   return match;
 }
 
 async function permissionsOf(
   page: import("@playwright/test").Page,
-  groupId: number,
+  groupId: number
 ): Promise<string[]> {
   const response = await page.request.get(
-    `/api/manage/admin/user-group/${groupId}/permissions`,
+    `/api/manage/admin/user-group/${groupId}/permissions`
   );
   expect(response.ok()).toBeTruthy();
   return await response.json();
@@ -50,7 +50,7 @@ test("an admin grants and revokes oversight from the group page", async ({
   // Start from a known state so the assertion is about the UI, not the seed.
   await page.request.put(
     `/api/manage/admin/user-group/${group.id}/permissions`,
-    { data: { permission: "read:query_history", enabled: false } },
+    { data: { permission: "read:query_history", enabled: false } }
   );
 
   await page.goto(`/admin/groups/${group.id}`);
@@ -66,7 +66,7 @@ test("an admin grants and revokes oversight from the group page", async ({
 
   await expect
     .poll(async () =>
-      (await permissionsOf(page, group.id)).includes("read:query_history"),
+      (await permissionsOf(page, group.id)).includes("read:query_history")
     )
     .toBe(true);
 
@@ -80,7 +80,7 @@ test("an admin grants and revokes oversight from the group page", async ({
 
   await expect
     .poll(async () =>
-      (await permissionsOf(page, group.id)).includes("read:query_history"),
+      (await permissionsOf(page, group.id)).includes("read:query_history")
     )
     .toBe(false);
 
@@ -88,7 +88,7 @@ test("an admin grants and revokes oversight from the group page", async ({
   // group, never on a reporting-line group, which also holds the analysts.
   await page.request.put(
     `/api/manage/admin/user-group/${group.id}/permissions`,
-    { data: { permission: "read:query_history", enabled: false } },
+    { data: { permission: "read:query_history", enabled: false } }
   );
 });
 
@@ -98,7 +98,7 @@ test("an admin promotes and demotes a curator from the members table", async ({
   await apiLogin(page, ADMIN, PASSWORD);
   const group = await groupByName(page, GROUP);
   const curator = group.users.find(
-    (user: { email: string }) => user.email === CURATOR_EMAIL,
+    (user: { email: string }) => user.email === CURATOR_EMAIL
   );
   expect(curator).toBeTruthy();
 

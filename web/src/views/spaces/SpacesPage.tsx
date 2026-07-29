@@ -63,7 +63,7 @@ export default function SpacesPage() {
       await refreshProjects();
     } catch (pinError) {
       toast.error(
-        pinError instanceof Error ? pinError.message : "Failed to update pin.",
+        pinError instanceof Error ? pinError.message : "Failed to update pin."
       );
     }
   }
@@ -80,7 +80,7 @@ export default function SpacesPage() {
       toast.error(
         deleteError instanceof Error
           ? deleteError.message
-          : "Failed to delete space.",
+          : "Failed to delete space."
       );
     } finally {
       setDeleting(false);
@@ -93,7 +93,7 @@ export default function SpacesPage() {
     return projects.filter(
       (project) =>
         project.name.toLowerCase().includes(normalizedQuery) ||
-        (project.description ?? "").toLowerCase().includes(normalizedQuery),
+        (project.description ?? "").toLowerCase().includes(normalizedQuery)
     );
   }, [projects, query]);
 
@@ -101,7 +101,7 @@ export default function SpacesPage() {
 
   const spaceGroups = useMemo(
     () => groupSpaces(visibleProjects, { invitedProjectIds }),
-    [visibleProjects, invitedProjectIds],
+    [visibleProjects, invitedProjectIds]
   );
 
   return (
@@ -179,7 +179,7 @@ export default function SpacesPage() {
                     <SvgChevronRight
                       className={cn(
                         "h-3.5 w-3.5 shrink-0 stroke-text-03 transition-transform duration-150",
-                        !isCollapsed && "rotate-90",
+                        !isCollapsed && "rotate-90"
                       )}
                     />
                     <Text color="text-03" font="secondary-action">

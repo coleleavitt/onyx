@@ -75,7 +75,10 @@ test.describe("Create a custom agent through the UI", () => {
       await expect(nameDisplay).toContainText(agentName);
 
       // Start the chat: send a neutral prompt and let the live LLM answer.
-      await chat.inputBar.textbox.waitFor({ state: "visible", timeout: 15_000 });
+      await chat.inputBar.textbox.waitFor({
+        state: "visible",
+        timeout: 15_000,
+      });
       await chat.inputBar.fill("Say hello.");
       await chat.inputBar.clickSend();
 

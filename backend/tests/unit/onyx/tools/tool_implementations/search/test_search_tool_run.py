@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from typing import NamedTuple
 from typing import cast
+from typing import NamedTuple
 from unittest.mock import MagicMock
 from unittest.mock import patch
+
+import pytest
 
 from onyx.configs.constants import DocumentSource
 from onyx.configs.constants import MessageType
 from onyx.context.search.models import BaseFilters
-import pytest
-
 from onyx.server.query_and_chat.placement import Placement
 from onyx.server.query_and_chat.streaming_models import SearchToolError
 from onyx.server.query_and_chat.streaming_models import SearchToolFilterDelta

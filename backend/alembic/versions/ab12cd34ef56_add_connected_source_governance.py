@@ -119,8 +119,12 @@ def upgrade() -> None:
         sa.Column("description", sa.String(), nullable=True),
         sa.Column("emoji", sa.String(), nullable=True),
         sa.Column("instructions", sa.String(), nullable=True),
-        sa.Column("is_default", sa.Boolean(), server_default=sa.false(), nullable=False),
-        sa.Column("is_archived", sa.Boolean(), server_default=sa.false(), nullable=False),
+        sa.Column(
+            "is_default", sa.Boolean(), server_default=sa.false(), nullable=False
+        ),
+        sa.Column(
+            "is_archived", sa.Boolean(), server_default=sa.false(), nullable=False
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

@@ -40,7 +40,9 @@ test.describe("Authentication navigation smoke", () => {
     await page.getByTestId("password").fill("WrongPassword123!");
     await page.getByRole("button", { name: "Sign In" }).click();
 
-    await expect(page.getByText("Invalid email or password", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Invalid email or password", { exact: true })
+    ).toBeVisible();
     await expect(page).toHaveURL(/\/auth\/login/);
   });
 });

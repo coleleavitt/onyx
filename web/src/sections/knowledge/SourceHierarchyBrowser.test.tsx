@@ -167,12 +167,16 @@ test("hierarchy browser hides archive scopes until explicitly opted in and shows
 
   const advisorLabels = await screen.findAllByText("Advisor Services Intranet");
   expect(advisorLabels.length).toBeGreaterThan(0);
-  expect(screen.getAllByText(/Foundations \/ Advisor Services/).length).toBeGreaterThan(0);
+  expect(
+    screen.getAllByText(/Foundations \/ Advisor Services/).length
+  ).toBeGreaterThan(0);
   expect(screen.getAllByText(/Recommended/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/373 docs/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Success/).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Synced/).length).toBeGreaterThan(0);
-  expect(screen.queryByText("Business Development Archive")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Business Development Archive")
+  ).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Show archives" }));
 
@@ -182,12 +186,15 @@ test("hierarchy browser hides archive scopes until explicitly opted in and shows
       { includeArchived: true }
     );
   });
-  const archiveLabels = await screen.findAllByText("Business Development Archive");
+  const archiveLabels = await screen.findAllByText(
+    "Business Development Archive"
+  );
   expect(archiveLabels.length).toBeGreaterThan(0);
   expect(screen.getAllByText(/Archive/).length).toBeGreaterThan(0);
-  expect(screen.getAllByText(/Large historical transition archive/).length).toBeGreaterThan(0);
+  expect(
+    screen.getAllByText(/Large historical transition archive/).length
+  ).toBeGreaterThan(0);
 });
-
 
 test("hierarchy browser shows unavailable-folder message without console error", async () => {
   const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
@@ -222,7 +229,6 @@ test("hierarchy browser shows unavailable-folder message without console error",
     consoleSpy.mockRestore();
   }
 });
-
 
 test("hierarchy browser select-all ignores navigation-only folder scopes", async () => {
   const user = userEvent.setup();

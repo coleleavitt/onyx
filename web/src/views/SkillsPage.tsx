@@ -40,7 +40,10 @@ interface CreateSkillMenuProps {
   onUpload: () => void;
 }
 
-function CreateSkillMenu({ onStartFromScratch, onUpload }: CreateSkillMenuProps) {
+function CreateSkillMenu({
+  onStartFromScratch,
+  onUpload,
+}: CreateSkillMenuProps) {
   const [open, setOpen] = useState(false);
 
   return (

@@ -14,9 +14,7 @@ import {
 
 /** Parse an `oklch(L C H)` token into numbers, or fail the test. */
 function parseOklch(token: string): { l: number; c: number; h: number } {
-  const match = token.match(
-    /^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)$/
-  );
+  const match = token.match(/^oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)$/);
   expect(match).not.toBeNull();
   const [, l, c, h] = match as RegExpMatchArray;
   return { l: Number(l), c: Number(c), h: Number(h) };

@@ -4,14 +4,16 @@ import { OnyxApiClient } from "@tests/e2e/utils/onyxApiClient";
 
 async function connectedTitles(
   pageRequest: APIRequestContext,
-  projectId: number,
+  projectId: number
 ): Promise<string[]> {
   const response = await pageRequest.get(
-    `/api/user/projects/${projectId}/connected-knowledge`,
+    `/api/user/projects/${projectId}/connected-knowledge`
   );
   expect(response.status()).toBe(200);
   const body = await response.json();
-  return body.hierarchy_nodes.map((node: { title: string }) => node.title).sort();
+  return body.hierarchy_nodes
+    .map((node: { title: string }) => node.title)
+    .sort();
 }
 
 test.describe("Space presets and deep SharePoint folder browse", () => {
@@ -33,21 +35,22 @@ test.describe("Space presets and deep SharePoint folder browse", () => {
       await page.getByRole("option", { name: /Magellan HR starter/ }).click();
       await expect(
         dialog.getByText(
-          "Company Wide Files and JF from the Magellan HR intranet — Includes: Company Wide Files, JF",
-        ),
+          "Company Wide Files and JF from the Magellan HR intranet — Includes: Company Wide Files, JF"
+        )
       ).toBeVisible();
       await dialog.getByRole("button", { name: "Create Space" }).click();
       await page.waitForURL(/\/app\/spaces\/.*-\d+$/);
       const match = page.url().match(/-(\d+)$/);
       expect(match).toBeTruthy();
       projectId = Number(match![1]);
-      await expect(page.getByText("Connected sources", { exact: true }).first()).toBeVisible();
+      await expect(
+        page.getByText("Connected sources", { exact: true }).first()
+      ).toBeVisible();
       await expect(page.getByText("Company Wide Files").first()).toBeVisible();
       await expect(page.getByText("JF").first()).toBeVisible();
-      await expect.poll(() => connectedTitles(page.request, projectId!)).toEqual([
-        "Company Wide Files",
-        "JF",
-      ]);
+      await expect
+        .poll(() => connectedTitles(page.request, projectId!))
+        .toEqual(["Company Wide Files", "JF"]);
     } finally {
       if (projectId !== null) await apiClient.deleteProject(projectId);
     }
@@ -63,34 +66,47 @@ test.describe("Space presets and deep SharePoint folder browse", () => {
     const name = `Deep Browse Space ${stamp}`;
     const projectId = await apiClient.createProject(
       name,
-      "Deep folder browse regression",
+      "Deep folder browse regression"
     );
 
     try {
       await spaceDetail.goto({ spaceName: name, projectId });
-      await page.getByRole("button", { name: "Add connected source" }).first().click();
-      const dialog = page.getByRole("dialog", { name: /Add knowledge to space/i });
+      await page
+        .getByRole("button", { name: "Add connected source" })
+        .first()
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: /Add knowledge to space/i,
+      });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByText("Magellan", { exact: true })).toBeVisible({
         timeout: 15_000,
       });
       await dialog.getByText("Human Resources Intranet").first().click();
-      await expect(dialog.getByText("No connected-source selections")).toBeVisible();
+      await expect(
+        dialog.getByText("No connected-source selections")
+      ).toBeVisible();
 
-      await dialog.getByRole("button", { name: "Open Shared Documents" }).click();
-      await dialog.getByRole("button", { name: "Open Company Wide Files" }).click();
+      await dialog
+        .getByRole("button", { name: "Open Shared Documents" })
+        .click();
+      await dialog
+        .getByRole("button", { name: "Open Company Wide Files" })
+        .click();
       await dialog.getByLabel("Toggle Medical").click();
       await expect(
-        dialog.getByText("1 connected-source selection", { exact: true }),
+        dialog.getByText("1 connected-source selection", { exact: true })
       ).toBeVisible();
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog).toHaveCount(0);
 
-      await expect.poll(() => connectedTitles(page.request, projectId)).toEqual([
-        "Medical",
-      ]);
+      await expect
+        .poll(() => connectedTitles(page.request, projectId))
+        .toEqual(["Medical"]);
       await spaceDetail.reload();
-      await expect(page.getByText("Medical", { exact: true }).first()).toBeVisible();
+      await expect(
+        page.getByText("Medical", { exact: true }).first()
+      ).toBeVisible();
     } finally {
       await apiClient.deleteProject(projectId);
     }

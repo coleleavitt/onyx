@@ -36,7 +36,9 @@ interface ParityUser {
   readonly displayName: string;
 }
 
-function parityUsers(stamp: number): Record<"jessica" | "jarrod" | "josh", ParityUser> {
+function parityUsers(
+  stamp: number
+): Record<"jessica" | "jarrod" | "josh", ParityUser> {
   return {
     jessica: {
       email: `jessica.purnell+e2e${stamp}@example.com`,
@@ -55,16 +57,20 @@ function parityUsers(stamp: number): Record<"jessica" | "jarrod" | "josh", Parit
 
 async function registerAndLogin(
   browser: Browser,
-  user: ParityUser,
+  user: ParityUser
 ): Promise<{ context: BrowserContext; page: Page; api: OnyxApiClient }> {
   const context = await browser.newContext();
   const page = await context.newPage();
   const registerRes = await page.request.post("/api/auth/register", {
-    data: { email: user.email, username: user.email, password: PARITY_PASSWORD },
+    data: {
+      email: user.email,
+      username: user.email,
+      password: PARITY_PASSWORD,
+    },
   });
   if (!registerRes.ok() && registerRes.status() !== 400) {
     throw new Error(
-      `register ${user.email}: ${registerRes.status()} ${await registerRes.text()}`,
+      `register ${user.email}: ${registerRes.status()} ${await registerRes.text()}`
     );
   }
   await apiLogin(page, user.email, PARITY_PASSWORD);
@@ -76,7 +82,7 @@ async function registerAndLogin(
 
 async function hierarchyNodesBySource(
   request: APIRequestContext,
-  source: string,
+  source: string
 ): Promise<
   {
     id: number;
@@ -96,11 +102,11 @@ async function hierarchyNodesBySource(
 async function putConnectedKnowledge(
   request: APIRequestContext,
   projectId: number,
-  hierarchyNodeIds: number[],
+  hierarchyNodeIds: number[]
 ): Promise<{ status: number; body: string }> {
   const response = await request.put(
     `/api/user/projects/${projectId}/connected-knowledge`,
-    { data: { document_ids: [], hierarchy_node_ids: hierarchyNodeIds } },
+    { data: { document_ids: [], hierarchy_node_ids: hierarchyNodeIds } }
   );
   return { status: response.status(), body: await response.text() };
 }
@@ -118,9 +124,12 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
     // === Discover the governed HR tree exactly like the modal would ===
     const adminNodes = await hierarchyNodesBySource(page.request, "sharepoint");
     const hrSite = adminNodes.find(
-      (node) => node.governance?.tenant_label === "Magellan",
+      (node) => node.governance?.tenant_label === "Magellan"
     );
-    expect(hrSite, "seeded Magellan HR governed site must be visible").toBeTruthy();
+    expect(
+      hrSite,
+      "seeded Magellan HR governed site must be visible"
+    ).toBeTruthy();
     const byTitle = new Map(adminNodes.map((node) => [node.title, node]));
     const companyWide = byTitle.get("Company Wide Files");
     const jfFolder = byTitle.get("JF");
@@ -130,7 +139,10 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
     // Admins have full connected-source access: RESTRICTED scopes are visible
     // to the admin picker feed even before any group membership exists.
     const complianceNode = byTitle.get("ComplianceIntranet");
-    expect(complianceNode, "admin must see restricted ComplianceIntranet").toBeTruthy();
+    expect(
+      complianceNode,
+      "admin must see restricted ComplianceIntranet"
+    ).toBeTruthy();
     const complianceSiteId = complianceNode!.id;
 
     const jessica = await registerAndLogin(browser, users.jessica);
@@ -145,12 +157,12 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       const intranetSpaceName = `Intranet Test Space ${stamp}`;
       intranetSpaceId = await joshApi.createProject(
         intranetSpaceName,
-        "Parity of OpenWebUI Intranet Test Space",
+        "Parity of OpenWebUI Intranet Test Space"
       );
       const joshSave = await putConnectedKnowledge(
         josh.page.request,
         intranetSpaceId,
-        [companyWide!.id, jfFolder!.id],
+        [companyWide!.id, jfFolder!.id]
       );
       expect(joshSave.status).toBe(200);
 
@@ -159,7 +171,7 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       const jfSpaceName = `JF Folder Space ${stamp}`;
       jfSpaceId = await jarrodApi.createProject(
         jfSpaceName,
-        "Parity of OpenWebUI JF Folder Space",
+        "Parity of OpenWebUI JF Folder Space"
       );
       const jarrodSpace = new SpaceDetailPage(jarrod.page);
       await jarrodSpace.goto({ spaceName: jfSpaceName, projectId: jfSpaceId });
@@ -177,35 +189,36 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       await dialog.getByText("Human Resources Intranet").first().click();
       // Browsing must not auto-attach; attach explicitly via the checkbox.
       await expect(
-        dialog.getByText("No connected-source selections"),
+        dialog.getByText("No connected-source selections")
       ).toBeVisible();
       await dialog
         .getByRole("checkbox", { name: "Attach Human Resources Intranet" })
         .click();
       await expect(
-        dialog.getByText("1 connected-source selection", { exact: true }),
+        dialog.getByText("1 connected-source selection", { exact: true })
       ).toBeVisible();
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await jarrodSpace.reload();
       await expect(
-        jarrod.page.getByText("Connected sources", { exact: true }).first(),
+        jarrod.page.getByText("Connected sources", { exact: true }).first()
       ).toBeVisible();
 
       // === ADVERSARIAL 1: Jessica (no share) cannot read either space ===
       const jessicaProbe = await jessica.page.request.get(
-        `/api/user/projects/${intranetSpaceId}/connected-knowledge`,
+        `/api/user/projects/${intranetSpaceId}/connected-knowledge`
       );
       expect([403, 404]).toContain(jessicaProbe.status());
       const jessicaWrite = await putConnectedKnowledge(
         jessica.page.request,
         intranetSpaceId,
-        [companyWide!.id],
+        [companyWide!.id]
       );
       expect([403, 404]).toContain(jessicaWrite.status);
 
       // === Josh shares Intranet Test Space: Jessica VIEWER, Jarrod EDITOR ===
-      const jessicaId = (await adminApi.getUserByEmail(users.jessica.email))?.id;
+      const jessicaId = (await adminApi.getUserByEmail(users.jessica.email))
+        ?.id;
       const jarrodId = (await adminApi.getUserByEmail(users.jarrod.email))?.id;
       expect(jessicaId && jarrodId).toBeTruthy();
       const shareRes = await josh.page.request.patch(
@@ -219,25 +232,25 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
             ],
             group_shares: [],
           },
-        },
+        }
       );
       expect(shareRes.status()).toBe(200);
 
       // === ADVERSARIAL 2: viewer Jessica can read but still cannot write ===
       const jessicaRead = await jessica.page.request.get(
-        `/api/user/projects/${intranetSpaceId}/connected-knowledge`,
+        `/api/user/projects/${intranetSpaceId}/connected-knowledge`
       );
       expect(jessicaRead.status()).toBe(200);
       const readBody = await jessicaRead.json();
       const attachedTitles = readBody.hierarchy_nodes.map(
-        (node: { title: string }) => node.title,
+        (node: { title: string }) => node.title
       );
       expect(attachedTitles).toContain("Company Wide Files");
       expect(attachedTitles).toContain("JF");
       const viewerWrite = await putConnectedKnowledge(
         jessica.page.request,
         intranetSpaceId,
-        [companyWide!.id],
+        [companyWide!.id]
       );
       expect([403, 404]).toContain(viewerWrite.status);
 
@@ -249,10 +262,10 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
         projectId: intranetSpaceId,
       });
       await expect(
-        jessica.page.getByText("Company Wide Files").first(),
+        jessica.page.getByText("Company Wide Files").first()
       ).toBeVisible({ timeout: 15_000 });
       await expect(
-        jessica.page.getByRole("button", { name: "Add connected source" }),
+        jessica.page.getByRole("button", { name: "Add connected source" })
       ).toHaveCount(0);
 
       // === ADVERSARIAL 3: editor Jarrod cannot smuggle restricted/hidden ids ===
@@ -261,7 +274,7 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       const restrictedAttach = await putConnectedKnowledge(
         jarrod.page.request,
         intranetSpaceId,
-        [companyWide!.id, complianceSiteId],
+        [companyWide!.id, complianceSiteId]
       );
       expect(restrictedAttach.status).toBe(403);
       expect(restrictedAttach.body).toContain("connected-source policy");
@@ -272,7 +285,7 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       const rootAttach = await putConnectedKnowledge(
         jarrod.page.request,
         intranetSpaceId,
-        [rootNode!.id],
+        [rootNode!.id]
       );
       expect(rootAttach.status).toBe(403);
 
@@ -280,7 +293,7 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       const forgedAttach = await putConnectedKnowledge(
         jarrod.page.request,
         intranetSpaceId,
-        [99_999_999],
+        [99_999_999]
       );
       expect([400, 403, 404]).toContain(forgedAttach.status);
 
@@ -289,23 +302,23 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       const legit = await putConnectedKnowledge(
         jarrod.page.request,
         intranetSpaceId,
-        [companyWide!.id, jfFolder!.id, medical!.id],
+        [companyWide!.id, jfFolder!.id, medical!.id]
       );
       expect(legit.status).toBe(200);
       const afterAttacks = await josh.page.request.get(
-        `/api/user/projects/${intranetSpaceId}/connected-knowledge`,
+        `/api/user/projects/${intranetSpaceId}/connected-knowledge`
       );
       const afterTitles = (await afterAttacks.json()).hierarchy_nodes.map(
-        (node: { title: string }) => node.title,
+        (node: { title: string }) => node.title
       );
       expect(afterTitles.sort()).toEqual(
-        ["Company Wide Files", "JF", "Medical"].sort(),
+        ["Company Wide Files", "JF", "Medical"].sort()
       );
 
       // === ADVERSARIAL 4: non-member picker feeds hide restricted scopes ===
       const jessicaNodes = await hierarchyNodesBySource(
         jessica.page.request,
-        "sharepoint",
+        "sharepoint"
       );
       const jessicaTitles = new Set(jessicaNodes.map((node) => node.title));
       expect(jessicaTitles.has("ComplianceIntranet")).toBe(false);
@@ -313,7 +326,7 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
 
       // === ADVERSARIAL 5: Jessica cannot touch Jarrod's unshared space ===
       const jfProbe = await jessica.page.request.get(
-        `/api/user/projects/${jfSpaceId}/connected-knowledge`,
+        `/api/user/projects/${jfSpaceId}/connected-knowledge`
       );
       expect([403, 404]).toContain(jfProbe.status());
       const jfShareSteal = await jessica.page.request.patch(
@@ -324,7 +337,7 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
             user_shares: [{ user_id: jessicaId, permission: "EDITOR" }],
             group_shares: [],
           },
-        },
+        }
       );
       expect([403, 404]).toContain(jfShareSteal.status());
 
@@ -334,48 +347,51 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
       // him (and only him).
       const groups = await adminApi.getUserGroups();
       const restrictedGroup = groups.find(
-        (group) => group.name === "OpenWebUI Parity Compliance Group",
+        (group) => group.name === "OpenWebUI Parity Compliance Group"
       );
-      expect(restrictedGroup, "seed must have created the restricted group").toBeTruthy();
+      expect(
+        restrictedGroup,
+        "seed must have created the restricted group"
+      ).toBeTruthy();
       const joshId = (await adminApi.getUserByEmail(users.josh.email))?.id;
       expect(joshId).toBeTruthy();
       const addRes = await page.request.post(
         `/api/manage/admin/user-group/${restrictedGroup!.id}/add-users`,
-        { data: { user_ids: [joshId] } },
+        { data: { user_ids: [joshId] } }
       );
       expect(addRes.status()).toBe(200);
       try {
         const joshNodes = await hierarchyNodesBySource(
           josh.page.request,
-          "sharepoint",
+          "sharepoint"
         );
         const complianceRow = joshNodes.find(
-          (node) => node.id === complianceSiteId,
+          (node) => node.id === complianceSiteId
         );
         expect(
           complianceRow,
-          "group member must now see the restricted ComplianceIntranet",
+          "group member must now see the restricted ComplianceIntranet"
         ).toBeTruthy();
         expect(complianceRow!.governance?.is_selectable).toBe(true);
         const memberAttach = await putConnectedKnowledge(
           josh.page.request,
           intranetSpaceId,
-          [companyWide!.id, complianceSiteId],
+          [companyWide!.id, complianceSiteId]
         );
         expect(memberAttach.status).toBe(200);
 
         // Non-members still locked out even while a member has it attached.
         const jarrodNodesAfter = await hierarchyNodesBySource(
           jarrod.page.request,
-          "sharepoint",
+          "sharepoint"
         );
         expect(
-          jarrodNodesAfter.some((node) => node.id === complianceSiteId),
+          jarrodNodesAfter.some((node) => node.id === complianceSiteId)
         ).toBe(false);
         const jarrodAttachAfter = await putConnectedKnowledge(
           jarrod.page.request,
           intranetSpaceId,
-          [companyWide!.id, complianceSiteId],
+          [companyWide!.id, complianceSiteId]
         );
         expect(jarrodAttachAfter.status).toBe(403);
       } finally {
@@ -383,13 +399,13 @@ test.describe("OpenWebUI parity: users, spaces, governance boundaries", () => {
         // suites keep their deny-by-default assumption.
         const restoreRes = await page.request.patch(
           `/api/manage/admin/user-group/${restrictedGroup!.id}`,
-          { data: { user_ids: [], cc_pair_ids: [] } },
+          { data: { user_ids: [], cc_pair_ids: [] } }
         );
         expect([200, 204]).toContain(restoreRes.status());
       }
 
       console.log(
-        "openwebui parity adversarial: all governance and sharing boundaries held",
+        "openwebui parity adversarial: all governance and sharing boundaries held"
       );
     } finally {
       if (intranetSpaceId !== null) {

@@ -258,7 +258,9 @@ test.describe("Connector detail — SharePoint config rendering (mocked)", () =>
       expect(await configRowValue(page, field)).toBe("-");
     }
 
-    await expectScreenshot(page, { name: "connector-detail-sharepoint-config" });
+    await expectScreenshot(page, {
+      name: "connector-detail-sharepoint-config",
+    });
   });
 
   test("Microsoft Search Region edit modal validates a three-letter code", async ({
@@ -286,9 +288,7 @@ test.describe("Connector detail — SharePoint config rendering (mocked)", () =>
     // validation message must surface on blur.
     await input.fill("XX");
     await input.blur();
-    await expect(
-      dialog.getByText(/three-letter region code/i)
-    ).toBeVisible();
+    await expect(dialog.getByText(/three-letter region code/i)).toBeVisible();
     await expect(
       dialog.getByRole("button", { name: /Update property/i })
     ).toBeDisabled();

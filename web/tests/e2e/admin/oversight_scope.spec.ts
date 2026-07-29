@@ -27,7 +27,7 @@ test.use({ storageState: { cookies: [], origins: [] } });
 
 async function visibleEmails(page: import("@playwright/test").Page) {
   const response = await page.request.get(
-    "/api/admin/chat-session-history?page_num=0&page_size=200",
+    "/api/admin/chat-session-history?page_num=0&page_size=200"
   );
   if (!response.ok())
     return { status: response.status(), emails: [] as string[] };
@@ -108,7 +108,7 @@ test("an admin can exclude a tier from oversight in the group UI", async ({
   const listed = await page.request.get("/api/manage/admin/user-group");
   const groups = await listed.json();
   const target = groups.find(
-    (group: { name: string }) => group.name === "Compliance Managers",
+    (group: { name: string }) => group.name === "Compliance Managers"
   );
   expect(target, "seed-compliance-oversight.py must have run").toBeTruthy();
 
@@ -138,7 +138,7 @@ test("an admin can exclude a tier from oversight in the group UI", async ({
   // Leave the seeded fixture as it was.
   const reset = await page.request.put(
     `/api/manage/admin/user-group/${target.id}/oversight-exclusion`,
-    { data: { excluded_from_oversight: false } },
+    { data: { excluded_from_oversight: false } }
   );
   expect(reset.ok()).toBeTruthy();
 });

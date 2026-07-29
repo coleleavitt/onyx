@@ -59,7 +59,7 @@ export default function SpaceLinksSection({
       setAdding(false);
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add link.",
+        error instanceof Error ? error.message : "Failed to add link."
       );
     } finally {
       setBusy(false);
@@ -72,7 +72,7 @@ export default function SpaceLinksSection({
       await saveMeta({ ...meta, links: removeLink(links, id) });
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove link.",
+        error instanceof Error ? error.message : "Failed to remove link."
       );
     } finally {
       setBusy(false);

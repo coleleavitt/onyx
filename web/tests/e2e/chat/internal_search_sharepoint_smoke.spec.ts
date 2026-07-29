@@ -22,7 +22,9 @@ async function ensureDefaultAssistantSearchTool(page: Page): Promise<number> {
     id: number;
     in_code_tool_id?: string | null;
   }>;
-  const searchTool = tools.find((tool) => tool.in_code_tool_id === "SearchTool");
+  const searchTool = tools.find(
+    (tool) => tool.in_code_tool_id === "SearchTool"
+  );
   expect(searchTool).toBeTruthy();
 
   const configResponse = await page.request.get(
@@ -31,9 +33,12 @@ async function ensureDefaultAssistantSearchTool(page: Page): Promise<number> {
   expect(configResponse.ok()).toBeTruthy();
   const config = (await configResponse.json()) as { tool_ids: number[] };
   if (!config.tool_ids.includes(searchTool!.id)) {
-    const patchResponse = await page.request.patch("/api/admin/default-assistant", {
-      data: { tool_ids: [...config.tool_ids, searchTool!.id] },
-    });
+    const patchResponse = await page.request.patch(
+      "/api/admin/default-assistant",
+      {
+        data: { tool_ids: [...config.tool_ids, searchTool!.id] },
+      }
+    );
     expect(patchResponse.ok()).toBeTruthy();
   }
 
@@ -47,20 +52,27 @@ test.describe("Internal search source selection", () => {
     await page.context().clearCookies();
     await loginAs(page, "admin");
 
-    const indexedSources = await page.request.get("/api/manage/indexed-sources");
-    expect(indexedSources.ok()).toBeTruthy();
-    expect(((await indexedSources.json()) as { sources: string[] }).sources).toContain(
-      "sharepoint"
+    const indexedSources = await page.request.get(
+      "/api/manage/indexed-sources"
     );
+    expect(indexedSources.ok()).toBeTruthy();
+    expect(
+      ((await indexedSources.json()) as { sources: string[] }).sources
+    ).toContain("sharepoint");
 
     const searchToolId = await ensureDefaultAssistantSearchTool(page);
 
     const chat = new ChatPage(page);
     await chat.goto();
-    await mockChatEndpoint(page, buildMockStream("SharePoint search smoke response"));
+    await mockChatEndpoint(
+      page,
+      buildMockStream("SharePoint search smoke response")
+    );
 
     await openActionManagement(page);
-    await expect(page.locator(TOOL_IDS.searchOption)).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(TOOL_IDS.searchOption)).toBeVisible({
+      timeout: 10000,
+    });
     await openSourceManagement(page);
 
     const sharePointToggle = page.locator('[aria-label="Toggle Sharepoint"]');

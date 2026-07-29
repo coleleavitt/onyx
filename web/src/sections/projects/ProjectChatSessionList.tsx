@@ -84,7 +84,7 @@ function ProjectChatItem({
 
   const lastUpdateTime = useMemo(
     () => timeAgo(chat.time_updated),
-    [chat.time_updated],
+    [chat.time_updated]
   );
 
   const { refreshChatSessions, removeSession } = useChatSessions();
@@ -93,7 +93,7 @@ function ProjectChatItem({
   const isChatUsingDefaultAgent = chat.persona_id === DEFAULT_AGENT_ID;
 
   const filteredProjects = projects.filter((project) =>
-    project.name.toLowerCase().includes(searchTerm.toLowerCase()),
+    project.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleConfirmDelete = useCallback(
@@ -107,7 +107,7 @@ function ProjectChatItem({
       setPopoverOpen(false);
       afterRefresh();
     },
-    [chat, refreshChatSessions, removeSession, fetchProjects, afterRefresh],
+    [chat, refreshChatSessions, removeSession, fetchProjects, afterRefresh]
   );
 
   const performMove = useCallback(
@@ -118,7 +118,7 @@ function ProjectChatItem({
       setPopoverOpen(false);
       afterRefresh();
     },
-    [chat.id, fetchProjects, refreshChatSessions, afterRefresh],
+    [chat.id, fetchProjects, refreshChatSessions, afterRefresh]
   );
 
   const handleMoveChatSession = useCallback(
@@ -136,7 +136,7 @@ function ProjectChatItem({
 
       await performMove(item.id);
     },
-    [isChatUsingDefaultAgent, performMove],
+    [isChatUsingDefaultAgent, performMove]
   );
 
   const handleRemoveFromProject = useCallback(async () => {
@@ -222,7 +222,7 @@ function ProjectChatItem({
             icon={SvgFolder}
             title={target.name}
             onClick={noProp(() =>
-              handleMoveChatSession({ id: target.id, label: target.name }),
+              handleMoveChatSession({ id: target.id, label: target.name })
             )}
           />
         )),
@@ -266,7 +266,7 @@ function ProjectChatItem({
             if (doNotShowAgain && typeof window !== "undefined") {
               window.localStorage.setItem(
                 LS_HIDE_MOVE_CUSTOM_AGENT_MODAL_KEY,
-                "true",
+                "true"
               );
             }
             const target = pendingMoveProjectId;
@@ -347,7 +347,7 @@ export default function ProjectChatSessionList({
     const sessions = currentProjectDetails?.project?.chat_sessions || [];
     return [...sessions].sort(
       (a, b) =>
-        new Date(b.time_updated).getTime() - new Date(a.time_updated).getTime(),
+        new Date(b.time_updated).getTime() - new Date(a.time_updated).getTime()
     );
   }, [currentProjectDetails?.project?.chat_sessions]);
 
@@ -355,7 +355,7 @@ export default function ProjectChatSessionList({
     const normalized = query.trim().toLowerCase();
     const bySearch = normalized
       ? projectChats.filter((chat) =>
-          (chat.name || UNNAMED_CHAT).toLowerCase().includes(normalized),
+          (chat.name || UNNAMED_CHAT).toLowerCase().includes(normalized)
         )
       : projectChats;
 
@@ -364,7 +364,7 @@ export default function ProjectChatSessionList({
     // Fall back to showing all when no chat exposes an owner id, so the
     // "Your sessions" filter stays no-op-safe until that data is available.
     const hasOwnerInfo = bySearch.some(
-      (chat) => getChatOwnerId(chat) !== undefined,
+      (chat) => getChatOwnerId(chat) !== undefined
     );
     if (!hasOwnerInfo) return bySearch;
 

@@ -76,7 +76,7 @@ function SectionPlaceholder({
         "flex min-h-12 items-center rounded-12 border border-dashed px-3 py-2.5",
         dragActive
           ? "border-action-link-05 bg-action-link-01 text-action-link-05"
-          : "border-border-01 text-text-03",
+          : "border-border-01 text-text-03"
       )}
     >
       <Text as="p" font="secondary-body" color="inherit">
@@ -115,7 +115,7 @@ export default function ProjectContextPanel({
 
       setPresentingDocument(documentForViewer);
     },
-    [setPresentingDocument],
+    [setPresentingDocument]
   );
   const {
     currentProjectDetails,
@@ -141,14 +141,14 @@ export default function ProjectContextPanel({
   // Strip the machine-readable space-metadata block (links/skills) so only the
   // human-facing instructions are shown.
   const instructionsText = parseSpaceInstructions(
-    currentProjectDetails?.project?.instructions,
+    currentProjectDetails?.project?.instructions
   ).instructions;
   const handleUploadFiles = useCallback(
     async (files: File[]) => {
       if (!files || files.length === 0) return;
       beginUpload(Array.from(files), currentProjectId);
     },
-    [currentProjectId, beginUpload],
+    [currentProjectId, beginUpload]
   );
 
   const totalFiles = allCurrentProjectFiles.length;
@@ -161,7 +161,7 @@ export default function ProjectContextPanel({
       await handleUploadFiles(Array.from(files));
       e.target.value = "";
     },
-    [handleUploadFiles],
+    [handleUploadFiles]
   );
 
   // Nested dropzone for drag-and-drop within ProjectContextPanel
@@ -474,7 +474,7 @@ export default function ProjectContextPanel({
                   }}
                   handleUploadChange={handleUploadChange}
                   selectedFileIds={(allCurrentProjectFiles || []).map(
-                    (f) => f.id,
+                    (f) => f.id
                   )}
                   compact={compact}
                 />
@@ -514,7 +514,7 @@ export default function ProjectContextPanel({
                             if (!currentProjectId) return;
                             await unlinkFileFromProject(
                               currentProjectId,
-                              fileId,
+                              fileId
                             );
                           }
                         : undefined

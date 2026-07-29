@@ -39,7 +39,10 @@ export function isTaskForSpace(
 
 /** Remove the space tag (and tidy whitespace) for display. */
 export function stripSpaceTag(name: string): string {
-  return name.replace(SPACE_TAG_RE, "").replace(/\s{2,}/g, " ").trim();
+  return name
+    .replace(SPACE_TAG_RE, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 /**

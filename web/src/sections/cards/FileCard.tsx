@@ -44,7 +44,10 @@ function Removable({ onRemove, children }: RemovableProps) {
                 "rounded-04 border border-border text-[11px]",
                 "bg-background-neutral-inverted-01 text-text-inverted-05 shadow-xs",
                 "pointer-events-auto",
-                "hover:opacity-90"
+                "hover:opacity-90",
+                // The dot stays 16px visually, but WCAG 2.2 SC 2.5.8 measures the
+                // target, not the ink. -inset-1 grows the hit area to 24x24.
+                "relative before:absolute before:-inset-1 before:content-['']"
               )}
             >
               <SvgX className="h-3 w-3 stroke-text-inverted-03" />

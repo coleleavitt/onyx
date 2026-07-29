@@ -104,7 +104,9 @@ function SharedGroupResources({
   const { agents } = useAgents();
 
   useEffect(() => {
-    fetchConnectedSourceScopes().then(setSourceScopes).catch(() => setSourceScopes([]));
+    fetchConnectedSourceScopes()
+      .then(setSourceScopes)
+      .catch(() => setSourceScopes([]));
   }, []);
 
   // --- Derived data ---
@@ -268,7 +270,9 @@ function SharedGroupResources({
               icon={meta.icon}
               description={description || "Connected source scope"}
               rightChildren={
-                scope.group_ids.length > 0 || dimmed ? <SharedBadge /> : undefined
+                scope.group_ids.length > 0 || dimmed ? (
+                  <SharedBadge />
+                ) : undefined
               }
             >
               {title}
@@ -339,7 +343,9 @@ function SharedGroupResources({
   }
 
   function removeSourceScope(id: number) {
-    onSourceScopeIdsChange(selectedSourceScopeIds.filter((scopeId) => scopeId !== id));
+    onSourceScopeIdsChange(
+      selectedSourceScopeIds.filter((scopeId) => scopeId !== id)
+    );
   }
 
   const hasSelectedResources =
@@ -464,13 +470,17 @@ function SharedGroupResources({
                       key={`s-${scope.id}`}
                       icon={getSourceMetadata(scope.source).icon}
                       title={scope.display_label ?? scope.title}
-                      description={[
-                        scope.tenant_label,
-                        scope.department_label,
-                        scope.curation_status === "ARCHIVE" ? "Archive" : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "Connected source"}
+                      description={
+                        [
+                          scope.tenant_label,
+                          scope.department_label,
+                          scope.curation_status === "ARCHIVE"
+                            ? "Archive"
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Connected source"
+                      }
                       onRemove={() => removeSourceScope(scope.id)}
                     />
                   ))}

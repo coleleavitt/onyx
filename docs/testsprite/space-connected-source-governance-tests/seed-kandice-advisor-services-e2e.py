@@ -11,6 +11,7 @@ This is intentionally idempotent. It creates/updates:
 It also removes old synthetic `governed-folder-*` Advisor test nodes/scopes so
 browser tests exercise the real indexed SharePoint hierarchy, not stale test data.
 """
+
 from __future__ import annotations
 
 from uuid import uuid4
@@ -21,8 +22,8 @@ from sqlalchemy import select
 from onyx.auth.schemas import UserRole
 from onyx.configs.constants import DocumentSource
 from onyx.db.connected_source_governance import upsert_connected_source_scope
-from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
+from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.enums import AccountType
 from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
@@ -30,8 +31,8 @@ from onyx.db.enums import HierarchyNodeType
 from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import HierarchyNode
 from onyx.db.models import User
-from onyx.db.models import UserGroup
 from onyx.db.models import User__UserGroup
+from onyx.db.models import UserGroup
 from shared_configs.configs import POSTGRES_DEFAULT_SCHEMA
 from shared_configs.contextvars import CURRENT_TENANT_ID_CONTEXTVAR
 

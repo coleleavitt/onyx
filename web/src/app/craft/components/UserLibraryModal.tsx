@@ -504,7 +504,8 @@ function LibraryTreeView({
               role={!entry.is_directory && onAttachFile ? "button" : undefined}
               tabIndex={!entry.is_directory && onAttachFile ? 0 : undefined}
               onClick={() => {
-                if (!entry.is_directory && onAttachFile) void onAttachFile(entry);
+                if (!entry.is_directory && onAttachFile)
+                  void onAttachFile(entry);
               }}
               onKeyDown={(event) => {
                 if (

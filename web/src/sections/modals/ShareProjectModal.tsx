@@ -403,7 +403,8 @@ export default function ShareProjectModal({
                   </Text>
                 ) : (
                   <Text color="text-03" font="secondary-body">
-                    Invite existing organization users by email, then save to grant access.
+                    Invite existing organization users by email, then save to
+                    grant access.
                   </Text>
                 )}
               </div>

@@ -227,7 +227,11 @@ def list_artifact_library_items_after(
         pinned=pinned,
         published=published,
     )
-    if cursor_pinned is not None and cursor_updated_at is not None and cursor_id is not None:
+    if (
+        cursor_pinned is not None
+        and cursor_updated_at is not None
+        and cursor_id is not None
+    ):
         stmt = stmt.where(
             _library_cursor_predicate(
                 pinned_by_user=pinned_by_user,

@@ -65,7 +65,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const settings = useSettings();
   const isEnterpriseTier = tierAtLeast(settings.tier, Tier.ENTERPRISE);
   const tokenLimitsDisabledTooltip = markdown(
-    "Token rate limits are available on the [Enterprise version of Onyx](/admin/billing) only.",
+    "Token rate limits are available on the [Enterprise version of Onyx](/admin/billing) only."
   );
 
   // Fetch the group data — poll every 5s while syncing so the UI updates
@@ -83,7 +83,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
 
   const group = useMemo(
     () => groups?.find((g) => g.id === groupId) ?? null,
-    [groups, groupId],
+    [groups, groupId]
   );
 
   const isSyncing = group != null && !group.is_up_to_date;
@@ -93,7 +93,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
   const { data: groupPermissions } = useSWR<string[]>(
     groupId ? `/api/manage/admin/user-group/${groupId}/permissions` : null,
     errorHandlingFetcher,
-    { onErrorRetry: skipRetryOnAuthError },
+    { onErrorRetry: skipRetryOnAuthError }
   );
 
   // Fetch token rate limits for this group. Skip retry on tier-gated 402
@@ -163,7 +163,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       setSelectedAgentIds(agentIds);
       initialAgentIdsRef.current = agentIds;
       const sourceScopeIds = group.connected_source_scopes.map(
-        (scope) => scope.id,
+        (scope) => scope.id
       );
       setSelectedSourceScopeIds(sourceScopeIds);
       initialSourceScopeIdsRef.current = sourceScopeIds;
@@ -178,7 +178,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         tokenRateLimits.map((trl) => ({
           tokenBudget: trl.token_budget,
           periodHours: trl.period_hours,
-        })),
+        }))
       );
     }
   }, [tokenRateLimits]);
@@ -200,7 +200,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         ? prev.includes(userId)
           ? prev
           : [...prev, userId]
-        : prev.filter((id) => id !== userId),
+        : prev.filter((id) => id !== userId)
     );
   }, []);
 
@@ -238,7 +238,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         ),
       }),
     ],
-    [handleRemoveMember, handleToggleCurator, curatorIds],
+    [handleRemoveMember, handleToggleCurator, curatorIds]
   );
 
   // IDs of members not visible in the add-mode table (e.g. inactive users).
@@ -257,7 +257,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       if (!initialized) return;
       setSelectedUserIds([...ids, ...hiddenMemberIds]);
     },
-    [initialized, hiddenMemberIds],
+    [initialized, hiddenMemberIds]
   );
 
   async function handleSave() {
@@ -271,12 +271,12 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
 
     // Re-fetch group to check sync status before saving
     const freshGroups = await fetch(SWR_KEYS.adminUserGroups).then((r) =>
-      r.json(),
+      r.json()
     );
     const freshGroup = freshGroups.find((g: UserGroup) => g.id === groupId);
     if (freshGroup && !freshGroup.is_up_to_date) {
       toast.error(
-        "This group is currently syncing. Please wait a moment and try again.",
+        "This group is currently syncing. Please wait a moment and try again."
       );
       return;
     }
@@ -296,21 +296,21 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
       await updateAgentGroupSharing(
         groupId,
         initialAgentIdsRef.current,
-        selectedAgentIds,
+        selectedAgentIds
       );
 
       // Update document set sharing (add/remove this group from changed doc sets)
       await updateDocSetGroupSharing(
         groupId,
         initialDocSetIdsRef.current,
-        selectedDocSetIds,
+        selectedDocSetIds
       );
 
       // Update connected source scope visibility for this group
       await updateConnectedSourceScopeGroupSharing(
         groupId,
         initialSourceScopeIdsRef.current,
-        selectedSourceScopeIds,
+        selectedSourceScopeIds
       );
 
       // Save token rate limits (create/update/delete) — Enterprise-only
@@ -330,7 +330,7 @@ function EditGroupPage({ groupId }: EditGroupPageProps) {
         await setGroupPermission(
           groupId,
           OVERSIGHT_PERMISSION,
-          oversightGranted,
+          oversightGranted
         );
       }
 

@@ -10,7 +10,7 @@ const QUESTION =
   "Using only the connected Advisor Services files, what do we have about TPMM vs SubAdvisors? Name the exact document if you find it.";
 
 async function visibleSharePointNodeIds(
-  request: APIRequestContext,
+  request: APIRequestContext
 ): Promise<Set<number>> {
   const response = await request.get("/api/hierarchy-nodes?source=sharepoint");
   expect(response.status()).toBe(200);
@@ -25,17 +25,17 @@ async function visibleSharePointNodeIds(
  */
 async function latestAssistantAnswer(
   request: APIRequestContext,
-  chatSessionId: string,
+  chatSessionId: string
 ): Promise<string> {
   const response = await request.get(
-    `/api/chat/get-chat-session/${chatSessionId}`,
+    `/api/chat/get-chat-session/${chatSessionId}`
   );
   if (!response.ok()) return "";
   const body = await response.json();
   const messages: Array<{ message: string; message_type: string }> =
     body.messages ?? [];
   const assistantMessages = messages.filter(
-    (message) => message.message_type === "assistant",
+    (message) => message.message_type === "assistant"
   );
   return assistantMessages.at(-1)?.message ?? "";
 }
@@ -59,22 +59,22 @@ test.describe("Kandice Advisor Services live Space chat", () => {
     const spaceName = `Kandice Advisor Live ${stamp}`;
     const projectId = await apiClient.createProject(
       spaceName,
-      "Live LLM regression for Advisor Services connected source",
+      "Live LLM regression for Advisor Services connected source"
     );
 
     try {
       const attachResponse = await page.request.put(
         `/api/user/projects/${projectId}/connected-knowledge`,
-        { data: { document_ids: [], hierarchy_node_ids: [ADVISOR_NODE_ID] } },
+        { data: { document_ids: [], hierarchy_node_ids: [ADVISOR_NODE_ID] } }
       );
       expect(attachResponse.status()).toBe(200);
 
       await spaceDetail.goto({ spaceName, projectId });
       await expect(
-        page.getByText("Connected sources", { exact: true }).first(),
+        page.getByText("Connected sources", { exact: true }).first()
       ).toBeVisible();
       await expect(
-        page.getByText("AdvisorServicesIntranet").first(),
+        page.getByText("AdvisorServicesIntranet").first()
       ).toBeVisible();
 
       // Capture the chat session id the composer creates on submit.
@@ -83,7 +83,7 @@ test.describe("Kandice Advisor Services live Space chat", () => {
           response.url().includes("/api/chat/create-chat-session") &&
           response.request().method() === "POST" &&
           response.status() === 200,
-        { timeout: 30_000 },
+        { timeout: 30_000 }
       );
 
       await spaceDetail.inputBox.fill(QUESTION);
@@ -100,7 +100,7 @@ test.describe("Kandice Advisor Services live Space chat", () => {
       // route (the bug navigated to /app instead).
       await page.waitForURL(
         (url) => url.searchParams.get("chatId") === chatSessionId,
-        { timeout: 30_000 },
+        { timeout: 30_000 }
       );
       expect(new URL(page.url()).pathname).toMatch(/^\/app\/spaces\//);
 
@@ -110,17 +110,17 @@ test.describe("Kandice Advisor Services live Space chat", () => {
         timeout: 240_000,
       });
       await expect(latestAnswer).not.toContainText(
-        /internal search is temporarily unavailable|search infrastructure error|no results found/i,
+        /internal search is temporarily unavailable|search infrastructure error|no results found/i
       );
 
       // And the persisted session carries the internal citation (governance +
       // internal semantic search + LLM answer, end to end).
       const finalAnswer = await latestAssistantAnswer(
         page.request,
-        chatSessionId,
+        chatSessionId
       );
       expect(finalAnswer).toMatch(
-        /AdvisorServicesIntranet|Advisor Services|\.pdf/i,
+        /AdvisorServicesIntranet|Advisor Services|\.pdf/i
       );
     } finally {
       await apiClient.deleteProject(projectId);

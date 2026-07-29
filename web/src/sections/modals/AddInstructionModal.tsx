@@ -64,7 +64,9 @@ export default function AddInstructionModal() {
           {({ isSubmitting, dirty, isValid, values }) => (
             <Form>
               <Modal.Body>
-                <div className="flex flex-col gap-1.5">
+                {/* w-full is required: Modal.Body's column flex uses items-start,
+                    which shrinks children to content width without it. */}
+                <div className="flex w-full flex-col gap-1.5">
                   <InputTextAreaField
                     name="instructions"
                     placeholder="e.g. Summarize all tasks in bullet points, keep responses concise..."

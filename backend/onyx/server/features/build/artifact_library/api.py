@@ -127,10 +127,14 @@ def _decode_cursor(
         raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
         payload = ArtifactLibraryCursorPayload.model_validate(json.loads(raw))
     except Exception as error:
-        raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Invalid artifact cursor.") from error
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT, "Invalid artifact cursor."
+        ) from error
     for key, value in filters.items():
         if getattr(payload, key) != value:
-            raise OnyxError(OnyxErrorCode.INVALID_INPUT, "Artifact cursor filters do not match.")
+            raise OnyxError(
+                OnyxErrorCode.INVALID_INPUT, "Artifact cursor filters do not match."
+            )
     return payload
 
 

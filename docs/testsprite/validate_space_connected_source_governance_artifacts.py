@@ -100,7 +100,9 @@ def main() -> None:
     assert coverage["summary"]["requirements_covered"] == len(requirement_ids)
     assert coverage["summary"]["coverage_percent"] == 100.0
     assert coverage["summary"]["uncovered_requirements"] == []
-    assert coverage["meta"]["testsprite_inventory"] == str(INVENTORY_PATH.relative_to(ROOT))
+    assert coverage["meta"]["testsprite_inventory"] == str(
+        INVENTORY_PATH.relative_to(ROOT)
+    )
 
     for entry in coverage["requirements"]:
         assert entry["id"] in requirement_ids, entry
@@ -112,7 +114,10 @@ def main() -> None:
     for source_file in REQUIRED_SOURCE_FILES:
         assert (ROOT / source_file).exists(), source_file
 
-    browser_script = ROOT / "docs/testsprite/space-connected-source-governance-tests/governance-playwright.sh"
+    browser_script = (
+        ROOT
+        / "docs/testsprite/space-connected-source-governance-tests/governance-playwright.sh"
+    )
     assert "spaces_connected_source_governance.spec.ts" in browser_script.read_text()
 
     print("Space source governance TestSprite artifacts are valid")

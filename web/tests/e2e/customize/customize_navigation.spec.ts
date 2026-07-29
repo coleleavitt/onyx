@@ -8,7 +8,7 @@ test.describe("Customize navigation", () => {
       window.localStorage.setItem("sidebarIsToggled", "false");
       window.localStorage.setItem(
         "opal-sidebar-group-expanded-customize",
-        "true",
+        "true"
       );
       document.cookie = "sidebarIsToggled=false; path=/";
     });
@@ -21,57 +21,57 @@ test.describe("Customize navigation", () => {
 
     const customizeSidebar = page.getByTestId("AppSidebar/customize");
     await expect(
-      customizeSidebar.getByText("Customize", { exact: true }),
+      customizeSidebar.getByText("Customize", { exact: true })
     ).toBeVisible();
     await expect(
-      customizeSidebar.getByText("Skills", { exact: true }),
+      customizeSidebar.getByText("Skills", { exact: true })
     ).toBeVisible();
     await expect(
-      customizeSidebar.getByText("Workflows", { exact: true }),
+      customizeSidebar.getByText("Workflows", { exact: true })
     ).toBeVisible();
     await expect(
-      customizeSidebar.getByText("Memory", { exact: true }),
+      customizeSidebar.getByText("Memory", { exact: true })
     ).toBeVisible();
 
     await expect(
-      page.getByRole("tab", { name: "Skills", exact: true }),
+      page.getByRole("tab", { name: "Skills", exact: true })
     ).toBeVisible();
     await expect(
-      page.getByRole("tab", { name: "Workflows", exact: true }),
+      page.getByRole("tab", { name: "Workflows", exact: true })
     ).toBeVisible();
     await expect(
-      page.getByRole("tab", { name: "Memory", exact: true }),
+      page.getByRole("tab", { name: "Memory", exact: true })
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Collapse Customize" }).click();
     await expect(
-      customizeSidebar.getByText("Skills", { exact: true }),
+      customizeSidebar.getByText("Skills", { exact: true })
     ).toHaveCount(0);
     await expect(
-      page.getByRole("tab", { name: "Skills", exact: true }),
+      page.getByRole("tab", { name: "Skills", exact: true })
     ).toBeVisible();
 
     await page.getByRole("button", { name: "Expand Customize" }).click();
     await expect(
-      customizeSidebar.getByText("Skills", { exact: true }),
+      customizeSidebar.getByText("Skills", { exact: true })
     ).toBeVisible();
 
     await page.getByRole("tab", { name: "Workflows", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/customize\/workflows$/);
     await expect(
-      page.getByText("Workflows", { exact: true }).first(),
+      page.getByText("Workflows", { exact: true }).first()
     ).toBeVisible();
     await expect(
-      customizeSidebar.getByText("Workflows", { exact: true }),
+      customizeSidebar.getByText("Workflows", { exact: true })
     ).toBeVisible();
 
     await page.getByRole("tab", { name: "Memory", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/customize\/memory$/);
     await expect(
-      page.getByText("Memory", { exact: true }).first(),
+      page.getByText("Memory", { exact: true }).first()
     ).toBeVisible();
     await expect(
-      customizeSidebar.getByText("Memory", { exact: true }),
+      customizeSidebar.getByText("Memory", { exact: true })
     ).toBeVisible();
   });
 });

@@ -7,8 +7,8 @@ from sqlalchemy import select
 
 from onyx.configs.constants import DocumentSource
 from onyx.db.connected_source_governance import upsert_connected_source_scope
-from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
+from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import HierarchyNodeType
@@ -105,7 +105,9 @@ def main() -> None:
                 warning="Synthetic governed source for TestSprite E2E.",
             )
 
-            print(json.dumps({"site_id": site.id, "folder_id": folder.id}, sort_keys=True))
+            print(
+                json.dumps({"site_id": site.id, "folder_id": folder.id}, sort_keys=True)
+            )
     finally:
         SqlEngine.reset_engine()
 

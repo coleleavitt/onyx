@@ -8,6 +8,7 @@ test and deletes anything new afterwards, including the association rows
 (`DocumentByConnectorCredentialPair`, `HierarchyNodeByConnectorCredentialPair`)
 that block the FK deletes.
 """
+
 from collections.abc import Generator
 
 import pytest
@@ -105,9 +106,9 @@ def cleanup_test_resources(
                 ).all()
             )
             if orphan_doc_ids:
-                session.query(Document).filter(
-                    Document.id.in_(orphan_doc_ids)
-                ).delete(synchronize_session=False)
+                session.query(Document).filter(Document.id.in_(orphan_doc_ids)).delete(
+                    synchronize_session=False
+                )
         session.query(HierarchyNodeByConnectorCredentialPair).filter(
             HierarchyNodeByConnectorCredentialPair.connector_id.in_(leaked_ids)
         ).delete(synchronize_session=False)

@@ -13,12 +13,17 @@ test.describe("Broken model visibility", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByText("Language Models").first()).toBeVisible();
     await expect(page.getByText("Default Model")).toBeVisible();
-    await expect(page.locator("button").filter({ hasText: "GPT-5.5" })).toBeVisible();
+    await expect(
+      page.locator("button").filter({ hasText: "GPT-5.5" })
+    ).toBeVisible();
 
     const chat = new ChatPage(page);
     await chat.goto();
 
-    const modelButton = page.getByTestId("model-selector").locator("button").last();
+    const modelButton = page
+      .getByTestId("model-selector")
+      .locator("button")
+      .last();
     await expect(modelButton).toContainText("GPT-5.5");
 
     await modelButton.click();
@@ -27,11 +32,11 @@ test.describe("Broken model visibility", () => {
 
     await dialog.getByPlaceholder("Search models...").fill("GPT-5.6");
     await expect(dialog.getByText("No models found")).toBeVisible();
-    await expect(dialog.locator('[data-interactive-state]')).toHaveCount(0);
+    await expect(dialog.locator("[data-interactive-state]")).toHaveCount(0);
 
     await dialog.getByPlaceholder("Search models...").fill("GPT-5.5");
     await expect(
-      dialog.locator('[data-interactive-state]').filter({ hasText: "GPT-5.5" })
+      dialog.locator("[data-interactive-state]").filter({ hasText: "GPT-5.5" })
     ).toHaveCount(1);
   });
 });

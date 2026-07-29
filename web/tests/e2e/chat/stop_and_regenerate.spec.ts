@@ -56,9 +56,13 @@ test.describe("Stop generation and regenerate", () => {
         // The session id lands in the URL as soon as the turn is submitted;
         // capture it for cleanup regardless of whether the stop succeeds.
         await page
-          .waitForFunction(() => window.location.href.includes("chatId="), null, {
-            timeout: 20_000,
-          })
+          .waitForFunction(
+            () => window.location.href.includes("chatId="),
+            null,
+            {
+              timeout: 20_000,
+            }
+          )
           .catch(() => {});
         const id = currentChatId();
         if (id) createdChatIds.add(id);
@@ -73,7 +77,8 @@ test.describe("Stop generation and regenerate", () => {
         try {
           await expect
             .poll(
-              async () => ((await streamingAnswer.textContent()) ?? "").trim().length,
+              async () =>
+                ((await streamingAnswer.textContent()) ?? "").trim().length,
               { timeout: 90_000, intervals: [400] }
             )
             .toBeGreaterThan(0);
@@ -108,7 +113,10 @@ test.describe("Stop generation and regenerate", () => {
             `full descriptive sentence after every number (marker ${marker}).`
         );
       }
-      expect(stopped, "expected to interrupt a streaming response").toBeTruthy();
+      expect(
+        stopped,
+        "expected to interrupt a streaming response"
+      ).toBeTruthy();
 
       // --- Composer is back to a sendable state, with no error toast. ---
       await expect(chat.inputBar.textbox).toBeEditable();
@@ -134,7 +142,9 @@ test.describe("Stop generation and regenerate", () => {
       // Re-select the currently active (default) model so protected model state
       // is untouched; re-selecting still triggers a fresh regeneration. Fall
       // back to any available model if the selected one can't be resolved.
-      const selectedModel = dialog.locator('[data-interactive-state="selected"]');
+      const selectedModel = dialog.locator(
+        '[data-interactive-state="selected"]'
+      );
       const modelToClick =
         (await selectedModel.count()) > 0
           ? selectedModel.first()

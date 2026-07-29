@@ -321,7 +321,7 @@ export interface EditPromptModalProps {
   promptId: number;
   editInputPrompt: (
     promptId: number,
-    values: CreateInputPromptRequest,
+    values: CreateInputPromptRequest
   ) => Promise<void>;
 }
 export interface CreateInputPromptRequest {

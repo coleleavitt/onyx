@@ -108,15 +108,24 @@ def test_brain_graph_edges_and_source_citations(db_session: Session) -> None:
     user: User = create_test_user(db_session, "brain_graph")
 
     acme = _create(
-        db_session, user, title="Acme Corp", category=MemoryCategory.ENTITIES,
+        db_session,
+        user,
+        title="Acme Corp",
+        category=MemoryCategory.ENTITIES,
         text="Acme Corp is the flagship customer.",
     )
     renewal = _create(
-        db_session, user, title="Contract renewal", category=MemoryCategory.CONCEPTS,
+        db_session,
+        user,
+        title="Contract renewal",
+        category=MemoryCategory.CONCEPTS,
         text="Acme's contract renews in Q3.",
     )
     planning = _create(
-        db_session, user, title="Q3 planning", category=MemoryCategory.WORKSTREAMS,
+        db_session,
+        user,
+        title="Q3 planning",
+        category=MemoryCategory.WORKSTREAMS,
         text="Plan the Q3 renewal push.",
     )
 
@@ -125,13 +134,15 @@ def test_brain_graph_edges_and_source_citations(db_session: Session) -> None:
     assert add_memory_relation(db_session, user.id, renewal, planning) is True
 
     add_memory_source(
-        db_session, acme,
+        db_session,
+        acme,
         source_type=MemorySourceType.CHAT_SESSION,
         label="Kickoff call",
         source_id="session-abc",
     )
     add_memory_source(
-        db_session, renewal,
+        db_session,
+        renewal,
         source_type=MemorySourceType.DOCUMENT,
         label="Renewal terms.pdf",
         source_id="doc-42",
@@ -167,10 +178,18 @@ def test_relation_rejects_self_edge_and_cross_user_edge(db_session: Session) -> 
     other: User = create_test_user(db_session, "brain_other")
 
     mine = _create(
-        db_session, user, title="Mine", category=MemoryCategory.NOTES, text="mine",
+        db_session,
+        user,
+        title="Mine",
+        category=MemoryCategory.NOTES,
+        text="mine",
     )
     theirs = _create(
-        db_session, other, title="Theirs", category=MemoryCategory.NOTES, text="theirs",
+        db_session,
+        other,
+        title="Theirs",
+        category=MemoryCategory.NOTES,
+        text="theirs",
     )
 
     # Self-edge is rejected.

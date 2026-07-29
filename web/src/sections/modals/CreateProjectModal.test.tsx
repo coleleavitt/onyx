@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, userEvent, waitFor } from "@tests/setup/test-utils";
+import {
+  fireEvent,
+  render,
+  screen,
+  userEvent,
+  waitFor,
+} from "@tests/setup/test-utils";
 import CreateProjectModal, {
   presetDetailLine,
 } from "@/sections/modals/CreateProjectModal";
@@ -72,22 +78,24 @@ beforeEach(() => {
 test("space preset picker uses the Opal select, shows preset contents, and submits the preset id", async () => {
   const user = userEvent.setup();
   render(
-    <CreateProjectModal terminology="space" initialProjectName="HR research" />,
+    <CreateProjectModal terminology="space" initialProjectName="HR research" />
   );
   const presetTrigger = await screen.findByRole("combobox");
   fireEvent.keyDown(presetTrigger, { key: "ArrowDown" });
-  await user.click(await screen.findByRole("option", { name: /Magellan HR starter/ }));
+  await user.click(
+    await screen.findByRole("option", { name: /Magellan HR starter/ })
+  );
 
   expect(
     screen.getByText(
-      "Company Wide Files and JF from the Magellan HR intranet — Includes: Company Wide Files, JF",
-    ),
+      "Company Wide Files and JF from the Magellan HR intranet — Includes: Company Wide Files, JF"
+    )
   ).toBeVisible();
   expect(screen.getByRole("combobox")).toBeVisible();
   expect(document.querySelector("select[name='presetId']")).toBeNull();
 
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Create Space" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "Create Space" })).toBeEnabled()
   );
   await user.click(screen.getByRole("button", { name: "Create Space" }));
 
@@ -96,7 +104,7 @@ test("space preset picker uses the Opal select, shows preset contents, and submi
       expect.objectContaining({
         name: "HR research",
         connected_knowledge_preset_id: 12,
-      }),
+      })
     );
   });
 });
@@ -109,7 +117,7 @@ test("preset fetch failures are logged instead of swallowed", async () => {
     await waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith(
         "Failed to fetch connected knowledge presets",
-        expect.any(Error),
+        expect.any(Error)
       );
     });
   } finally {
@@ -119,6 +127,6 @@ test("preset fetch failures are logged instead of swallowed", async () => {
 
 test("preset detail helper summarizes descriptions and attached source names", () => {
   expect(presetDetailLine(hrPreset)).toBe(
-    "Company Wide Files and JF from the Magellan HR intranet — Includes: Company Wide Files, JF",
+    "Company Wide Files and JF from the Magellan HR intranet — Includes: Company Wide Files, JF"
   );
 });

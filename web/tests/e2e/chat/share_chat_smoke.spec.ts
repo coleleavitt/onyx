@@ -29,7 +29,9 @@ test.describe("Share chat smoke", () => {
     await page.locator('[aria-label="share-chat-button"]').click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator('[aria-label="share-modal-submit"]')).toBeDisabled();
+    await expect(
+      dialog.locator('[aria-label="share-modal-submit"]')
+    ).toBeDisabled();
 
     let publicPatchBody: Record<string, unknown> | null = null;
     await page.route("**/api/chat/chat-session/*", async (route) => {
@@ -49,13 +51,12 @@ test.describe("Share chat smoke", () => {
     );
 
     expect(publicPatchBody).toEqual({ sharing_status: "public" });
-    await expect(dialog.locator('[aria-label="share-modal-link-input"]')).toHaveValue(
-      /\/app\/shared\//,
-      { timeout: 5000 }
-    );
-    await expect(dialog.locator('[aria-label="share-modal-submit"]')).toHaveText(
-      "Copy Link"
-    );
+    await expect(
+      dialog.locator('[aria-label="share-modal-link-input"]')
+    ).toHaveValue(/\/app\/shared\//, { timeout: 5000 });
+    await expect(
+      dialog.locator('[aria-label="share-modal-submit"]')
+    ).toHaveText("Copy Link");
 
     await page.unrouteAll({ behavior: "ignoreErrors" });
     await page.keyboard.press("Escape");
@@ -72,9 +73,9 @@ test.describe("Share chat smoke", () => {
     await page.locator('[aria-label="share-chat-button"]').click();
     await expect(dialog).toBeVisible();
     await dialog.locator('[aria-label="share-modal-option-private"]').click();
-    await expect(dialog.locator('[aria-label="share-modal-submit"]')).toHaveText(
-      "Make Private"
-    );
+    await expect(
+      dialog.locator('[aria-label="share-modal-submit"]')
+    ).toHaveText("Make Private");
     await dialog.locator('[aria-label="share-modal-submit"]').click();
     await page.waitForResponse(
       (response) =>

@@ -50,7 +50,7 @@ export default function SpacePasteTextModal({
               await pasteTextToProject(
                 values.name.trim() || "Pasted text",
                 values.content,
-                projectId,
+                projectId
               );
               await fetchProjects();
               await refreshCurrentProjectDetails();
@@ -59,7 +59,7 @@ export default function SpacePasteTextModal({
               onClose();
             } catch (error) {
               toast.error(
-                error instanceof Error ? error.message : "Failed to save text.",
+                error instanceof Error ? error.message : "Failed to save text."
               );
             } finally {
               setSubmitting(false);

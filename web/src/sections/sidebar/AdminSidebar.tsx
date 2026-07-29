@@ -73,7 +73,7 @@ function buildItems({
 
   const add = (
     section: string | null,
-    route: Parameters<typeof sidebarItem>[0],
+    route: Parameters<typeof sidebarItem>[0]
   ) => {
     items.push({ ...sidebarItem(route), section });
   };
@@ -81,7 +81,7 @@ function buildItems({
   const addGated = (
     section: string | null,
     route: Parameters<typeof sidebarItem>[0],
-    requiredTier: Tier,
+    requiredTier: Tier
   ) => {
     items.push({
       ...sidebarItem(route),
@@ -104,7 +104,7 @@ function buildItems({
       addGated(
         SECTIONS.UNLABELED,
         ADMIN_ROUTES.CUSTOM_ANALYTICS,
-        Tier.ENTERPRISE,
+        Tier.ENTERPRISE
       );
     }
   }
@@ -236,12 +236,12 @@ export default function AdminSidebar() {
     user?.role === UserRole.CURATOR || user?.role === UserRole.GLOBAL_CURATOR;
   // Oversight can be delegated to a curator via the query-history permission.
   const canOverseeQueryHistory = Boolean(
-    user?.effective_permissions?.includes("read:query_history"),
+    user?.effective_permissions?.includes("read:query_history")
   );
   const planStateLoading = billingLoading || licenseLoading;
   const hasPaidPlan = Boolean(
     (billingData && hasActiveSubscription(billingData)) ||
-    licenseData?.has_license,
+    licenseData?.has_license
   );
   const hasBundledSelfHostedFeatures =
     !NEXT_PUBLIC_CLOUD_ENABLED &&
@@ -340,7 +340,7 @@ export default function AdminSidebar() {
                   tooltip={markdown(
                     requiredTier === Tier.ENTERPRISE
                       ? "This feature is available on the [Enterprise version of Onyx](/admin/billing) only."
-                      : "This feature is available on the [Business or Enterprise version of Onyx](/admin/billing) only.",
+                      : "This feature is available on the [Business or Enterprise version of Onyx](/admin/billing) only."
                   )}
                 >
                   {name}

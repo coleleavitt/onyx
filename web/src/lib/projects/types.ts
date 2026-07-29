@@ -168,7 +168,12 @@ export interface ConnectedSourceScope {
   link: string | null;
   parent_id: number | null;
   access_type: "PUBLIC" | "RESTRICTED";
-  curation_status: "DEFAULT_SAFE" | "STANDARD" | "ARCHIVE" | "HIDDEN" | "DIAGNOSTIC";
+  curation_status:
+    | "DEFAULT_SAFE"
+    | "STANDARD"
+    | "ARCHIVE"
+    | "HIDDEN"
+    | "DIAGNOSTIC";
   display_label: string | null;
   tenant_label: string | null;
   department_label: string | null;

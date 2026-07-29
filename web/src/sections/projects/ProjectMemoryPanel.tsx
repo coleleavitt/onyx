@@ -67,7 +67,7 @@ export default function ProjectMemoryPanel({
       await refresh();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add memory.",
+        error instanceof Error ? error.message : "Failed to add memory."
       );
     } finally {
       setBusy(false);

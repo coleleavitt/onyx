@@ -38,7 +38,7 @@ export default function SpaceFeatureModal({
       onClose();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to update featuring.",
+        error instanceof Error ? error.message : "Failed to update featuring."
       );
     } finally {
       setSaving(false);
@@ -71,7 +71,7 @@ export default function SpaceFeatureModal({
                 value={groupId ?? ""}
                 onChange={(event) =>
                   setGroupId(
-                    event.target.value ? Number(event.target.value) : null,
+                    event.target.value ? Number(event.target.value) : null
                   )
                 }
               >

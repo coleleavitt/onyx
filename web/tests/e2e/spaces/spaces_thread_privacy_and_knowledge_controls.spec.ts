@@ -44,11 +44,11 @@ test.describe("Space thread privacy and knowledge controls", () => {
       // Sharing is persisted, not just local state.
       const visibilityOf = async (): Promise<string | undefined> => {
         const details = await page.request.get(
-          `/api/user/projects/${projectId}/details`,
+          `/api/user/projects/${projectId}/details`
         );
         const payload = await details.json();
         const thread = payload.project.chat_sessions.find(
-          (session: { name: string }) => session.name === threadName,
+          (session: { name: string }) => session.name === threadName
         );
         return thread?.project_visibility;
       };
@@ -97,7 +97,7 @@ test.describe("Space thread privacy and knowledge controls", () => {
 
       // The pasted text became a real file rendered in the space.
       await expect(
-        page.getByText(`${fileName}.txt`, { exact: true }).first(),
+        page.getByText(`${fileName}.txt`, { exact: true }).first()
       ).toBeVisible({ timeout: 15_000 });
       await page.screenshot({ path: "artifacts/e2e-f4-file-in-space.png" });
     } finally {

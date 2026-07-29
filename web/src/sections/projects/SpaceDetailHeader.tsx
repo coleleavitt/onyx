@@ -81,9 +81,7 @@ export default function SpaceDetailHeader({
     } catch (error) {
       setDescription(project.description ?? "");
       toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to update description."
+        error instanceof Error ? error.message : "Failed to update description."
       );
     }
   }

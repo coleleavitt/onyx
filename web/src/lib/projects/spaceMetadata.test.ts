@@ -32,9 +32,7 @@ describe("space instructions round-trip", () => {
   });
 
   it("keeps plain instructions untouched when there is no meta block", () => {
-    const { instructions, meta } = parseSpaceInstructions(
-      "Summarize weekly."
-    );
+    const { instructions, meta } = parseSpaceInstructions("Summarize weekly.");
     expect(instructions).toBe("Summarize weekly.");
     expect(meta).toEqual(emptySpaceMeta());
   });

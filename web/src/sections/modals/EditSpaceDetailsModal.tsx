@@ -28,14 +28,14 @@ const validationSchema = Yup.object({
     .trim()
     .max(
       SPACE_NAME_MAX_LENGTH,
-      `Space name must be ${SPACE_NAME_MAX_LENGTH} characters or fewer`,
+      `Space name must be ${SPACE_NAME_MAX_LENGTH} characters or fewer`
     )
     .required("Space name is required"),
   description: Yup.string()
     .trim()
     .max(
       SPACE_DESCRIPTION_MAX_LENGTH,
-      `Space description must be ${SPACE_DESCRIPTION_MAX_LENGTH} characters or fewer`,
+      `Space description must be ${SPACE_DESCRIPTION_MAX_LENGTH} characters or fewer`
     ),
 });
 
@@ -79,7 +79,7 @@ export default function EditSpaceDetailsModal({
               toast.error(
                 error instanceof Error
                   ? error.message
-                  : "Failed to update space details.",
+                  : "Failed to update space details."
               );
             } finally {
               setSubmitting(false);

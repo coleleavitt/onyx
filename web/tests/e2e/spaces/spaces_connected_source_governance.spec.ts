@@ -20,52 +20,75 @@ test.describe("Spaces connected-source governance", () => {
     const spaceName = `E2E Governed Sources ${stamp}`;
     const projectId = await apiClient.createProject(
       spaceName,
-      "Governed SharePoint source selection smoke",
+      "Governed SharePoint source selection smoke"
     );
 
     try {
       await spaceDetail.goto({ spaceName, projectId });
       await spaceDetail.expectDetailSectionsVisible();
 
-      await page.getByRole("button", { name: "Add connected source" }).first().click();
-      const dialog = page.getByRole("dialog", { name: /Add knowledge to space/i });
+      await page
+        .getByRole("button", { name: "Add connected source" })
+        .first()
+        .click();
+      const dialog = page.getByRole("dialog", {
+        name: /Add knowledge to space/i,
+      });
       await expect(dialog).toBeVisible();
-      await expect(dialog.getByRole("tab", { name: "Connected sources" })).toBeVisible();
-      await expect(dialog.getByRole("tab", { name: "Uploaded files" })).toBeVisible();
+      await expect(
+        dialog.getByRole("tab", { name: "Connected sources" })
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("tab", { name: "Uploaded files" })
+      ).toBeVisible();
 
       await dialog.getByRole("tab", { name: "Uploaded files" }).click();
-      await expect(dialog.getByRole("button", { name: "Upload local files" })).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "Upload local folder" })).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: "Upload local files" })
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("button", { name: "Upload local folder" })
+      ).toBeVisible();
       await dialog.getByRole("tab", { name: "Connected sources" }).click();
 
       await expect(dialog.getByText("TestSprite Tenant")).toBeVisible({
         timeout: 15_000,
       });
-      const seededDepartment = dialog.getByText("TestSprite Advisor Services").first();
+      const seededDepartment = dialog
+        .getByText("TestSprite Advisor Services")
+        .first();
       await expect(seededDepartment).toBeVisible();
       await seededDepartment.click();
       await expect(dialog.locator(".content-column-layout")).toBeVisible();
       // Browsing must NOT auto-attach: the footer still shows no selections.
       await expect(
-        dialog.getByText("No connected-source selections"),
+        dialog.getByText("No connected-source selections")
       ).toBeVisible();
       // Attaching is an explicit checkbox action.
       await dialog
         .getByRole("checkbox", { name: "Attach TestSprite Advisor Services" })
         .click();
       await expect(
-        dialog.getByText("1 connected-source selection", { exact: true }),
+        dialog.getByText("1 connected-source selection", { exact: true })
       ).toBeVisible();
       await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog).toHaveCount(0);
       await spaceDetail.reload();
-      await expect(page.getByText("Connected sources", { exact: true }).first()).toBeVisible();
-      await expect(page.getByText("TestSprite Advisor Services").first()).toBeVisible();
-      console.log("governed source smoke: selected TestSprite Advisor Services");
+      await expect(
+        page.getByText("Connected sources", { exact: true }).first()
+      ).toBeVisible();
+      await expect(
+        page.getByText("TestSprite Advisor Services").first()
+      ).toBeVisible();
+      console.log(
+        "governed source smoke: selected TestSprite Advisor Services"
+      );
 
       const shareDialog = await spaceDetail.openShareDialog();
       await expect(shareDialog.getByText("Invite by email")).toBeVisible();
-      await expect(shareDialog.getByPlaceholder("teammate@example.com")).toBeVisible();
+      await expect(
+        shareDialog.getByPlaceholder("teammate@example.com")
+      ).toBeVisible();
       await page.keyboard.press("Escape");
     } finally {
       await apiClient.deleteProject(projectId);

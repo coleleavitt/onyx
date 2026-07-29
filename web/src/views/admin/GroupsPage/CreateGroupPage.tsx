@@ -32,7 +32,9 @@ function CreateGroupPage() {
   const [selectedCcPairIds, setSelectedCcPairIds] = useState<number[]>([]);
   const [selectedDocSetIds, setSelectedDocSetIds] = useState<number[]>([]);
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
-  const [selectedSourceScopeIds, setSelectedSourceScopeIds] = useState<number[]>([]);
+  const [selectedSourceScopeIds, setSelectedSourceScopeIds] = useState<
+    number[]
+  >([]);
   const [tokenLimits, setTokenLimits] = useState<TokenLimit[]>([
     { tokenBudget: null, periodHours: null },
   ]);

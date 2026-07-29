@@ -11,7 +11,9 @@ PRD_PATH = ROOT / "docs/testsprite/space-connected-knowledge-prd.json"
 CODE_SUMMARY_PATH = ROOT / "docs/testsprite/space-connected-knowledge-code-summary.yaml"
 PLAN_PATH = ROOT / "docs/testsprite/space-connected-knowledge-test-plan.json"
 COVERAGE_PATH = ROOT / "docs/testsprite/space-connected-knowledge-coverage.json"
-INVENTORY_PATH = ROOT / "docs/testsprite/space-connected-knowledge-testsprite-tests.json"
+INVENTORY_PATH = (
+    ROOT / "docs/testsprite/space-connected-knowledge-testsprite-tests.json"
+)
 
 
 def load_json(path: Path) -> dict:
@@ -85,9 +87,7 @@ def main() -> None:
         assert covering_tests, requirement_id
         assert set(covering_tests).issubset(test_ids), requirement_id
 
-    assert plan["meta"]["testsprite_inventory"] == str(
-        INVENTORY_PATH.relative_to(ROOT)
-    )
+    assert plan["meta"]["testsprite_inventory"] == str(INVENTORY_PATH.relative_to(ROOT))
     assert coverage["meta"]["testsprite_inventory"] == str(
         INVENTORY_PATH.relative_to(ROOT)
     )

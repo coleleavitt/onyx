@@ -34,7 +34,7 @@ export default function SpaceSkillsSection({
 
   const allSkills: Skill[] = useMemo(
     () => [...(skillsList?.builtins ?? []), ...(skillsList?.customs ?? [])],
-    [skillsList],
+    [skillsList]
   );
   const byId = useMemo(() => {
     const map = new Map<string, Skill>();
@@ -54,7 +54,7 @@ export default function SpaceSkillsSection({
       .filter(
         (skill) =>
           normalizedQuery.length === 0 ||
-          skill.name.toLowerCase().includes(normalizedQuery),
+          skill.name.toLowerCase().includes(normalizedQuery)
       );
   }, [allSkills, selectedIds, query]);
 
@@ -65,7 +65,7 @@ export default function SpaceSkillsSection({
       setQuery("");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to add skill.",
+        error instanceof Error ? error.message : "Failed to add skill."
       );
     } finally {
       setBusy(false);
@@ -81,7 +81,7 @@ export default function SpaceSkillsSection({
       });
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to remove skill.",
+        error instanceof Error ? error.message : "Failed to remove skill."
       );
     } finally {
       setBusy(false);

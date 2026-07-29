@@ -17,7 +17,7 @@ async function renameGroup(groupId: number, newName: string): Promise<void> {
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(
-      detail?.detail ?? `Failed to rename group: ${res.statusText}`,
+      detail?.detail ?? `Failed to rename group: ${res.statusText}`
     );
   }
 }
@@ -25,7 +25,7 @@ async function renameGroup(groupId: number, newName: string): Promise<void> {
 async function createGroup(
   name: string,
   userIds: string[],
-  ccPairIds: number[] = [],
+  ccPairIds: number[] = []
 ): Promise<number> {
   const res = await fetch(USER_GROUP_URL, {
     method: "POST",
@@ -39,7 +39,7 @@ async function createGroup(
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(
-      detail?.detail ?? `Failed to create group: ${res.statusText}`,
+      detail?.detail ?? `Failed to create group: ${res.statusText}`
     );
   }
   const group = await res.json();
@@ -49,7 +49,7 @@ async function createGroup(
 async function updateGroup(
   groupId: number,
   userIds: string[],
-  ccPairIds: number[],
+  ccPairIds: number[]
 ): Promise<void> {
   const res = await fetch(`${USER_GROUP_URL}/${groupId}`, {
     method: "PATCH",
@@ -62,7 +62,7 @@ async function updateGroup(
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(
-      detail?.detail ?? `Failed to update group: ${res.statusText}`,
+      detail?.detail ?? `Failed to update group: ${res.statusText}`
     );
   }
 }
@@ -74,7 +74,7 @@ async function deleteGroup(groupId: number): Promise<void> {
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(
-      detail?.detail ?? `Failed to delete group: ${res.statusText}`,
+      detail?.detail ?? `Failed to delete group: ${res.statusText}`
     );
   }
 }
@@ -86,7 +86,7 @@ async function deleteGroup(groupId: number): Promise<void> {
 async function updateAgentGroupSharing(
   groupId: number,
   initialAgentIds: number[],
-  currentAgentIds: number[],
+  currentAgentIds: number[]
 ): Promise<void> {
   const initialSet = new Set(initialAgentIds);
   const currentSet = new Set(currentAgentIds);
@@ -104,7 +104,7 @@ async function updateAgentGroupSharing(
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new Error(
-      detail?.detail ?? `Failed to update agent sharing: ${res.statusText}`,
+      detail?.detail ?? `Failed to update agent sharing: ${res.statusText}`
     );
   }
 }
@@ -126,7 +126,7 @@ interface DocumentSetSummary {
 async function updateDocSetGroupSharing(
   groupId: number,
   initialDocSetIds: number[],
-  currentDocSetIds: number[],
+  currentDocSetIds: number[]
 ): Promise<void> {
   const initialSet = new Set(initialDocSetIds);
   const currentSet = new Set(currentDocSetIds);
@@ -206,7 +206,7 @@ async function updateDocSetGroupSharing(
 async function updateConnectedSourceScopeGroupSharing(
   groupId: number,
   initialScopeIds: number[],
-  currentScopeIds: number[],
+  currentScopeIds: number[]
 ): Promise<void> {
   const initialSet = new Set(initialScopeIds);
   const currentSet = new Set(currentScopeIds);
@@ -252,12 +252,12 @@ interface ExistingTokenLimit {
 async function saveTokenLimits(
   groupId: number,
   limits: TokenLimitPayload[],
-  existing: ExistingTokenLimit[],
+  existing: ExistingTokenLimit[]
 ): Promise<void> {
   // Filter to only valid (non-null) limits
   const validLimits = limits.filter(
     (l): l is { tokenBudget: number; periodHours: number } =>
-      l.tokenBudget != null && l.periodHours != null,
+      l.tokenBudget != null && l.periodHours != null
   );
 
   // Update existing limits (match by index position)
@@ -275,11 +275,11 @@ async function saveTokenLimits(
           token_budget: limit.tokenBudget,
           period_hours: limit.periodHours,
         }),
-      },
+      }
     );
     if (!updateRes.ok) {
       throw new Error(
-        `Failed to update token rate limit ${existingLimit.token_id}`,
+        `Failed to update token rate limit ${existingLimit.token_id}`
       );
     }
   }
@@ -297,7 +297,7 @@ async function saveTokenLimits(
           token_budget: limit.tokenBudget,
           period_hours: limit.periodHours,
         }),
-      },
+      }
     );
     if (!createRes.ok) {
       throw new Error("Failed to create token rate limit");
@@ -309,11 +309,11 @@ async function saveTokenLimits(
     const existingLimit = existing[i]!;
     const deleteRes = await fetch(
       `/api/admin/token-rate-limits/rate-limit/${existingLimit.token_id}`,
-      { method: "DELETE" },
+      { method: "DELETE" }
     );
     if (!deleteRes.ok) {
       throw new Error(
-        `Failed to delete token rate limit ${existingLimit.token_id}`,
+        `Failed to delete token rate limit ${existingLimit.token_id}`
       );
     }
   }
@@ -323,7 +323,7 @@ async function saveTokenLimits(
 // (query history) surface, for anyone including admins.
 async function setGroupOversightExclusion(
   groupId: number,
-  excludedFromOversight: boolean,
+  excludedFromOversight: boolean
 ): Promise<void> {
   const response = await fetch(
     `/api/manage/admin/user-group/${groupId}/oversight-exclusion`,
@@ -331,7 +331,7 @@ async function setGroupOversightExclusion(
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ excluded_from_oversight: excludedFromOversight }),
-    },
+    }
   );
   if (!response.ok) {
     throw new Error("Failed to update oversight exclusion");
@@ -343,7 +343,7 @@ async function setGroupOversightExclusion(
 async function setGroupPermission(
   groupId: number,
   permission: string,
-  enabled: boolean,
+  enabled: boolean
 ): Promise<void> {
   const response = await fetch(
     `/api/manage/admin/user-group/${groupId}/permissions`,
@@ -351,7 +351,7 @@ async function setGroupPermission(
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ permission, enabled }),
-    },
+    }
   );
   if (!response.ok) {
     throw new Error("Failed to update group permission");
@@ -363,7 +363,7 @@ async function setGroupPermission(
 async function setGroupCurator(
   groupId: number,
   userId: string,
-  isCurator: boolean,
+  isCurator: boolean
 ): Promise<void> {
   const response = await fetch(
     `/api/manage/admin/user-group/${groupId}/set-curator`,
@@ -371,7 +371,7 @@ async function setGroupCurator(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId, is_curator: isCurator }),
-    },
+    }
   );
   if (!response.ok) {
     throw new Error("Failed to update curator");

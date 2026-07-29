@@ -361,7 +361,6 @@ class TestExtractContextFiles:
             f"but build_file_context uses '{chat_history_file_id}'."
         )
 
-
     def test_tabular_content_is_injected_when_extracted_text_is_available(self) -> None:
         from onyx.chat.chat_utils import build_file_context
 

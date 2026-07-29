@@ -16,6 +16,7 @@ nodes for that site instead of copying files, per the Onyx model:
 
 Prints JSON with the node ids the Playwright spec needs. Idempotent.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,13 +26,13 @@ from sqlalchemy import select
 from onyx.configs.constants import DocumentSource
 from onyx.db.connected_source_governance import create_connected_knowledge_preset
 from onyx.db.connected_source_governance import upsert_connected_source_scope
-from onyx.db.models import ProjectConnectedKnowledgePreset
-from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.engine.sql_engine import get_session_with_current_tenant
+from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.enums import ConnectedSourceAccessType
 from onyx.db.enums import ConnectedSourceCurationStatus
 from onyx.db.enums import HierarchyNodeType
 from onyx.db.models import HierarchyNode
+from onyx.db.models import ProjectConnectedKnowledgePreset
 from onyx.db.models import UserGroup
 from shared_configs.configs import POSTGRES_DEFAULT_SCHEMA
 from shared_configs.contextvars import CURRENT_TENANT_ID_CONTEXTVAR
@@ -156,9 +157,7 @@ def main() -> None:
                 )
             )
             preset_node_ids = [
-                node.id
-                for node in (company_wide, jf_folder)
-                if node is not None
+                node.id for node in (company_wide, jf_folder) if node is not None
             ]
             if preset is None and preset_node_ids:
                 preset = create_connected_knowledge_preset(

@@ -38,7 +38,7 @@ export class SpaceDetailPage {
 
   async goto(route: SpaceRoute): Promise<void> {
     await this.page.goto(
-      `/app/spaces/${slugify(route.spaceName)}-${route.projectId}`,
+      `/app/spaces/${slugify(route.spaceName)}-${route.projectId}`
     );
     await this.page.waitForLoadState("networkidle");
   }
@@ -56,10 +56,10 @@ export class SpaceDetailPage {
 
   async expectMainColumnWithoutDuplicateTabs(): Promise<void> {
     await expect(this.page.getByRole("tab", { name: "Threads" })).toHaveCount(
-      0,
+      0
     );
     await expect(this.page.getByRole("tab", { name: "Customize" })).toHaveCount(
-      0,
+      0
     );
     await expect(this.inputBox).toBeVisible();
   }
@@ -76,27 +76,27 @@ export class SpaceDetailPage {
     });
     await expect(showDetails).toBeVisible();
     await expect(
-      this.page.getByText("Instructions", { exact: true }),
+      this.page.getByText("Instructions", { exact: true })
     ).toHaveCount(0);
 
     await showDetails.click();
     await expect(
-      this.page.getByText("Instructions", { exact: true }).first(),
+      this.page.getByText("Instructions", { exact: true }).first()
     ).toBeVisible();
   }
 
   async expectDetailSectionsVisible(): Promise<void> {
     await expect(
-      this.page.getByText("Connected sources", { exact: true }).first(),
+      this.page.getByText("Connected sources", { exact: true }).first()
     ).toBeVisible();
     await expect(
-      this.page.getByText("Links", { exact: true }).first(),
+      this.page.getByText("Links", { exact: true }).first()
     ).toBeVisible();
     await expect(
-      this.page.getByText("Skills", { exact: true }).first(),
+      this.page.getByText("Skills", { exact: true }).first()
     ).toBeVisible();
     await expect(
-      this.page.getByText("Scheduled Tasks", { exact: true }).first(),
+      this.page.getByText("Scheduled Tasks", { exact: true }).first()
     ).toBeVisible();
   }
 
@@ -138,13 +138,13 @@ export class SpaceDetailPage {
 
   async expectAddControlsEnabled(): Promise<void> {
     await expect(
-      this.page.getByRole("button", { name: "Add skills" }).first(),
+      this.page.getByRole("button", { name: "Add skills" }).first()
     ).toBeEnabled();
     await expect(
-      this.page.getByRole("button", { name: "Create scheduled task" }).first(),
+      this.page.getByRole("button", { name: "Create scheduled task" }).first()
     ).toBeEnabled();
     await expect(
-      this.page.getByText("Link support is coming soon"),
+      this.page.getByText("Link support is coming soon")
     ).toHaveCount(0);
   }
 
@@ -159,21 +159,21 @@ export class SpaceDetailPage {
     });
     await expect(dialog).toBeVisible();
     await expect(
-      dialog.getByRole("tab", { name: "Connected sources" }),
+      dialog.getByRole("tab", { name: "Connected sources" })
     ).toBeVisible();
     await expect(
-      dialog.getByRole("tab", { name: "Uploaded files" }),
+      dialog.getByRole("tab", { name: "Uploaded files" })
     ).toBeVisible();
 
     const emptyState = dialog.getByText(
-      "No indexed connector sources are available.",
+      "No indexed connector sources are available."
     );
     const sourceSidebar = dialog.locator(
-      '[aria-label="space-connected-source-sidebar"]',
+      '[aria-label="space-connected-source-sidebar"]'
     );
     const rows = dialog.locator(".content-column-layout .table-row-layout");
     const emptyBrowserText = dialog.getByText(
-      /No items in this folder|Select a folder to browse documents/i,
+      /No items in this folder|Select a folder to browse documents/i
     );
     const branchState: { value: "empty" | "browser" | "loading" } = {
       value: "loading",
@@ -198,10 +198,10 @@ export class SpaceDetailPage {
 
     await dialog.getByRole("tab", { name: "Uploaded files" }).click();
     await expect(
-      dialog.getByRole("button", { name: "Upload local files" }),
+      dialog.getByRole("button", { name: "Upload local files" })
     ).toBeVisible();
     await expect(
-      dialog.getByRole("button", { name: "Upload local folder" }),
+      dialog.getByRole("button", { name: "Upload local folder" })
     ).toBeVisible();
 
     if (branchState.value === "empty") {
@@ -228,7 +228,7 @@ export class SpaceDetailPage {
 
     await this.reload();
     await expect(
-      this.page.getByText("Connected sources", { exact: true }).first(),
+      this.page.getByText("Connected sources", { exact: true }).first()
     ).toBeVisible();
     await expect(this.page.getByText(selectedLabel!).first()).toBeVisible();
     console.log(`space connected sources smoke: selected ${selectedLabel}`);
@@ -242,11 +242,11 @@ export class SpaceDetailPage {
       .filter({ hasText: "Upload Files" })
       .first();
     await expect(
-      popover.getByText("Upload Files", { exact: true }).first(),
+      popover.getByText("Upload Files", { exact: true }).first()
     ).toBeVisible();
 
     const popoverWidth = await popover.evaluate(
-      (element) => element.getBoundingClientRect().width,
+      (element) => element.getBoundingClientRect().width
     );
     expect(popoverWidth).toBeLessThanOrEqual(224);
 
@@ -263,18 +263,18 @@ export class SpaceDetailPage {
     await expect(dialog).toBeVisible();
 
     const dialogWidth = await dialog.evaluate(
-      (element) => element.getBoundingClientRect().width,
+      (element) => element.getBoundingClientRect().width
     );
     expect(dialogWidth).toBeGreaterThanOrEqual(560);
 
     const descriptionInput = dialog.locator('textarea[name="description"]');
     await expect(descriptionInput).toBeVisible();
     const descriptionHeight = await descriptionInput.evaluate(
-      (element) => element.getBoundingClientRect().height,
+      (element) => element.getBoundingClientRect().height
     );
     expect(descriptionHeight).toBeGreaterThanOrEqual(90);
     const descriptionWidth = await descriptionInput.evaluate(
-      (element) => element.getBoundingClientRect().width,
+      (element) => element.getBoundingClientRect().width
     );
     expect(descriptionWidth).toBeGreaterThanOrEqual(500);
 
@@ -305,8 +305,8 @@ export class SpaceDetailPage {
         .evaluateAll(
           (elements) =>
             elements.filter((element) =>
-              getComputedStyle(element).backgroundImage.includes("url("),
-            ).length,
+              getComputedStyle(element).backgroundImage.includes("url(")
+            ).length
         );
     } catch {
       // The space route can still be hydrating/navigating when the poll starts.

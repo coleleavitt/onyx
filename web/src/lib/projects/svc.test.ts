@@ -1,4 +1,7 @@
-import { createProject, fetchConnectedKnowledgePresets } from "@/lib/projects/svc";
+import {
+  createProject,
+  fetchConnectedKnowledgePresets,
+} from "@/lib/projects/svc";
 import { updateConnectedSourceScopeGroupSharing } from "@/views/admin/GroupsPage/svc";
 
 beforeEach(() => {
@@ -40,7 +43,6 @@ test("fetchConnectedKnowledgePresets uses the shipped presets endpoint", async (
     "/api/user/projects/connected-knowledge-presets"
   );
 });
-
 
 test("removing the last group from a connected source scope keeps it restricted", async () => {
   (global.fetch as jest.Mock)

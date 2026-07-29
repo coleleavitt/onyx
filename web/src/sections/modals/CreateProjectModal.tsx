@@ -36,7 +36,7 @@ export function presetOptionLabel(preset: ConnectedKnowledgePreset): string {
  * are committing a new space to before creating it.
  */
 export function presetDetailLine(
-  preset: ConnectedKnowledgePreset | undefined,
+  preset: ConnectedKnowledgePreset | undefined
 ): string | null {
   if (!preset) return null;
   const nodeCount = preset.connected_knowledge.hierarchy_nodes.length;
@@ -52,12 +52,12 @@ export function presetDetailLine(
     summaryPieces.push(
       nodeCount > sourceTitles.length
         ? `${listed} +${nodeCount - sourceTitles.length} more`
-        : listed,
+        : listed
     );
   }
   if (documentCount > 0) {
     summaryPieces.push(
-      `${documentCount} document${documentCount === 1 ? "" : "s"}`,
+      `${documentCount} document${documentCount === 1 ? "" : "s"}`
     );
   }
   if (summaryPieces.length > 0) {
@@ -196,7 +196,7 @@ export default function CreateProjectModal({
                       onValueChange={(value) =>
                         setFieldValue(
                           "presetId",
-                          value === NO_PRESET_VALUE ? "" : value,
+                          value === NO_PRESET_VALUE ? "" : value
                         )
                       }
                     >
@@ -218,8 +218,8 @@ export default function CreateProjectModal({
                     {(() => {
                       const detail = presetDetailLine(
                         presets.find(
-                          (preset) => String(preset.id) === values.presetId,
-                        ),
+                          (preset) => String(preset.id) === values.presetId
+                        )
                       );
                       return detail ? (
                         <Text font="secondary-body" color="text-03">

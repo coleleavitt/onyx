@@ -1330,7 +1330,13 @@ class DocumentQuery:
 
         if excluded_hierarchy_node_ids:
             filter_clauses.append(
-                {"bool": {"must_not": [_get_hierarchy_node_filter(excluded_hierarchy_node_ids)]}}
+                {
+                    "bool": {
+                        "must_not": [
+                            _get_hierarchy_node_filter(excluded_hierarchy_node_ids)
+                        ]
+                    }
+                }
             )
 
         if created_at_range is not None or updated_at_range is not None:

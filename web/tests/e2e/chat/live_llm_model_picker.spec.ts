@@ -73,8 +73,8 @@ test.describe("Live LLM model picker", () => {
     await expect(chat.aiMessages.last()).toContainText(expectedText, {
       timeout: 30000,
     });
-    await expect(page.getByText("There was an error with the response")).toHaveCount(
-      0
-    );
+    await expect(
+      page.getByText("There was an error with the response")
+    ).toHaveCount(0);
   });
 });

@@ -115,7 +115,9 @@ export default function SaveArtifactModal({
                   <div className="px-2 py-1">
                     <InputTypeIn
                       value={destinationQuery}
-                      onChange={(event) => setDestinationQuery(event.target.value)}
+                      onChange={(event) =>
+                        setDestinationQuery(event.target.value)
+                      }
                       placeholder="Search artifacts"
                       searchIcon
                       clearButton
@@ -134,7 +136,9 @@ export default function SaveArtifactModal({
                       disabled={loadingDestinations}
                       onClick={() => void loadDestinations(nextCursor)}
                     >
-                      {loadingDestinations ? "Loading..." : "Load more artifacts"}
+                      {loadingDestinations
+                        ? "Loading..."
+                        : "Load more artifacts"}
                     </Button>
                   ) : null}
                 </InputSelect.Content>

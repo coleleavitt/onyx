@@ -28,7 +28,9 @@ export async function fetchHierarchyNodes(
   const params = new URLSearchParams({ source });
   if (options?.includeArchived) params.set("include_archived", "true");
   if (options?.includeHidden) params.set("include_hidden", "true");
-  const response = await fetch(`${HIERARCHY_NODES_PREFIX}?${params.toString()}`);
+  const response = await fetch(
+    `${HIERARCHY_NODES_PREFIX}?${params.toString()}`
+  );
 
   if (!response.ok) {
     const detail = await extractErrorDetail(

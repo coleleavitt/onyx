@@ -47,14 +47,14 @@ function FileLineItem({
       String(projectFile.status) === UserFileStatus.PROCESSING ||
       String(projectFile.status) === UserFileStatus.UPLOADING ||
       String(projectFile.status) === UserFileStatus.DELETING,
-    [projectFile.status],
+    [projectFile.status]
   );
 
   const disableActionButton = useMemo(
     () =>
       String(projectFile.status) === UserFileStatus.UPLOADING ||
       String(projectFile.status) === UserFileStatus.DELETING,
-    [projectFile.status],
+    [projectFile.status]
   );
 
   return (
@@ -208,7 +208,7 @@ export default function FilePickerPopover({
   const [open, setOpen] = useState(false);
   // Snapshot of recent files to avoid re-arranging when the modal is open
   const [recentFilesSnapshot, setRecentFilesSnapshot] = useState<ProjectFile[]>(
-    [],
+    []
   );
   const { deleteUserFile, setCurrentMessageFiles } = useProjectsContext();
   const [deletedFileIds, setDeletedFileIds] = useState<string[]>([]);
@@ -217,7 +217,7 @@ export default function FilePickerPopover({
 
   useEffect(() => {
     setRecentFilesSnapshot(
-      allRecentFiles.slice().filter((f) => !deletedFileIds.includes(f.id)),
+      allRecentFiles.slice().filter((f) => !deletedFileIds.includes(f.id))
     );
   }, [allRecentFiles]);
 
@@ -225,23 +225,23 @@ export default function FilePickerPopover({
     const lastStatus = file.status;
     setRecentFilesSnapshot((prev) =>
       prev.map((f) =>
-        f.id === file.id ? { ...f, status: UserFileStatus.DELETING } : f,
-      ),
+        f.id === file.id ? { ...f, status: UserFileStatus.DELETING } : f
+      )
     );
     deleteUserFile(file.id)
       .then((result) => {
         if (!result.has_associations) {
           toast.success("File deleted successfully");
           setCurrentMessageFiles((prev) =>
-            prev.filter((f) => f.id !== file.id),
+            prev.filter((f) => f.id !== file.id)
           );
           setDeletedFileIds((prev) => [...prev, file.id]);
           setRecentFilesSnapshot((prev) => prev.filter((f) => f.id != file.id));
         } else {
           setRecentFilesSnapshot((prev) =>
             prev.map((f) =>
-              f.id === file.id ? { ...f, status: lastStatus } : f,
-            ),
+              f.id === file.id ? { ...f, status: lastStatus } : f
+            )
           );
           let projects = result.project_names.join(", ");
           let assistants = result.assistant_names.join(", ");
@@ -262,9 +262,7 @@ export default function FilePickerPopover({
       .catch((error) => {
         // Revert status and show error if the delete request fails
         setRecentFilesSnapshot((prev) =>
-          prev.map((f) =>
-            f.id === file.id ? { ...f, status: lastStatus } : f,
-          ),
+          prev.map((f) => (f.id === file.id ? { ...f, status: lastStatus } : f))
         );
         toast.error("Failed to delete file. Please try again.");
         // Useful for debugging; safe in client components
@@ -308,7 +306,10 @@ export default function FilePickerPopover({
         <Popover.Content
           align={compact ? "end" : "start"}
           side="bottom"
-          width={compact ? "md" : "lg"}
+          // md (12rem) is narrower than this menu's own copy -- "Upload a file
+          // from your device" needs 161px against a 142px text column, so it
+          // clipped mid-word. lg (15rem) fits it.
+          width={compact ? "lg" : "xl"}
         >
           <FilePickerPopoverContents
             recentFiles={recentFilesSnapshot}

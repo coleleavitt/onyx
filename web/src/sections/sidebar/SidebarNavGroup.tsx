@@ -11,11 +11,11 @@ const GROUP_EXPANDED_PREFIX = "opal-sidebar-group-expanded-";
 
 function readPersistedExpanded(
   persistKey: string | undefined,
-  defaultExpanded: boolean,
+  defaultExpanded: boolean
 ): boolean {
   if (!persistKey || typeof window === "undefined") return defaultExpanded;
   const stored = window.localStorage.getItem(
-    `${GROUP_EXPANDED_PREFIX}${persistKey}`,
+    `${GROUP_EXPANDED_PREFIX}${persistKey}`
   );
   if (stored === "true") return true;
   if (stored === "false") return false;
@@ -58,7 +58,7 @@ export default function SidebarNavGroup({
   children,
 }: SidebarNavGroupProps) {
   const [expanded, setExpanded] = useState<boolean>(() =>
-    readPersistedExpanded(persistKey, defaultExpanded),
+    readPersistedExpanded(persistKey, defaultExpanded)
   );
 
   const toggle = useCallback(
@@ -72,13 +72,13 @@ export default function SidebarNavGroup({
         if (persistKey && typeof window !== "undefined") {
           window.localStorage.setItem(
             `${GROUP_EXPANDED_PREFIX}${persistKey}`,
-            String(next),
+            String(next)
           );
         }
         return next;
       });
     },
-    [persistKey],
+    [persistKey]
   );
 
   const canToggle = !folded && hasChildren;
@@ -91,7 +91,7 @@ export default function SidebarNavGroup({
           // On row hover, fade the base icon out so the overlaid chevron reads
           // as the icon morphing into a toggle.
           canToggle &&
-            "[&_.opal-content-sm-icon]:transition-opacity [&_.opal-content-sm-icon]:duration-100 [&:hover_.opal-content-sm-icon]:opacity-0 [&:hover_.navgroup-reveal]:opacity-100 [&:hover_.navgroup-reveal]:pointer-events-auto",
+            "[&_.opal-content-sm-icon]:transition-opacity [&_.opal-content-sm-icon]:duration-100 [&:hover_.opal-content-sm-icon]:opacity-0 [&:hover_.navgroup-reveal]:opacity-100 [&:hover_.navgroup-reveal]:pointer-events-auto"
         )}
       >
         <SidebarTab
@@ -123,7 +123,7 @@ export default function SidebarNavGroup({
               aria-hidden
               className={cn(
                 "h-4 w-4 stroke-text-03 transition-transform duration-150",
-                expanded && "rotate-90",
+                expanded && "rotate-90"
               )}
             />
           </button>

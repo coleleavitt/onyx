@@ -69,7 +69,10 @@ async function createPublicProvider(
   return body.id;
 }
 
-async function waitForVisibleModel(page: Page, modelName: string): Promise<void> {
+async function waitForVisibleModel(
+  page: Page,
+  modelName: string
+): Promise<void> {
   await expect
     .poll(
       async () => {
@@ -114,7 +117,9 @@ test.describe("Multi-model picker", () => {
     }
   });
 
-  test("adding a second model sends multi-model overrides", async ({ page }) => {
+  test("adding a second model sends multi-model overrides", async ({
+    page,
+  }) => {
     const providerName = uniqueName("PW Multi Picker Provider");
     const extraModelName = uniqueName("pw-multi-picker-model");
     providerId = await createPublicProvider(page, providerName, extraModelName);
@@ -126,7 +131,9 @@ test.describe("Multi-model picker", () => {
     await openModelPicker(page);
     const dialog = page.locator('[role="dialog"]');
     await dialog.getByPlaceholder("Search models...").fill(extraModelName);
-    const extraOption = dialog.locator('[data-interactive-state="empty"]').first();
+    const extraOption = dialog
+      .locator('[data-interactive-state="empty"]')
+      .first();
     await expect(extraOption).toBeVisible({ timeout: 15000 });
     await extraOption.click();
 

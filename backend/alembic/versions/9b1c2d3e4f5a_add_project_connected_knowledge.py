@@ -31,7 +31,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["hierarchy_node_id"], ["hierarchy_node.id"], ondelete="CASCADE"
         ),
-        sa.ForeignKeyConstraint(["project_id"], ["user_project.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["project_id"], ["user_project.id"], ondelete="CASCADE"
+        ),
         sa.PrimaryKeyConstraint("project_id", "hierarchy_node_id"),
     )
     op.create_index(
@@ -52,7 +54,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["document_id"], ["document.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["project_id"], ["user_project.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(
+            ["project_id"], ["user_project.id"], ondelete="CASCADE"
+        ),
         sa.PrimaryKeyConstraint("project_id", "document_id"),
     )
     op.create_index(

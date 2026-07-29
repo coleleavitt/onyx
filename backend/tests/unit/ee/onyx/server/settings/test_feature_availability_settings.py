@@ -14,6 +14,7 @@ from onyx.server.settings.models import Tier
 def base_settings() -> Settings:
     return Settings(application_status=ApplicationStatus.ACTIVE)
 
+
 @patch("ee.onyx.server.settings.api.MULTI_TENANT", False)
 @patch("ee.onyx.server.settings.api.global_version")
 def test_self_hosted_complete_build_is_enterprise(

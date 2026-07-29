@@ -58,9 +58,7 @@ export function useInvitedSpaceIds(projects: Project[]): ReadonlySet<number> {
     ).then((results) => {
       // Ignore stale responses (a newer candidate set superseded this one).
       if (cancelled || requestId !== latestRequest.current) return;
-      setInvitedIds(
-        new Set(results.filter((id): id is number => id !== null))
-      );
+      setInvitedIds(new Set(results.filter((id): id is number => id !== null)));
     });
 
     return () => {
