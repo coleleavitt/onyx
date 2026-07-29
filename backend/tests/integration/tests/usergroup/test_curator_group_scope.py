@@ -7,6 +7,9 @@ they curate) via:
     PATCH /manage/admin/user-group/{user_group_id}
     POST  /manage/admin/user-group/{user_group_id}/add-users
 
+The same shape later turned up on the targeted-reindex routes, covered by
+``test_curator_cannot_reindex_unscoped_cc_pair`` at the bottom of this file.
+
 Both routes guard with ``current_curator_or_admin_user`` (which only proves the
 caller is a curator/admin *somewhere*) while the underlying DB functions ignored
 the caller entirely. This let a curator of Group A rewrite the membership /
@@ -20,9 +23,11 @@ import os
 
 import pytest
 
+from onyx.db.enums import AccessType
 from onyx.db.models import UserRole
 from tests.integration.common_utils.constants import API_SERVER_URL
 from tests.integration.common_utils.http_client import client
+from tests.integration.common_utils.managers.cc_pair import CCPairManager
 from tests.integration.common_utils.managers.user import DATestUser
 from tests.integration.common_utils.managers.user import UserManager
 from tests.integration.common_utils.managers.user_group import UserGroupManager
@@ -199,3 +204,76 @@ def test_global_curator_scoped_to_member_groups(reset: None) -> None:  # noqa: A
     member_view = UserGroupManager.get_all(user_performing_action=admin_user)
     group_a_view = next(group for group in member_view if group.id == group_a.id)
     assert other_user.id in {str(user.id) for user in group_a_view.users}
+
+
+@pytest.mark.skipif(
+    os.environ.get("ENABLE_PAID_ENTERPRISE_EDITION_FEATURES", "").lower() != "true",
+    reason="User group tests are enterprise only",
+)
+def test_curator_cannot_reindex_unscoped_cc_pair(reset: None) -> None:  # noqa: ARG001
+    """Same escalation shape as above, on the targeted-reindex routes.
+
+    ``POST /manage/admin/indexing/targeted-reindex`` guards only with
+    ``current_curator_or_admin_user``, so a curator of Group A could force a
+    reindex of a Group B connector by naming its cc_pair_id directly -- or
+    indirectly via ``error_ids``, which resolve to cc_pairs server-side.
+    """
+    # First user created is automatically an admin
+    admin_user: DATestUser = UserManager.create(name="admin_user")
+    assert UserManager.is_role(admin_user, UserRole.ADMIN)
+
+    curator: DATestUser = UserManager.create(name="curator")
+
+    group_a = UserGroupManager.create(
+        name="group_a",
+        user_ids=[curator.id],
+        cc_pair_ids=[],
+        user_performing_action=admin_user,
+    )
+    group_b = UserGroupManager.create(
+        name="group_b",
+        user_ids=[],
+        cc_pair_ids=[],
+        user_performing_action=admin_user,
+    )
+    UserGroupManager.wait_for_sync(
+        user_groups_to_check=[group_a, group_b],
+        user_performing_action=admin_user,
+    )
+    UserGroupManager.set_curator_status(
+        test_user_group=group_a,
+        user_to_set_as_curator=curator,
+        user_performing_action=admin_user,
+    )
+    assert UserManager.is_role(curator, UserRole.CURATOR)
+
+    cc_pair_b = CCPairManager.create_from_scratch(
+        name="cc_pair_b",
+        access_type=AccessType.PRIVATE,
+        groups=[group_b.id],
+        user_performing_action=admin_user,
+    )
+
+    # --- Negative: curator cannot reindex a cc_pair outside their groups ---
+    forbidden_resp = client.post(
+        f"{API_SERVER_URL}/manage/admin/indexing/targeted-reindex",
+        json={"targets": [{"cc_pair_id": cc_pair_b.id, "document_id": "doc-1"}]},
+        headers=curator.headers,
+    )
+    assert forbidden_resp.status_code == 403
+
+    # --- Admin is unaffected ---
+    admin_resp = client.post(
+        f"{API_SERVER_URL}/manage/admin/indexing/targeted-reindex",
+        json={"targets": [{"cc_pair_id": cc_pair_b.id, "document_id": "doc-1"}]},
+        headers=admin_user.headers,
+    )
+    assert admin_resp.status_code == 200
+
+    # --- A curator must not read back another user's job either ---
+    job_id = admin_resp.json()["targeted_reindex_job_id"]
+    status_resp = client.get(
+        f"{API_SERVER_URL}/manage/admin/indexing/targeted-reindex/{job_id}",
+        headers=curator.headers,
+    )
+    assert status_resp.status_code == 404

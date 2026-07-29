@@ -19,11 +19,13 @@ from fastapi import Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from onyx.auth.schemas import UserRole
 from onyx.auth.users import current_curator_or_admin_user
 from onyx.background.celery.versioned_apps.client import app as client_app
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
 from onyx.configs.constants import OnyxCeleryTask
+from onyx.db.connector_credential_pair import get_connector_credential_pairs_for_user
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import IndexingStatus
 from onyx.db.models import User
@@ -74,6 +76,45 @@ class TargetedReindexJobStatusResponse(BaseModel):
     resolved_summary: list[dict[str, Any]]
 
 
+def _assert_user_can_reindex(
+    db_session: Session, user: User, cc_pair_ids: set[int]
+) -> None:
+    """Reject the request unless `user` may edit every referenced cc_pair.
+
+    `current_curator_or_admin_user` only gates on role, so a curator reaches
+    this handler with the same standing as an admin. Reindexing is a write
+    against a connector, so it has to be scoped the same way every other
+    curator-reachable connector mutation is: via the user-group join in
+    `get_connector_credential_pairs_for_user(get_editable=True)`.
+
+    `processing_mode=None` so FILE_SYSTEM cc_pairs are authorized rather than
+    silently treated as unauthorized by the default REGULAR-only filter.
+    """
+    if user.role == UserRole.ADMIN:
+        return
+
+    editable_ids = {
+        cc_pair.id
+        for cc_pair in get_connector_credential_pairs_for_user(
+            db_session=db_session,
+            user=user,
+            get_editable=True,
+            ids=list(cc_pair_ids),
+            processing_mode=None,
+        )
+    }
+    forbidden = cc_pair_ids - editable_ids
+    if forbidden:
+        # Fail closed on the whole request rather than silently reindexing the
+        # authorized subset — a partial success here is indistinguishable to
+        # the caller from a full one.
+        raise OnyxError(
+            OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+            "Not permitted to reindex connector(s): %s."
+            % ", ".join(str(cc_pair_id) for cc_pair_id in sorted(forbidden)),
+        )
+
+
 @router.post("/admin/indexing/targeted-reindex")
 def submit_targeted_reindex(
     request: TargetedReindexRequest,
@@ -112,6 +153,10 @@ def submit_targeted_reindex(
             "Too many targets: %s > %s."
             % (len(target_specs_in), MAX_TARGETS_PER_REQUEST),
         )
+
+    # Covers both entry paths: caller-supplied `targets` and the cc_pairs
+    # derived from `error_ids`.
+    _assert_user_can_reindex(db_session, user, {t.cc_pair_id for t in target_specs_in})
 
     try:
         result = create_targeted_reindex_job(
@@ -160,11 +205,17 @@ def submit_targeted_reindex(
 @router.get("/admin/indexing/targeted-reindex/{job_id}")
 def get_targeted_reindex_status(
     job_id: int,
-    _: User = Depends(current_curator_or_admin_user),
+    user: User = Depends(current_curator_or_admin_user),
     db_session: Session = Depends(get_session),
 ) -> TargetedReindexJobStatusResponse:
     job = get_targeted_reindex_job(db_session, job_id)
     if job is None:
+        raise OnyxError(OnyxErrorCode.NOT_FOUND, "Job not found.")
+
+    # `resolved_summary` carries document ids, so a non-admin may only read
+    # back jobs they submitted. 404 rather than 403 so the endpoint doesn't
+    # confirm that another curator's job id exists.
+    if user.role != UserRole.ADMIN and job.requested_by_user_id != user.id:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "Job not found.")
 
     return TargetedReindexJobStatusResponse(

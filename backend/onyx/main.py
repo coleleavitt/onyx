@@ -1,6 +1,5 @@
 import logging
 import sys
-import traceback
 import warnings
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -11,12 +10,9 @@ import uvicorn
 from anyio import to_thread
 from fastapi import APIRouter
 from fastapi import FastAPI
-from fastapi import HTTPException
-from fastapi import Request
 from fastapi import status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from httpx_oauth.clients.google import GoogleOAuth2
 from sentry_sdk.integrations.fastapi import FastApiIntegration
@@ -62,6 +58,9 @@ from onyx.db.engine.sql_engine import get_session_with_current_tenant
 from onyx.db.engine.sql_engine import SqlEngine
 from onyx.db.sso_provider import seed_saml_provider_from_conf_dir
 from onyx.error_handling.exceptions import register_onyx_exception_handlers
+from onyx.error_handling.handlers import log_http_error
+from onyx.error_handling.handlers import validation_exception_handler
+from onyx.error_handling.handlers import value_error_handler
 from onyx.file_store.file_store import get_default_file_store
 from onyx.hooks.registry import validate_registry
 from onyx.server.api_key.api import router as api_key_router
@@ -161,7 +160,6 @@ from onyx.server.security.api import admin_router as security_admin_router
 from onyx.server.settings.api import admin_router as settings_admin_router
 from onyx.server.settings.api import basic_router as settings_router
 from onyx.server.token_rate_limits.api import router as token_rate_limit_settings_router
-from onyx.server.utils import BasicAuthenticationError
 from onyx.setup import setup_multitenant_onyx
 from onyx.setup import setup_onyx
 from onyx.tracing.setup import setup_tracing
@@ -199,35 +197,6 @@ file_handlers = [
 ]
 
 setup_uvicorn_logger(shared_file_handlers=file_handlers)
-
-
-def validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    if not isinstance(exc, RequestValidationError):
-        logger.error(
-            "Unexpected exception type in validation_exception_handler - %s", type(exc)
-        )
-        raise exc
-
-    exc_str = f"{exc}".replace("\n", " ").replace("   ", " ")
-    logger.exception("%s: %s", request, exc_str)
-    content = {"status_code": 422, "message": exc_str, "data": None}
-    return JSONResponse(content=content, status_code=422)
-
-
-def value_error_handler(_: Request, exc: Exception) -> JSONResponse:
-    if not isinstance(exc, ValueError):
-        logger.error("Unexpected exception type in value_error_handler - %s", type(exc))
-        raise exc
-
-    try:
-        raise (exc)
-    except Exception:
-        # log stacktrace
-        logger.exception("ValueError")
-    return JSONResponse(
-        status_code=400,
-        content={"message": str(exc)},
-    )
 
 
 def use_route_function_names_as_operation_ids(app: FastAPI) -> None:
@@ -448,30 +417,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
 
     if RATE_LIMITING_ENABLED:
         await close_auth_limiter()
-
-
-def log_http_error(request: Request, exc: Exception) -> JSONResponse:
-    status_code = getattr(exc, "status_code", 500)
-
-    if isinstance(exc, BasicAuthenticationError):
-        # For BasicAuthenticationError, just log a brief message without stack trace
-        # (almost always spammy)
-        logger.debug("Authentication failed: %s", str(exc))
-
-    elif status_code == 404 and request.url.path == "/metrics":
-        # Log 404 errors for the /metrics endpoint with debug level
-        logger.debug("404 error for /metrics endpoint: %s", str(exc))
-
-    elif status_code >= 400:
-        error_msg = f"{str(exc)}\n"
-        error_msg += "".join(traceback.format_tb(exc.__traceback__))
-        logger.error(error_msg)
-
-    detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
-    return JSONResponse(
-        status_code=status_code,
-        content={"detail": detail},
-    )
 
 
 def get_application(lifespan_override: Lifespan | None = None) -> FastAPI:

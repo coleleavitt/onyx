@@ -33,7 +33,9 @@ def search_chat_sessions(
     Returns a tuple of (sessions, has_more) where has_more indicates if
     there are additional results beyond the requested page.
     """
-    offset_val = (page - 1) * page_size
+    # `page` is 1-indexed; clamp so a 0/negative page can never produce a
+    # negative OFFSET, which Postgres rejects outright.
+    offset_val = max(page - 1, 0) * max(page_size, 1)
 
     # If no query, just return the most recent sessions
     if not query or not query.strip():

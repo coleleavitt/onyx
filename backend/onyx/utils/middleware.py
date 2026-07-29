@@ -56,6 +56,12 @@ def add_onyx_request_id_middleware(
             onyx_request_id = make_randomized_onyx_request_id(prefix)
 
         ONYX_REQUEST_ID_CONTEXTVAR.set(onyx_request_id)
+        # Also stash on the ASGI scope. The contextvar is set inside this
+        # BaseHTTPMiddleware's child context, so Starlette's ServerErrorMiddleware
+        # -- which sits outside every user middleware and handles unhandled
+        # exceptions -- cannot read it back. `request.state` is backed by the
+        # shared scope dict, so it does survive that boundary.
+        request.state.onyx_request_id = onyx_request_id
         return await call_next(request)
 
 

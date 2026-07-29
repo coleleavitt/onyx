@@ -208,7 +208,10 @@ def admin_get_chat_sessions(
 @router.get("/admin/chat-session-history")
 def get_chat_session_history(
     page_num: int = Query(0, ge=0),
-    page_size: int = Query(10, ge=1),
+    # Upper bound matches the other paginated admin routes (cc-pair, persona,
+    # users); without it a single request can ask the DB to materialize the
+    # whole table.
+    page_size: int = Query(10, ge=1, le=1000),
     feedback_type: QAFeedbackType | None = None,
     start_time: datetime | None = None,
     end_time: datetime | None = None,

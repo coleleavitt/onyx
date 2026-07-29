@@ -6,6 +6,7 @@ from typing import cast
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
+from fastapi import Query
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
@@ -217,8 +218,8 @@ def get_failed_documents(
     start_time: datetime | None = None,
     end_time: datetime | None = None,
     include_resolved: bool = False,
-    page_num: int = 0,
-    page_size: int = 25,
+    page_num: int = Query(0, ge=0),
+    page_size: int = Query(25, ge=1, le=1000),
     _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> PaginatedReturn[IndexAttemptErrorPydantic]:

@@ -913,7 +913,7 @@ def get_paginated_index_attempts_for_cc_pair_id(
     stmt = stmt.order_by(IndexAttempt.time_started.desc())
 
     # Apply pagination
-    stmt = stmt.offset(page * page_size).limit(page_size)
+    stmt = stmt.offset(max(page, 0) * max(page_size, 1)).limit(max(page_size, 1))
 
     return list(db_session.execute(stmt).scalars().unique().all())
 
@@ -1201,7 +1201,7 @@ def get_index_attempt_errors_for_cc_pair(
     stmt = stmt.order_by(desc(IndexAttemptError.time_created))
 
     if page is not None and page_size is not None:
-        stmt = stmt.offset(page * page_size).limit(page_size)
+        stmt = stmt.offset(max(page, 0) * max(page_size, 1)).limit(max(page_size, 1))
 
     return list(db_session.scalars(stmt).all())
 
@@ -1246,7 +1246,7 @@ def get_index_attempt_errors_across_connectors(
         count_stmt = count_stmt.where(IndexAttemptError.time_created <= end_time)
 
     stmt = stmt.order_by(desc(IndexAttemptError.time_created))
-    stmt = stmt.offset(page * page_size).limit(page_size)
+    stmt = stmt.offset(max(page, 0) * max(page_size, 1)).limit(max(page_size, 1))
 
     total = db_session.scalar(count_stmt) or 0
     errors = list(db_session.scalars(stmt).all())

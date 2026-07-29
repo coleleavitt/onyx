@@ -1013,8 +1013,10 @@ def fetch_chat_file(
 @router.get("/search", tags=PUBLIC_API_TAGS)
 async def search_chats(
     query: str | None = Query(None),
-    page: int = Query(1),
-    page_size: int = Query(10),
+    # 1-indexed: page=0 would compute a negative OFFSET. Upper bound keeps
+    # `(page - 1) * page_size` inside Postgres' bigint OFFSET domain.
+    page: int = Query(1, ge=1, le=1_000_000),
+    page_size: int = Query(10, ge=1, le=100),
     user: User = Depends(require_permission(Permission.READ_CHAT)),
     db_session: Session = Depends(get_session),
 ) -> ChatSearchResponse:
