@@ -97,10 +97,9 @@ RUN --mount=type=secret,id=sentry_auth_token \
     fi && \
     NODE_OPTIONS="${NODE_OPTIONS}" bunx next build
 
-# Runtime stage. The DHI runtime variant is near-distroless: no shell or package manager, runs
-# as the non-root `node` user (uid 1000) with WORKDIR /app pre-set.
-# Refresh the digest with: docker buildx imagetools inspect dhi.io/node:24-debian13
-FROM dhi.io/node:24-debian13@sha256:805278f24c1146c6d3c96577b6256f8f97c43196fff88315fe3291a1ce118ddd AS runner
+# Runtime stage. Run Next.js standalone server.js on Bun's slim production image as
+# the non-root `bun` user.
+FROM ${BASE_IMAGE_REGISTRY}/oven/bun:1-slim AS runner
 
 LABEL com.onyx.maintainer="founders@onyx.app"
 LABEL com.onyx.description="This image is the web/frontend container of Onyx which \
@@ -117,13 +116,13 @@ WORKDIR /app
 # Disable automatic telemetry collection
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# `/app` is root-owned, so re-own build artifacts to `node` on copy.
-COPY --from=builder --chown=node:node /app/public ./public
+# `/app` is root-owned, so re-own build artifacts to `bun` on copy.
+COPY --from=builder --chown=bun:bun /app/public ./public
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=node:node /app/.next/standalone ./
-COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=bun:bun /app/.next/standalone ./
+COPY --from=builder --chown=bun:bun /app/.next/static ./.next/static
 
 # Environment variables must be redefined at run time
 # NOTE: if you add something here, make sure to add it to the builder as well
@@ -190,5 +189,6 @@ ENV ONYX_VERSION=${ONYX_VERSION}
 # name only — breaking loopback healthchecks. Force 0.0.0.0 instead.
 ENV HOSTNAME="0.0.0.0"
 
-# The DHI runtime image sets no default ENTRYPOINT, so invoke node explicitly.
-CMD ["node", "server.js"]
+# Run as Bun's non-root user from the official image.
+USER bun
+CMD ["bun", "server.js"]
