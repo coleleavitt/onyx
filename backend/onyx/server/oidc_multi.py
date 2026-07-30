@@ -108,6 +108,8 @@ def _build_client(provider: SSOProvider, config: dict[str, Any]) -> BaseOAuth2[A
             config["openid_config_url"],
             name=provider.name,
             base_scopes=scopes,
+            email_claims=config.get("email_claims"),
+            require_email_verified=config.get("require_email_verified", True),
         )
     if provider.provider_type is SSOProviderType.GOOGLE_OAUTH:
         return GoogleOAuth2(

@@ -84,6 +84,8 @@ class VerifiedEmailOpenID(OpenID):
         openid_configuration_endpoint: str,
         name: str = "openid",
         base_scopes: list[str] | None = BASE_SCOPES,
+        email_claims: list[str] | None = None,
+        require_email_verified: bool = True,
     ):
         super().__init__(
             client_id,
@@ -95,6 +97,8 @@ class VerifiedEmailOpenID(OpenID):
         validate_issuer_owns_config_url(
             self.openid_configuration.get("issuer"), openid_configuration_endpoint
         )
+        self.email_claims = email_claims or ["email"]
+        self.require_email_verified = require_email_verified
 
     @property
     def expected_issuer(self) -> str:
@@ -131,15 +135,23 @@ class VerifiedEmailOpenID(OpenID):
                     "Userinfo response missing a string 'sub'", response=response
                 )
 
-            email = data.get("email")
-            if email is not None and not isinstance(email, str):
-                raise GetIdEmailError(
-                    "Userinfo 'email' was not a string", response=response
-                )
-            if email is not None and data.get("email_verified") is not True:
-                raise GetIdEmailError(
-                    "Identity provider did not mark the email as verified",
-                    response=response,
-                )
+            email: str | None = None
+            for claim in self.email_claims:
+                value = data.get(claim)
+                if value is None:
+                    continue
+                if not isinstance(value, str):
+                    raise GetIdEmailError(
+                        f"Userinfo {claim!r} was not a string", response=response
+                    )
+                email = value
+                break
+            if email is not None and self.require_email_verified:
+                email_verified = data.get("email_verified")
+                if email_verified is not True:
+                    raise GetIdEmailError(
+                        "Identity provider did not mark the email as verified",
+                        response=response,
+                    )
 
             return sub, email

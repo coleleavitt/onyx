@@ -49,7 +49,13 @@ def test_resolve_oidc_returns_config(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     resolved, config = oidc_multi._resolve_oidc_provider(_DB, "okta")
     assert resolved is provider
-    assert config == {**_OIDC_CONFIG, "legacy_callback": False, "callback_uri": None}
+    assert config == {
+        **_OIDC_CONFIG,
+        "legacy_callback": False,
+        "callback_uri": None,
+        "email_claims": ["email"],
+        "require_email_verified": True,
+    }
 
 
 def test_resolve_google_returns_config(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -29,7 +29,9 @@ def _discovery(issuer: str = _ISSUER) -> dict[str, Any]:
 
 
 def _build_client(
-    discovery: dict[str, Any], config_url: str = _CONFIG_URL
+    discovery: dict[str, Any],
+    config_url: str = _CONFIG_URL,
+    **client_kwargs: Any,
 ) -> VerifiedEmailOpenID:
     discovery_response = MagicMock()
     discovery_response.json.return_value = discovery
@@ -38,7 +40,7 @@ def _build_client(
     http_client.__exit__ = MagicMock(return_value=None)
     http_client.get.return_value = discovery_response
     with patch("httpx_oauth.clients.openid.httpx.Client", return_value=http_client):
-        return VerifiedEmailOpenID("cid", "csecret", config_url)
+        return VerifiedEmailOpenID("cid", "csecret", config_url, **client_kwargs)
 
 
 class _FakeResponse:
@@ -113,6 +115,35 @@ async def test_missing_email_passes_through() -> None:
     client = _build_client(_discovery())
     _with_userinfo(client, {"sub": "machine-1"})
     assert await client.get_id_email("tok") == ("machine-1", None)
+
+
+@pytest.mark.asyncio
+async def test_configured_unverified_preferred_username_is_returned() -> None:
+    client = _build_client(
+        _discovery(),
+        email_claims=["email", "preferred_username", "upn"],
+        require_email_verified=False,
+    )
+    _with_userinfo(
+        client,
+        {
+            "sub": "s1",
+            "preferred_username": "bob@companyb.com",
+        },
+    )
+    assert await client.get_id_email("tok") == ("s1", "bob@companyb.com")
+
+
+@pytest.mark.asyncio
+async def test_configured_non_string_claim_rejected() -> None:
+    client = _build_client(
+        _discovery(),
+        email_claims=["preferred_username"],
+        require_email_verified=False,
+    )
+    _with_userinfo(client, {"sub": "s1", "preferred_username": ["bob"]})
+    with pytest.raises(GetIdEmailError):
+        await client.get_id_email("tok")
 
 
 @pytest.mark.asyncio

@@ -61,6 +61,13 @@ class OIDCProviderConfig(_ProviderConfig):
     # Optional absolute callback URL for deployments serving multiple public
     # login domains from one backend.
     callback_uri: str | None = None
+    # Claims to try, in order, when resolving the user's login email from the
+    # OIDC userinfo response. Keep the default strict for generic OIDC.
+    email_claims: list[str] = ["email"]
+    # Generic OIDC keeps the nOAuth defense by requiring email_verified. Entra ID
+    # work/school tenants often omit email_verified, so tenant-scoped rows can
+    # disable this while still enforcing allowed_email_domains downstream.
+    require_email_verified: bool = True
 
 
 class SAMLProviderConfig(_ProviderConfig):
