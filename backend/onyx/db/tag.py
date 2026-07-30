@@ -224,17 +224,17 @@ def get_structured_tags_for_document(
             document_metadata[tag.tag_key].append(tag.tag_value)
             continue
 
-        # set value (ignore duplicate keys, though there should be none)
-        document_metadata.setdefault(tag.tag_key, tag.tag_value)
-
-        # should always be a value, but just in case (treat it as a list in this case)
-        if isinstance(document_metadata[tag.tag_key], list):
+        existing_tag_value = document_metadata.get(tag.tag_key)
+        if isinstance(existing_tag_value, list):
             logger.warning(
                 "Inconsistent is_list for document %s, tag_key %s",
                 document_id,
                 tag.tag_key,
             )
-            document_metadata[tag.tag_key] = [document_metadata[tag.tag_key]]
+            existing_tag_value.append(tag.tag_value)
+        else:
+            # set value (ignore duplicate keys, though there should be none)
+            document_metadata.setdefault(tag.tag_key, tag.tag_value)
     return document_metadata
 
 
