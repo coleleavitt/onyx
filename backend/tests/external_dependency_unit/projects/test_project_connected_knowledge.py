@@ -23,10 +23,20 @@ from onyx.configs.constants import PUBLIC_DOC_PAT
 from onyx.context.search.models import IndexFilters
 from onyx.context.search.models import InferenceChunk
 from onyx.context.search.models import PersonaSearchInfo
+from onyx.db.connected_source_governance import _build_metrics_by_node_id
+from onyx.db.connected_source_governance import (
+    _effective_exclusions_for_selected_node_ids,
+)
+from onyx.db.connected_source_governance import _load_scopes_by_source
+from onyx.db.connected_source_governance import _sharepoint_folder_path_from_url
+from onyx.db.connected_source_governance import build_metadata_for_nodes
 from onyx.db.connected_source_governance import create_connected_knowledge_preset
+from onyx.db.connected_source_governance import filter_governed_document_ids
 from onyx.db.connected_source_governance import filter_governed_hierarchy_node_ids
 from onyx.db.connected_source_governance import get_governed_hierarchy_nodes_for_source
+from onyx.db.connected_source_governance import get_user_group_ids
 from onyx.db.connected_source_governance import get_visible_presets_for_user
+from onyx.db.connected_source_governance import list_connected_source_scopes
 from onyx.db.connected_source_governance import provision_sharepoint_scope_to_connectors
 from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
@@ -838,6 +848,299 @@ def test_sharepoint_scope_provisioning_rejects_unassociated_connector(
             connector_ids=[unassociated_pair.connector_id],
             dry_run=True,
         )
+
+
+def test_empty_governance_helpers_return_empty_results(db_session: Session) -> None:
+    user = create_test_user(db_session, "project_policy_empty_helpers")
+
+    assert _build_metrics_by_node_id(db_session, []) == {}
+    assert _load_scopes_by_source(db_session, set()) == {}
+    assert get_user_group_ids(db_session, None) == set()
+    assert (
+        build_metadata_for_nodes(
+            db_session=db_session,
+            nodes=[],
+            user_group_ids=set(),
+            include_archived=False,
+            include_hidden=False,
+        )
+        == {}
+    )
+    assert (
+        filter_governed_hierarchy_node_ids(
+            db_session=db_session,
+            node_ids=[],
+            user=user,
+        )
+        == set()
+    )
+    assert (
+        filter_governed_document_ids(
+            db_session=db_session,
+            document_ids=[],
+            user=user,
+        )
+        == set()
+    )
+    assert (
+        _effective_exclusions_for_selected_node_ids(
+            db_session=db_session,
+            selected_node_ids=[],
+        )
+        == set()
+    )
+    assert (
+        _effective_exclusions_for_selected_node_ids(
+            db_session=db_session,
+            selected_node_ids=[-1],
+        )
+        == set()
+    )
+
+
+def test_hidden_connected_source_scope_requires_include_hidden(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_hidden_scope")
+    hidden_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"hidden-scope-{uuid4().hex}",
+        name="Hidden Scope",
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=hidden_node.id,
+        curation_status=ConnectedSourceCurationStatus.HIDDEN,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    hidden_result = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[hidden_node],
+        user=user,
+        include_hidden=False,
+    )
+    visible_result = get_governed_hierarchy_nodes_for_source(
+        db_session=db_session,
+        nodes=[hidden_node],
+        user=user,
+        include_hidden=True,
+    )
+
+    assert hidden_result.nodes == []
+    assert visible_result.nodes == [hidden_node]
+
+
+def test_visible_presets_exclude_document_blocked_by_source_governance(
+    db_session: Session,
+) -> None:
+    user = create_test_user(db_session, "project_policy_preset_doc_governance")
+    public_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"preset-public-node-{uuid4().hex}",
+        name="Public Scope",
+    )
+    restricted_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"preset-restricted-node-{uuid4().hex}",
+        name="Restricted Scope",
+    )
+    document = _create_indexed_document(
+        db_session,
+        document_id=f"preset-restricted-doc-{uuid4().hex}",
+        title="Restricted Preset Document",
+        parent=restricted_node,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=public_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+    restricted_group = UserGroup(name=f"preset-denied-{uuid4().hex}")
+    db_session.add(restricted_group)
+    db_session.commit()
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=restricted_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[restricted_group.id],
+        excluded_hierarchy_node_ids=[],
+    )
+    preset = create_connected_knowledge_preset(
+        db_session=db_session,
+        name=f"Preset Governed Document {uuid4().hex}",
+        hierarchy_node_ids=[public_node.id],
+        document_ids=[document.id],
+    )
+
+    visible_presets = get_visible_presets_for_user(db_session=db_session, user=user)
+
+    assert all(
+        document.id not in {doc.id for doc in preset.attached_documents}
+        for preset in visible_presets
+    )
+
+    db_session.delete(preset)
+    db_session.commit()
+
+
+def test_sharepoint_folder_path_parser_edge_cases() -> None:
+    assert _sharepoint_folder_path_from_url(None) is None
+    assert (
+        _sharepoint_folder_path_from_url("https://contoso.sharepoint.com/root") is None
+    )
+    assert (
+        _sharepoint_folder_path_from_url(
+            "https://contoso.sharepoint.com/sites/advisor/Shared%20Documents"
+        )
+        is None
+    )
+    assert (
+        _sharepoint_folder_path_from_url(
+            "https://contoso.sharepoint.com/teams/advisor/Shared%20Documents/Folder%20A"
+        )
+        == "Folder A"
+    )
+
+
+def test_sharepoint_scope_provisioning_rejects_missing_or_invalid_scope(
+    db_session: Session,
+) -> None:
+    with pytest.raises(ValueError, match="does not exist"):
+        provision_sharepoint_scope_to_connectors(
+            db_session=db_session,
+            hierarchy_node_id=-1,
+            dry_run=True,
+        )
+
+    non_sharepoint_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"drive-scope-{uuid4().hex}",
+        name="Drive Scope",
+        source=DocumentSource.GOOGLE_DRIVE,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=non_sharepoint_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+    with pytest.raises(ValueError, match="Only SharePoint"):
+        provision_sharepoint_scope_to_connectors(
+            db_session=db_session,
+            hierarchy_node_id=non_sharepoint_node.id,
+            dry_run=True,
+        )
+
+    missing_link_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sharepoint-missing-link-{uuid4().hex}",
+        name="Missing Link",
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=missing_link_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+    with pytest.raises(ValueError, match="source link"):
+        provision_sharepoint_scope_to_connectors(
+            db_session=db_session,
+            hierarchy_node_id=missing_link_node.id,
+            dry_run=True,
+        )
+
+
+def test_sharepoint_scope_provisioning_ignores_invalid_exclusion_links(
+    db_session: Session,
+) -> None:
+    scope_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sharepoint-invalid-exclusion-{uuid4().hex}",
+        name="Advisor Services",
+        link="https://contoso.sharepoint.com/sites/advisor/Shared%20Documents/Advisor%20Services",
+    )
+    invalid_excluded_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sharepoint-invalid-excluded-{uuid4().hex}",
+        name="Invalid Exclusion",
+        parent_id=scope_node.id,
+        link="https://contoso.sharepoint.com/root-only",
+    )
+    pair = make_cc_pair(db_session, source=DocumentSource.SHAREPOINT, commit=False)
+    pair.connector.connector_specific_config = {
+        "sites": [
+            "https://CONTOSO.sharepoint.com/sites/advisor/Shared%20Documents/Advisor%20Services/"
+        ],
+        "excluded_paths": [],
+    }
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=scope_node.id,
+            connector_id=pair.connector_id,
+            credential_id=pair.credential_id,
+        )
+    )
+    db_session.commit()
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=scope_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[invalid_excluded_node.id],
+    )
+
+    results = provision_sharepoint_scope_to_connectors(
+        db_session=db_session,
+        hierarchy_node_id=scope_node.id,
+        dry_run=False,
+    )
+
+    assert len(results) == 1
+    assert results[0].added_sites == ()
+    assert results[0].added_excluded_paths == ()
+    assert pair.connector.connector_specific_config["excluded_paths"] == []
+
+
+def test_list_connected_source_scopes_orders_by_sort_order_then_id(
+    db_session: Session,
+) -> None:
+    later_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"scope-list-later-{uuid4().hex}",
+        name="Later",
+    )
+    earlier_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"scope-list-earlier-{uuid4().hex}",
+        name="Earlier",
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=later_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+        sort_order=20,
+    )
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=earlier_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+        sort_order=10,
+    )
+
+    scopes = list_connected_source_scopes(db_session)
+    scope_node_ids = [scope.hierarchy_node_id for scope in scopes]
+
+    assert scope_node_ids.index(earlier_node.id) < scope_node_ids.index(later_node.id)
 
 
 def test_governed_source_root_is_browsable_but_not_selectable(

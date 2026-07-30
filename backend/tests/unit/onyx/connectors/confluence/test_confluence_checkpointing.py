@@ -45,7 +45,10 @@ def mock_confluence_client() -> OnyxConfluence:
     """Create a mock Confluence client with proper typing"""
     # Server mode just Also updates the start value
     return OnyxConfluence(
-        is_cloud=False, url="test", credentials_provider=MagicMock(), timeout=None
+        is_cloud=False,
+        url="https://test",
+        credentials_provider=MagicMock(),
+        timeout=None,
     )
 
 
@@ -341,7 +344,11 @@ def test_retrieve_all_slim_docs_perm_sync(
     ]
 
     # Call retrieve_all_slim_docs_perm_sync
-    batches = list(confluence_connector.retrieve_all_slim_docs_perm_sync(0, 100))
+    with patch(
+        "onyx.connectors.confluence.connector.get_all_space_permissions",
+        return_value={},
+    ):
+        batches = list(confluence_connector.retrieve_all_slim_docs_perm_sync(0, 100))
     assert get_mock.call_count == 4
 
     # With batch size of 2, we get:
