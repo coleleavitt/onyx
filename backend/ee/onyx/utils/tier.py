@@ -27,6 +27,7 @@ from ee.onyx.server.tenants.models import BillingInformation
 from ee.onyx.server.tenants.models import SubscriptionStatusResponse
 from ee.onyx.server.tenants.tier_management import get_cached_tier
 from ee.onyx.server.tenants.tier_management import update_tenant_tier
+from onyx.configs.app_configs import ENTERPRISE_EDITION_ENABLED
 from onyx.db.enums import AccessType
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
@@ -65,7 +66,8 @@ def _effective_tier(customer_tier: CustomerTier, trial_end: datetime | None) -> 
 
 
 def _self_hosted_tier() -> Tier:
-    return Tier.ENTERPRISE if global_version.is_ee_version() else Tier.COMMUNITY
+    is_complete_build = ENTERPRISE_EDITION_ENABLED or global_version.is_ee_version()
+    return Tier.ENTERPRISE if is_complete_build else Tier.COMMUNITY
 
 
 def _extract_billing_state(
@@ -103,6 +105,9 @@ def _lazy_refresh_from_cp(
 
 
 def get_tier(tenant_id: str | None = None) -> Tier:
+    if not LICENSE_ENFORCEMENT_ENABLED:
+        return _self_hosted_tier()
+
     if not MULTI_TENANT:
         return _self_hosted_tier()
 

@@ -23,6 +23,29 @@ class TestSelfHostedTier:
 
         assert get_tier() == Tier.ENTERPRISE
 
+    @patch("ee.onyx.utils.tier.ENTERPRISE_EDITION_ENABLED", True)
+    @patch("ee.onyx.utils.tier.global_version")
+    def test_enterprise_env_enabled_is_enterprise(
+        self, mock_global_version: MagicMock
+    ) -> None:
+        from ee.onyx.utils.tier import get_tier
+
+        mock_global_version.is_ee_version.return_value = False
+
+        assert get_tier() == Tier.ENTERPRISE
+
+    @patch("ee.onyx.utils.tier.LICENSE_ENFORCEMENT_ENABLED", False)
+    @patch("ee.onyx.utils.tier.global_version")
+    def test_license_enforcement_disabled_is_enterprise(
+        self, mock_global_version: MagicMock
+    ) -> None:
+        from ee.onyx.utils.tier import get_tier
+
+        mock_global_version.is_ee_version.return_value = True
+
+        assert get_tier() == Tier.ENTERPRISE
+
+    @patch("ee.onyx.utils.tier.ENTERPRISE_EDITION_ENABLED", False)
     @patch("ee.onyx.utils.tier.global_version")
     def test_stripped_build_is_community(self, mock_global_version: MagicMock) -> None:
         from ee.onyx.utils.tier import get_tier
@@ -67,6 +90,28 @@ class TestRequireBusinessTierForSyncAccess:
         mock_get_tier.return_value = tier
 
         require_business_tier_for_sync_access(AccessType.SYNC)
+
+
+class TestLicenseEnforcementDisabled:
+    @patch("ee.onyx.utils.tier.LICENSE_ENFORCEMENT_ENABLED", False)
+    @patch("ee.onyx.utils.tier.ENTERPRISE_EDITION_ENABLED", True)
+    @patch("ee.onyx.utils.tier.MULTI_TENANT", True)
+    @patch("ee.onyx.utils.tier.get_current_tenant_id")
+    @patch("ee.onyx.utils.tier.get_cached_tier")
+    @patch("ee.onyx.utils.tier.global_version")
+    def test_skips_cloud_tier_resolution_and_uses_complete_build_tier(
+        self,
+        mock_global_version: MagicMock,
+        mock_get_cached_tier: MagicMock,
+        mock_get_current_tenant_id: MagicMock,
+    ) -> None:
+        from ee.onyx.utils.tier import get_tier
+
+        mock_global_version.is_ee_version.return_value = True
+
+        assert get_tier() == Tier.ENTERPRISE
+        mock_get_current_tenant_id.assert_not_called()
+        mock_get_cached_tier.assert_not_called()
 
 
 class TestRequireBusinessTierForMultiSSO:
