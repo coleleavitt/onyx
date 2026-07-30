@@ -5,7 +5,6 @@ from typing import Any
 import httpx
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from fastapi import Request
 from fastapi import Response
 from fastapi import status
@@ -39,6 +38,7 @@ from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import Permission
 from onyx.db.models import User
 from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import get_default_file_store
 from onyx.server.settings.models import Tier
@@ -106,7 +106,7 @@ async def refresh_access_token(
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 401:
             logger.warning("Full authentication required for user %s", user.id)
-            raise HTTPException(
+            raise onyx_error_from_status(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Full authentication required",
             )
@@ -115,7 +115,7 @@ async def refresh_access_token(
             user.id,
             str(e),
         )
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to refresh token",
         )
@@ -125,7 +125,7 @@ async def refresh_access_token(
             user.id,
             str(e),
         )
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
         )
@@ -299,7 +299,7 @@ def upload_custom_analytics_script(
     try:
         store_analytics_script(script_upload)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
 
 @basic_router.get("/custom-analytics-script")

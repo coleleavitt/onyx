@@ -318,6 +318,7 @@ def try_creating_external_group_sync_task(
             queue=OnyxCeleryQueues.CONNECTOR_EXTERNAL_GROUP_SYNC,
             task_id=custom_task_id,
             priority=OnyxCeleryPriority.MEDIUM,
+            expires=CELERY_EXTERNAL_GROUP_SYNC_LOCK_TIMEOUT,
         )
 
         payload.celery_task_id = result.id

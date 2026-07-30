@@ -9,6 +9,7 @@ from redis.lock import Lock as RedisLock
 from sqlalchemy.orm import Session
 
 from onyx.configs.app_configs import PRUNE_FAILURE_BACKOFF_SECONDS
+from onyx.configs.constants import CELERY_DOCUMENT_SYNC_TASK_EXPIRES
 from onyx.configs.constants import CELERY_GENERIC_BEAT_LOCK_TIMEOUT
 from onyx.configs.constants import CELERY_PRUNING_LOCK_TIMEOUT
 from onyx.configs.constants import OnyxCeleryPriority
@@ -232,6 +233,7 @@ class RedisConnectorPrune:
                 task_id=custom_task_id,
                 priority=OnyxCeleryPriority.MEDIUM,
                 ignore_result=True,
+                expires=CELERY_DOCUMENT_SYNC_TASK_EXPIRES,
             )
 
             async_results.append(result)

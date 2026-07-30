@@ -1,11 +1,11 @@
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from fastapi import Query
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
 from onyx.auth.users import current_curator_or_admin_user
+from onyx.background.celery.tasks.beat_schedule import BEAT_EXPIRES_DEFAULT
 from onyx.background.celery.versioned_apps.client import app as client_app
 from onyx.configs.app_configs import DISABLE_VECTOR_DB
 from onyx.configs.constants import OnyxCeleryPriority
@@ -20,6 +20,7 @@ from onyx.db.document_set import update_document_set
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import Permission
 from onyx.db.models import User
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.server.features.document_set.models import CheckDocSetPublicRequest
 from onyx.server.features.document_set.models import CheckDocSetPublicResponse
 from onyx.server.features.document_set.models import DocumentSetCreationRequest
@@ -54,13 +55,14 @@ def create_document_set(
             db_session=db_session,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
     if not DISABLE_VECTOR_DB:
         client_app.send_task(
             OnyxCeleryTask.CHECK_FOR_VESPA_SYNC_TASK,
             kwargs={"tenant_id": tenant_id},
             priority=OnyxCeleryPriority.HIGH,
+            expires=BEAT_EXPIRES_DEFAULT,
         )
 
     return document_set_db_model.id
@@ -75,7 +77,7 @@ def patch_document_set(
 ) -> None:
     document_set = get_document_set_by_id(db_session, document_set_update_request.id)
     if document_set is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404,
             detail=f"Document set {document_set_update_request.id} does not exist",
         )
@@ -97,13 +99,14 @@ def patch_document_set(
             user=user,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
     if not DISABLE_VECTOR_DB:
         client_app.send_task(
             OnyxCeleryTask.CHECK_FOR_VESPA_SYNC_TASK,
             kwargs={"tenant_id": tenant_id},
             priority=OnyxCeleryPriority.HIGH,
+            expires=BEAT_EXPIRES_DEFAULT,
         )
 
 
@@ -116,7 +119,7 @@ def delete_document_set(
 ) -> None:
     document_set = get_document_set_by_id(db_session, document_set_id)
     if document_set is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404,
             detail=f"Document set {document_set_id} does not exist",
         )
@@ -141,7 +144,7 @@ def delete_document_set(
             user=user,
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
     if DISABLE_VECTOR_DB:
         db_session.refresh(document_set)
@@ -151,6 +154,7 @@ def delete_document_set(
             OnyxCeleryTask.CHECK_FOR_VESPA_SYNC_TASK,
             kwargs={"tenant_id": tenant_id},
             priority=OnyxCeleryPriority.HIGH,
+            expires=BEAT_EXPIRES_DEFAULT,
         )
 
 

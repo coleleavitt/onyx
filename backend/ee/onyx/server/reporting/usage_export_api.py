@@ -3,7 +3,6 @@ from datetime import datetime
 
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from fastapi import Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -18,10 +17,13 @@ from onyx.configs.constants import OnyxCeleryTask
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import Permission
 from onyx.db.models import User
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.file_store.constants import STANDARD_CHUNK_SIZE
 from shared_configs.contextvars import get_current_tenant_id
 
 router = APIRouter()
+
+USAGE_REPORT_TASK_EXPIRES = 60 * 60
 
 
 class GenerateUsageReportParams(BaseModel):
@@ -40,7 +42,7 @@ def generate_report(
             datetime.fromisoformat(params.period_from)
             datetime.fromisoformat(params.period_to)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise onyx_error_from_status(status_code=400, detail=str(e))
 
     tenant_id = get_current_tenant_id()
     client_app.send_task(
@@ -51,6 +53,7 @@ def generate_report(
             "period_from": params.period_from,
             "period_to": params.period_to,
         },
+        expires=USAGE_REPORT_TASK_EXPIRES,
     )
 
     return None
@@ -65,7 +68,7 @@ def read_usage_report(
     try:
         file = get_usage_report_data(report_name)
     except (ValueError, RuntimeError) as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise onyx_error_from_status(status_code=404, detail=str(e))
 
     def iterfile() -> Generator[bytes, None, None]:
         while True:
@@ -89,4 +92,4 @@ def fetch_usage_reports(
     try:
         return get_all_usage_reports(db_session)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise onyx_error_from_status(status_code=404, detail=str(e))

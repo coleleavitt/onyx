@@ -44,6 +44,8 @@ logger = setup_logger()
 
 router = APIRouter(prefix="/manage")
 
+TARGETED_REINDEX_TASK_EXPIRES = 60 * 60
+
 
 class DocumentTargetRequest(BaseModel):
     cc_pair_id: int
@@ -184,6 +186,7 @@ def submit_targeted_reindex(
             queue=OnyxCeleryQueues.PRIMARY,
             priority=OnyxCeleryPriority.HIGHEST,
             task_id=result.celery_task_id,
+            expires=TARGETED_REINDEX_TASK_EXPIRES,
         )
     except Exception:
         logger.exception(

@@ -3,7 +3,6 @@ from http import HTTPStatus
 
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from fastapi import Query
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
 from onyx.auth.users import current_curator_or_admin_user
+from onyx.background.celery.tasks.beat_schedule import BEAT_EXPIRES_DEFAULT
 from onyx.background.celery.tasks.pruning.tasks import try_creating_prune_generator_task
 from onyx.background.celery.versioned_apps.client import app as client_app
 from onyx.background.indexing.models import IndexAttemptErrorPydantic
@@ -63,6 +63,7 @@ from onyx.db.permission_sync_attempt import (
     get_relevant_external_group_sync_attempts_for_cc_pair,
 )
 from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.error_handling.exceptions import OnyxError
 from onyx.redis.redis_connector import RedisConnector
 from onyx.redis.redis_connector_utils import get_deletion_attempt_snapshot
@@ -109,7 +110,7 @@ def get_cc_pair_index_attempts(
             cc_pair_id, db_session, user, get_editable=False
         )
         if not user_has_access:
-            raise HTTPException(
+            raise onyx_error_from_status(
                 status_code=400, detail="CC Pair not found for current user permissions"
             )
 
@@ -336,7 +337,7 @@ def get_cc_pair_full_info(
         cc_pair_id, db_session, user, get_editable=False
     )
     if not cc_pair:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404, detail="CC Pair not found for current user permissions"
         )
     editable_cc_pair = get_connector_credential_pair_from_id_for_user(
@@ -463,7 +464,7 @@ def update_cc_pair_status(
     )
 
     if not cc_pair:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400,
             detail="Connection not found for current user's permissions",
         )
@@ -527,6 +528,7 @@ def update_cc_pair_status(
         OnyxCeleryTask.CHECK_FOR_INDEXING,
         kwargs=dict(tenant_id=tenant_id),
         priority=OnyxCeleryPriority.HIGH,
+        expires=BEAT_EXPIRES_DEFAULT,
     )
 
     return JSONResponse(
@@ -548,7 +550,7 @@ def update_cc_pair_name(
         get_editable=True,
     )
     if not cc_pair:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400, detail="CC Pair not found for current user's permissions"
         )
 
@@ -560,7 +562,7 @@ def update_cc_pair_name(
         )
     except IntegrityError:
         db_session.rollback()
-        raise HTTPException(status_code=400, detail="Name must be unique")
+        raise onyx_error_from_status(status_code=400, detail="Name must be unique")
 
 
 @router.put("/admin/cc-pair/{cc_pair_id}/property")
@@ -577,7 +579,7 @@ def update_cc_pair_property(
         get_editable=True,
     )
     if not cc_pair:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400, detail="CC Pair not found for current user's permissions"
         )
 
@@ -596,7 +598,7 @@ def update_cc_pair_property(
 
         msg = "Pruning frequency updated successfully"
     else:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400, detail=f"Property name {update_request.name} is not valid."
         )
 
@@ -616,7 +618,7 @@ def get_cc_pair_last_pruned(
         get_editable=False,
     )
     if not cc_pair:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400,
             detail="cc_pair not found for current user's permissions",
         )
@@ -640,7 +642,7 @@ def prune_cc_pair(
         get_editable=False,
     )
     if not cc_pair:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400,
             detail="Connection not found for current user's permissions",
         )
@@ -649,7 +651,7 @@ def prune_cc_pair(
 
     redis_connector = RedisConnector(tenant_id, cc_pair_id)
     if redis_connector.prune.fenced:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=HTTPStatus.CONFLICT,
             detail="Pruning task already in progress.",
         )
@@ -665,7 +667,7 @@ def prune_cc_pair(
         client_app, cc_pair, db_session, r, tenant_id
     )
     if not payload_id:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail="Pruning task creation failed.",
         )
@@ -786,6 +788,7 @@ def associate_credential_to_connector(
             OnyxCeleryTask.CHECK_FOR_INDEXING,
             priority=OnyxCeleryPriority.HIGH,
             kwargs={"tenant_id": tenant_id},
+            expires=BEAT_EXPIRES_DEFAULT,
         )
 
         logger.info(
@@ -813,7 +816,7 @@ def associate_credential_to_connector(
         delete_connector(db_session, connector_id)
         db_session.commit()
 
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400, detail="Connector validation error: " + str(e)
         )
     except IntegrityError as e:
@@ -821,12 +824,12 @@ def associate_credential_to_connector(
         delete_connector(db_session, connector_id)
         db_session.commit()
 
-        raise HTTPException(status_code=400, detail="Name must be unique")
+        raise onyx_error_from_status(status_code=400, detail="Name must be unique")
 
     except Exception as e:
         logger.exception("Unexpected error: %s", e)
 
-        raise HTTPException(status_code=500, detail="Unexpected error")
+        raise onyx_error_from_status(status_code=500, detail="Unexpected error")
 
 
 @router.delete(

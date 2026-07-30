@@ -7,7 +7,6 @@ from uuid import UUID
 
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from fastapi import Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -47,6 +46,7 @@ from onyx.db.models import User
 from onyx.db.tasks import get_task_with_id
 from onyx.db.tasks import register_task
 from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import get_default_file_store
 from onyx.server.documents.models import PaginatedReturn
@@ -55,6 +55,8 @@ from onyx.server.query_and_chat.models import ChatSessionsResponse
 from onyx.server.settings.store import load_settings
 from onyx.utils.threadpool_concurrency import parallel_yield
 from shared_configs.contextvars import get_current_tenant_id
+
+QUERY_HISTORY_EXPORT_TASK_EXPIRES = 60 * 60
 
 router = APIRouter()
 
@@ -272,7 +274,7 @@ def get_chat_session_admin(
             include_deleted=True,
         )
     except ValueError:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.BAD_REQUEST,
             f"Chat session with id '{chat_session_id}' does not exist.",
         )
@@ -288,7 +290,7 @@ def get_chat_session_admin(
     )
 
     if snapshot is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.BAD_REQUEST,
             f"Could not create snapshot for chat session with id '{chat_session_id}'",
         )
@@ -322,7 +324,7 @@ def list_all_query_history_exports(
 
         return merged
     except Exception as e:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.INTERNAL_SERVER_ERROR, f"Failed to get all tasks: {e}"
         )
 
@@ -340,7 +342,7 @@ def start_query_history_export(
     end = end or datetime.now(tz=timezone.utc)
 
     if start >= end:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.BAD_REQUEST,
             f"Start time must come before end time, but instead got the start time coming after; {start=} {end=}",
         )
@@ -362,6 +364,7 @@ def start_query_history_export(
         task_id=task_id,
         priority=OnyxCeleryPriority.MEDIUM,
         queue=OnyxCeleryQueues.CSV_GENERATION,
+        expires=QUERY_HISTORY_EXPORT_TASK_EXPIRES,
         kwargs={
             "start": start,
             "end": end,
@@ -399,7 +402,7 @@ def get_query_history_export_status(
     )
 
     if not has_file:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.NOT_FOUND,
             f"No task with {request_id=} was found",
         )
@@ -427,7 +430,7 @@ def download_query_history_csv(
         try:
             csv_stream = file_store.read_file(report_name)
         except Exception as e:
-            raise HTTPException(
+            raise onyx_error_from_status(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 f"Failed to read query history file: {str(e)}",
             )
@@ -442,18 +445,18 @@ def download_query_history_csv(
     # Therefore, we check the task queue to determine its status, if there is any.
     task = get_task_with_id(db_session=db_session, task_id=request_id)
     if not task:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.NOT_FOUND,
             f"No task with {request_id=} was found",
         )
 
     if task.status in [TaskStatus.STARTED, TaskStatus.PENDING]:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.ACCEPTED, f"Task with {request_id=} is still being worked on"
         )
 
     elif task.status == TaskStatus.FAILURE:
-        raise HTTPException(
+        raise onyx_error_from_status(
             HTTPStatus.INTERNAL_SERVER_ERROR,
             f"Task with {request_id=} failed to be processed",
         )

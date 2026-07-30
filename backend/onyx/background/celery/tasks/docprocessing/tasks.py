@@ -153,6 +153,7 @@ HEARTBEAT_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 # legitimately queued tasks under heavy load.
 NOT_STARTED_SCAN_THRESHOLD_HOURS = 12
 INDEX_ATTEMPT_BATCH_SIZE = 500
+INDEX_CLEANUP_TASK_EXPIRES = 15 * 60
 
 
 def _get_fence_validation_block_expiration() -> int:
@@ -1243,6 +1244,7 @@ def check_for_checkpoint_cleanup(self: Task, *, tenant_id: str) -> None:
                     },
                     queue=OnyxCeleryQueues.CHECKPOINT_CLEANUP,
                     priority=OnyxCeleryPriority.MEDIUM,
+                    expires=INDEX_CLEANUP_TASK_EXPIRES,
                 )
     except Exception:
         task_logger.exception("Unexpected exception during checkpoint cleanup")
@@ -1332,6 +1334,7 @@ def check_for_index_attempt_cleanup(self: Task, *, tenant_id: str) -> None:
                     },
                     queue=OnyxCeleryQueues.INDEX_ATTEMPT_CLEANUP,
                     priority=OnyxCeleryPriority.MEDIUM,
+                    expires=INDEX_CLEANUP_TASK_EXPIRES,
                 )
     except Exception:
         task_logger.exception("Unexpected exception during index attempt cleanup check")

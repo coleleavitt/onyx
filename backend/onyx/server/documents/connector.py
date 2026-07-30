@@ -12,7 +12,6 @@ from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import File
 from fastapi import Form
-from fastapi import HTTPException
 from fastapi import Query
 from fastapi import Request
 from fastapi import Response
@@ -25,6 +24,7 @@ from onyx.auth.email_utils import send_email
 from onyx.auth.permissions import require_permission
 from onyx.auth.users import current_chat_accessible_user
 from onyx.auth.users import current_curator_or_admin_user
+from onyx.background.celery.tasks.beat_schedule import BEAT_EXPIRES_DEFAULT
 from onyx.background.celery.tasks.pruning.tasks import try_creating_prune_generator_task
 from onyx.background.celery.versioned_apps.client import app as client_app
 from onyx.configs.app_configs import EMAIL_CONFIGURED
@@ -94,6 +94,7 @@ from onyx.db.models import IndexingStatus
 from onyx.db.models import User
 from onyx.db.models import UserRole
 from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import FileStore
 from onyx.file_store.file_store import get_default_file_store
@@ -276,7 +277,7 @@ def save_zip_metadata_to_file_store(
                 json.loads(metadata_bytes)
             except json.JSONDecodeError as e:
                 logger.warning("Unable to load %s: %s", ONYX_METADATA_FILENAME, e)
-                raise HTTPException(
+                raise onyx_error_from_status(
                     status_code=400,
                     detail=f"Unable to load {ONYX_METADATA_FILENAME}: {e}",
                 )
@@ -337,7 +338,9 @@ def upload_files(
 
             if is_zip_file(file):
                 if seen_zip:
-                    raise HTTPException(status_code=400, detail=SEEN_ZIP_DETAIL)
+                    raise onyx_error_from_status(
+                        status_code=400, detail=SEEN_ZIP_DETAIL
+                    )
                 seen_zip = True
 
                 # Validate the zip by opening it (catches corrupt/non-zip files)
@@ -391,7 +394,7 @@ def upload_files(
             deduped_file_names.append(file.filename)
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
     return FileUploadResponse(
         file_paths=deduped_file_paths,
         file_names=deduped_file_names,
@@ -418,7 +421,7 @@ def _fetch_and_check_file_connector_cc_pair_permissions(
 ) -> ConnectorCredentialPair:
     cc_pair = fetch_connector_credential_pair_for_connector(db_session, connector_id)
     if cc_pair is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404,
             detail="No Connector-Credential Pair found for this connector",
         )
@@ -441,7 +444,7 @@ def _fetch_and_check_file_connector_cc_pair_permissions(
     ):
         return cc_pair
 
-    raise HTTPException(
+    raise onyx_error_from_status(
         status_code=403,
         detail="Access denied. User cannot manage files for this connector.",
     )
@@ -465,10 +468,10 @@ def list_connector_files(
     """List all files in a file connector."""
     connector = fetch_connector_by_id(connector_id, db_session)
     if connector is None:
-        raise HTTPException(status_code=404, detail="Connector not found")
+        raise onyx_error_from_status(status_code=404, detail="Connector not found")
 
     if connector.source != DocumentSource.FILE:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400, detail="This endpoint only works with file connectors"
         )
 
@@ -538,10 +541,10 @@ def update_connector_files(
     files = files or []
     connector = fetch_connector_by_id(connector_id, db_session)
     if connector is None:
-        raise HTTPException(status_code=404, detail="Connector not found")
+        raise onyx_error_from_status(status_code=404, detail="Connector not found")
 
     if connector.source != DocumentSource.FILE:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400, detail="This endpoint only works with file connectors"
         )
 
@@ -558,10 +561,12 @@ def update_connector_files(
     try:
         file_ids_list = json.loads(file_ids_to_remove)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid file_ids_to_remove format")
+        raise onyx_error_from_status(
+            status_code=400, detail="Invalid file_ids_to_remove format"
+        )
 
     if not isinstance(file_ids_list, list):
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400,
             detail="file_ids_to_remove must be a JSON-encoded list",
         )
@@ -588,7 +593,7 @@ def update_connector_files(
                 current_zip_metadata = loaded_metadata
         except Exception as e:
             logger.warning("Failed to load existing metadata file: %s", e)
-            raise HTTPException(
+            raise onyx_error_from_status(
                 status_code=500,
                 detail="Failed to load existing connector metadata file",
             )
@@ -645,7 +650,7 @@ def update_connector_files(
 
     # Validate that at least one file remains
     if not final_file_locations:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400,
             detail="Cannot remove all files from connector. At least one file must remain.",
         )
@@ -690,7 +695,7 @@ def update_connector_files(
 
     updated_connector = update_connector(connector_id, connector_base, db_session)
     if updated_connector is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=500, detail="Failed to update connector configuration"
         )
 
@@ -709,6 +714,7 @@ def update_connector_files(
                 OnyxCeleryTask.CHECK_FOR_INDEXING,
                 kwargs={"tenant_id": tenant_id},
                 priority=OnyxCeleryPriority.HIGH,
+                expires=BEAT_EXPIRES_DEFAULT,
             )
             logger.info(
                 "Marked cc_pair %s for UPDATE indexing (new files) for connector %s",
@@ -1412,7 +1418,7 @@ def create_connector_from_model(
         return connector_response
     except ValueError as e:
         logger.error("Error creating connector: %s", e)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
 
 @router.post("/admin/connector-with-mock-credential")
@@ -1479,6 +1485,7 @@ def create_connector_with_mock_credential(
             OnyxCeleryTask.CHECK_FOR_INDEXING,
             priority=OnyxCeleryPriority.HIGH,
             kwargs={"tenant_id": tenant_id},
+            expires=BEAT_EXPIRES_DEFAULT,
         )
 
         logger.info(
@@ -1494,11 +1501,11 @@ def create_connector_with_mock_credential(
         return response
 
     except ConnectorValidationError as e:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400, detail="Connector validation error: " + str(e)
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
 
 @router.patch("/admin/connector/{connector_id}", tags=PUBLIC_API_TAGS)
@@ -1523,11 +1530,11 @@ def update_connector_from_model(
         )
         connector_base = connector_data.to_connector_base()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
     updated_connector = update_connector(connector_id, connector_base, db_session)
     if updated_connector is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404, detail=f"Connector {connector_id} does not exist"
         )
 
@@ -1573,7 +1580,9 @@ def delete_connector_by_id(
                 connector_id=connector_id,
             )
     except AssertionError:
-        raise HTTPException(status_code=400, detail="Connector is not deletable")
+        raise onyx_error_from_status(
+            status_code=400, detail="Connector is not deletable"
+        )
 
     emit_audit_event(
         AuditAction.CONNECTOR_DELETE,
@@ -1603,7 +1612,7 @@ def connector_run_once(
             run_info.connector_id, db_session
         )
     except ValueError:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404,
             detail=f"Connector by id {connector_id} does not exist.",
         )
@@ -1614,13 +1623,13 @@ def connector_run_once(
         if set(specified_credential_ids).issubset(set(possible_credential_ids)):
             credential_ids = specified_credential_ids
         else:
-            raise HTTPException(
+            raise onyx_error_from_status(
                 status_code=400,
                 detail="Not all specified credentials are associated with connector",
             )
 
     if not credential_ids:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=400,
             detail="Connector has no valid credentials, cannot create index attempts.",
         )
@@ -1633,7 +1642,7 @@ def connector_run_once(
             db_session,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise onyx_error_from_status(status_code=400, detail=str(e))
 
     logger.info("connector_run_once - running check_for_indexing")
 
@@ -1699,7 +1708,7 @@ def gmail_callback(
 ) -> StatusResponse:
     credential_id_cookie = request.cookies.get(_GMAIL_CREDENTIAL_ID_COOKIE_NAME)
     if credential_id_cookie is None or not credential_id_cookie.isdigit():
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=401, detail="Request did not pass CSRF verification."
         )
     credential_id = int(credential_id_cookie)
@@ -1713,7 +1722,7 @@ def gmail_callback(
         GoogleOAuthAuthenticationMethod.UPLOADED,
     )
     if credentials is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=500, detail="Unable to fetch Gmail access tokens"
         )
 
@@ -1729,7 +1738,7 @@ def google_drive_callback(
 ) -> StatusResponse:
     credential_id_cookie = request.cookies.get(_GOOGLE_DRIVE_CREDENTIAL_ID_COOKIE_NAME)
     if credential_id_cookie is None or not credential_id_cookie.isdigit():
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=401, detail="Request did not pass CSRF verification."
         )
     credential_id = int(credential_id_cookie)
@@ -1743,7 +1752,7 @@ def google_drive_callback(
         GoogleOAuthAuthenticationMethod.UPLOADED,
     )
     if credentials is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=500, detail="Unable to fetch Google Drive access tokens"
         )
 
@@ -1784,7 +1793,7 @@ def get_connector_by_id(
 ) -> ConnectorSnapshot | StatusResponse[int]:
     connector = fetch_connector_by_id(connector_id, db_session)
     if connector is None:
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404, detail=f"Connector {connector_id} does not exist"
         )
 
@@ -1818,7 +1827,9 @@ def submit_connector_request(
     connector_name = request_data.connector_name.strip()
 
     if not connector_name:
-        raise HTTPException(status_code=400, detail="Connector name cannot be empty")
+        raise onyx_error_from_status(
+            status_code=400, detail="Connector name cannot be empty"
+        )
 
     user_email = user.email
 
@@ -1994,6 +2005,7 @@ def trigger_indexing_for_cc_pair(
         OnyxCeleryTask.CHECK_FOR_INDEXING,
         priority=priority,
         kwargs={"tenant_id": tenant_id},
+        expires=BEAT_EXPIRES_DEFAULT,
     )
 
     return num_triggers

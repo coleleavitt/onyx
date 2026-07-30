@@ -5,6 +5,7 @@ from redis.lock import Lock as RedisLock
 from sqlalchemy.orm import Session
 
 from onyx.background.celery.apps.app_base import task_logger
+from onyx.configs.constants import CELERY_DOCPROCESSING_TASK_EXPIRES
 from onyx.configs.constants import DANSWER_REDIS_FUNCTION_LOCK_PREFIX
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
@@ -93,6 +94,7 @@ def try_creating_docfetching_task(
             queue=OnyxCeleryQueues.CONNECTOR_DOC_FETCHING,
             task_id=custom_task_id,
             priority=priority,
+            expires=CELERY_DOCPROCESSING_TASK_EXPIRES,
         )
         if not result:
             raise RuntimeError("send_task for connector_doc_fetching_task failed.")

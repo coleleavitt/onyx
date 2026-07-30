@@ -61,6 +61,44 @@ class OnyxError(Exception):
         return self._status_code_override or self.error_code.status_code
 
 
+def onyx_error_from_status(
+    status_code: int,
+    detail: str | None = None,
+    *,
+    headers: dict[str, str] | None = None,
+) -> OnyxError:
+    """Build an ``OnyxError`` for legacy status-code based branches.
+
+    New endpoint code should choose a specific ``OnyxErrorCode`` directly. This
+    adapter is for migrations away from ``HTTPException`` where preserving the
+    existing status/detail is safer than changing endpoint behavior at the same
+    time.
+    """
+    resolved_status_code = int(status_code)
+    error_code = {
+        400: OnyxErrorCode.VALIDATION_ERROR,
+        401: OnyxErrorCode.UNAUTHENTICATED,
+        402: OnyxErrorCode.FEATURE_NOT_AVAILABLE,
+        403: OnyxErrorCode.INSUFFICIENT_PERMISSIONS,
+        404: OnyxErrorCode.NOT_FOUND,
+        409: OnyxErrorCode.CONFLICT,
+        413: OnyxErrorCode.PAYLOAD_TOO_LARGE,
+        422: OnyxErrorCode.VALIDATION_ERROR,
+        429: OnyxErrorCode.RATE_LIMITED,
+        500: OnyxErrorCode.INTERNAL_ERROR,
+        501: OnyxErrorCode.NOT_IMPLEMENTED,
+        502: OnyxErrorCode.BAD_GATEWAY,
+        503: OnyxErrorCode.SERVICE_UNAVAILABLE,
+        504: OnyxErrorCode.GATEWAY_TIMEOUT,
+    }.get(resolved_status_code, OnyxErrorCode.INTERNAL_ERROR)
+    return OnyxError(
+        error_code,
+        detail,
+        status_code_override=resolved_status_code,
+        headers=headers,
+    )
+
+
 def log_onyx_error(exc: OnyxError) -> None:
     detail = exc.detail
     status_code = exc.status_code

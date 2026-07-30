@@ -207,7 +207,7 @@ def test_policy_carries_last_synced_at() -> None:
     assert policy.doc_updated_at.year == 2026
 
 
-def test_query_failure_yields_failure_and_advances_phase() -> None:
+def test_query_failure_yields_failure_and_preserves_checkpoint_for_retry() -> None:
     from onyx.connectors.ers.client import ErsGraphQLError
 
     def execute(query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -217,11 +217,18 @@ def test_query_failure_yields_failure_and_advances_phase() -> None:
 
     connector = _connector()
     with patch.object(connector.client, "execute", execute):
-        docs, failures = _run(connector)
+        gen = connector.load_from_checkpoint(0, 0, connector.build_dummy_checkpoint())
+        failure = next(gen)
+        with pytest.raises(StopIteration) as stop:
+            next(gen)
 
-    assert _failed_entity_ids(failures) == ["insuranceClientsPage:0"]
-    # The remaining phases still run.
-    assert "ers:advisor:ma-1" in [d.id for d in docs]
+    assert isinstance(failure, ConnectorFailure)
+    assert failure.failed_entity is not None
+    assert failure.failed_entity.entity_id == "insuranceClientsPage:0"
+    checkpoint = stop.value.value
+    assert checkpoint.phase == ErsPhase.CLIENTS
+    assert checkpoint.offset == 0
+    assert checkpoint.has_more
 
 
 def test_checkpoint_round_trips_through_json() -> None:

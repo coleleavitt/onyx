@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -40,6 +39,7 @@ from onyx.db.models import User
 from onyx.db.models import UserRole
 from onyx.db.persona import get_persona_by_id
 from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.error_handling.exceptions import OnyxError
 from onyx.server.security.store import get_security_settings
 from onyx.utils.logger import setup_logger
@@ -175,7 +175,7 @@ def create_user_group(
     try:
         db_user_group = insert_user_group(db_session, user_group)
     except IntegrityError:
-        raise HTTPException(
+        raise onyx_error_from_status(
             400,
             f"User group with name '{user_group.name}' already exists. Please "
             + "choose a different name.",
@@ -234,7 +234,7 @@ def patch_user_group(
             mask_credential_prefix=get_security_settings().mask_credential_prefix,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise onyx_error_from_status(status_code=404, detail=str(e))
 
 
 @router.post("/admin/user-group/{user_group_id}/add-users")
@@ -255,7 +255,7 @@ def add_users(
             mask_credential_prefix=get_security_settings().mask_credential_prefix,
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise onyx_error_from_status(status_code=404, detail=str(e))
 
 
 @router.post("/admin/user-group/{user_group_id}/set-curator")
@@ -274,7 +274,7 @@ def set_user_curator(
         )
     except ValueError as e:
         logger.error("Error setting user curator: %s", e)
-        raise HTTPException(status_code=404, detail=str(e))
+        raise onyx_error_from_status(status_code=404, detail=str(e))
 
 
 @router.delete("/admin/user-group/{user_group_id}")
@@ -289,7 +289,7 @@ def delete_user_group(
     try:
         prepare_user_group_for_deletion(db_session, user_group_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise onyx_error_from_status(status_code=404, detail=str(e))
 
     if DISABLE_VECTOR_DB:
         user_group = fetch_user_group(db_session, user_group_id)

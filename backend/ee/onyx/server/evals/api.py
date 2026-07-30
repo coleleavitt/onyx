@@ -13,6 +13,8 @@ logger = setup_logger()
 
 router = APIRouter(prefix="/evals")
 
+EVAL_RUN_TASK_EXPIRES = 60 * 60
+
 
 @router.post("/eval_run", response_model=EvalRunAck)
 def eval_run(
@@ -28,5 +30,6 @@ def eval_run(
         kwargs={
             "configuration_dict": request.model_dump(),
         },
+        expires=EVAL_RUN_TASK_EXPIRES,
     )
     return EvalRunAck(success=True)

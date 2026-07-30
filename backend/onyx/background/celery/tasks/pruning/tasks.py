@@ -26,6 +26,7 @@ from onyx.background.celery.tasks.beat_schedule import CLOUD_BEAT_MULTIPLIER_DEF
 from onyx.background.celery.tasks.docprocessing.utils import IndexingCallbackBase
 from onyx.configs.app_configs import ALLOW_SIMULTANEOUS_PRUNING
 from onyx.configs.app_configs import JOB_TIMEOUT
+from onyx.configs.constants import CELERY_DOCPROCESSING_TASK_EXPIRES
 from onyx.configs.constants import CELERY_GENERIC_BEAT_LOCK_TIMEOUT
 from onyx.configs.constants import CELERY_PRUNING_LOCK_TIMEOUT
 from onyx.configs.constants import CELERY_TASK_WAIT_FOR_FENCE_TIMEOUT
@@ -440,6 +441,7 @@ def try_creating_prune_generator_task(
             task_id=custom_task_id,
             priority=OnyxCeleryPriority.LOW,
             headers={"enqueued_at": time.time()},
+            expires=CELERY_DOCPROCESSING_TASK_EXPIRES,
         )
 
         # fill in the celery task id

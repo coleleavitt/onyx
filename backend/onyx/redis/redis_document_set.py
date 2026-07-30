@@ -7,6 +7,7 @@ from redis.lock import Lock as RedisLock
 from sqlalchemy.orm import Session
 
 from onyx.configs.app_configs import DB_YIELD_PER_DEFAULT
+from onyx.configs.constants import CELERY_DOCUMENT_SYNC_TASK_EXPIRES
 from onyx.configs.constants import CELERY_VESPA_SYNC_BEAT_LOCK_TIMEOUT
 from onyx.configs.constants import OnyxCeleryPriority
 from onyx.configs.constants import OnyxCeleryQueues
@@ -91,6 +92,7 @@ class RedisDocumentSet(RedisObjectHelper):
                 queue=OnyxCeleryQueues.VESPA_METADATA_SYNC,
                 task_id=custom_task_id,
                 priority=OnyxCeleryPriority.MEDIUM,
+                expires=CELERY_DOCUMENT_SYNC_TASK_EXPIRES,
             )
 
             num_tasks_sent += 1

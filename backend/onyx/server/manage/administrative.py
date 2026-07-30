@@ -5,12 +5,12 @@ from typing import cast
 
 from fastapi import APIRouter
 from fastapi import Depends
-from fastapi import HTTPException
 from fastapi import Query
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
 from onyx.auth.users import current_curator_or_admin_user
+from onyx.background.celery.tasks.beat_schedule import BEAT_EXPIRES_DEFAULT
 from onyx.background.celery.versioned_apps.client import app as client_app
 from onyx.background.indexing.models import IndexAttemptErrorPydantic
 from onyx.configs.app_configs import GENERATIVE_MODEL_ACCESS_CHECK_FREQ
@@ -30,6 +30,7 @@ from onyx.db.feedback import update_document_hidden_for_user
 from onyx.db.index_attempt import cancel_indexing_attempts_for_ccpair
 from onyx.db.index_attempt import get_index_attempt_errors_across_connectors
 from onyx.db.models import User
+from onyx.error_handling.exceptions import onyx_error_from_status
 from onyx.file_store.file_store import get_default_file_store
 from onyx.key_value_store.factory import get_kv_store
 from onyx.key_value_store.interface import KvKeyNotFoundError
@@ -127,11 +128,11 @@ def validate_existing_genai_api_key(
     try:
         llm = get_default_llm(timeout=10)
     except ValueError:
-        raise HTTPException(status_code=404, detail="LLM not setup")
+        raise onyx_error_from_status(status_code=404, detail="LLM not setup")
 
     error = test_llm(llm)
     if error:
-        raise HTTPException(status_code=400, detail=error)
+        raise onyx_error_from_status(status_code=400, detail=error)
 
     # Mark check as successful
     curr_time = datetime.now(tz=timezone.utc)
@@ -159,7 +160,7 @@ def create_deletion_attempt_for_connector_id(
     if cc_pair is None:
         error = f"Connector with ID '{connector_id}' and credential ID '{credential_id}' does not exist. Has it already been deleted?"
         logger.error(error)
-        raise HTTPException(
+        raise onyx_error_from_status(
             status_code=404,
             detail=error,
         )
@@ -178,7 +179,7 @@ def create_deletion_attempt_for_connector_id(
     #     connector_credential_pair=cc_pair, db_session=db_session
     # )
     # if deletion_attempt_disallowed_reason:
-    #     raise HTTPException(
+    #     raise onyx_error_from_status(
     #         status_code=400,
     #         detail=deletion_attempt_disallowed_reason,
     #     )
@@ -197,6 +198,7 @@ def create_deletion_attempt_for_connector_id(
         OnyxCeleryTask.CHECK_FOR_CONNECTOR_DELETION,
         priority=OnyxCeleryPriority.HIGH,
         kwargs={"tenant_id": tenant_id},
+        expires=BEAT_EXPIRES_DEFAULT,
     )
 
     logger.info(

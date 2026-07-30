@@ -443,7 +443,8 @@ query OnyxErsPage($input: InsuranceBookPageInput!) {{
                     ),
                     exception=e,
                 )
-                return self._advance_phase(checkpoint)
+                checkpoint.has_more = True
+                return checkpoint
 
             for row in rows:
                 if checkpoint.phase == ErsPhase.CLIENTS:
