@@ -300,6 +300,57 @@ def _extract_pdf_text_pdfium(file_bytes: bytes, password: str | None) -> str:
         pdf.close()
 
 
+def extract_pdf_form_field_text(pdf_reader: Any) -> str:
+    """Render filled AcroForm field values as text.
+
+    Filled PDF forms keep their values in the AcroForm dictionary. Unless the
+    producer flattened the appearance streams into page content, page text
+    extraction returns only the static template, so every filled copy of one
+    template extracts identically and the values that identify the document
+    (names, account numbers, dates) are silently dropped.
+
+    Returns a deterministic, sorted "field: value" block, or "" when the PDF has
+    no fields or no filled text values.
+    """
+    try:
+        fields = pdf_reader.get_fields()
+    except Exception as e:
+        logger.warning("Could not read PDF form fields: %s", e)
+        return ""
+
+    if not fields:
+        return ""
+
+    rendered: list[str] = []
+    for name, field in fields.items():
+        if not isinstance(field, dict):
+            continue
+        # /FT: Btn (buttons/checkboxes) and /Sig (signatures) carry no useful
+        # free text; their "values" are state names or binary blobs.
+        if field.get("/FT") in ("/Btn", "/Sig"):
+            continue
+        value = field.get("/V")
+        if value is None:
+            continue
+        if isinstance(value, bytes):
+            try:
+                value = value.decode("utf-8", errors="replace")
+            except Exception:
+                continue
+        text_value = str(value).strip().lstrip("/")
+        if not text_value:
+            continue
+        label = str(name).strip()
+        rendered.append(f"{label}: {text_value}" if label else text_value)
+
+    if not rendered:
+        return ""
+
+    # Sorted so the same filled form always produces the same text, keeping
+    # Document.content_hash stable across re-indexes.
+    return "\n".join(sorted(rendered))
+
+
 def read_pdf_file(
     file: IO[Any],
     pdf_pass: str | None = None,
@@ -370,6 +421,17 @@ def read_pdf_file(
             )
             text = TEXT_SECTION_SEPARATOR.join(
                 page.extract_text() for page in pdf_reader.pages
+            )
+
+        # Values live in the AcroForm dict, not the page content stream, unless
+        # the producer flattened them. Without this, every filled copy of one
+        # template extracts to identical text.
+        form_field_text = extract_pdf_form_field_text(pdf_reader)
+        if form_field_text:
+            text = (
+                TEXT_SECTION_SEPARATOR.join([text, form_field_text])
+                if text.strip()
+                else form_field_text
             )
 
         if extract_images:
