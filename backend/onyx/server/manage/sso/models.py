@@ -39,10 +39,13 @@ class SSOProviderResponse(BaseModel):
 
     @classmethod
     def from_model(cls, provider: SSOProvider, web_domain: str) -> SSOProviderResponse:
+        raw_config = (
+            provider.config.get_value(apply_mask=False) if provider.config else {}
+        )
         config = provider.config.get_value(apply_mask=True) if provider.config else {}
         # Masking leaves booleans untouched, so legacy_callback is readable and
         # the displayed URI always matches what the flow sends.
-        redirect_uri = sso_login_callback_uri(provider, config, web_domain)
+        redirect_uri = sso_login_callback_uri(provider, raw_config, web_domain)
 
         return cls(
             id=provider.id,

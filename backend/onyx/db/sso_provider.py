@@ -3,6 +3,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
@@ -25,6 +26,16 @@ logger = setup_logger()
 _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
 
 
+def _validate_callback_uri(callback_uri: str | None) -> None:
+    if callback_uri is None:
+        return
+    parsed = urlparse(callback_uri)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("callback_uri must be an absolute https URL")
+    if parsed.fragment:
+        raise ValueError("callback_uri must not include a URL fragment")
+
+
 class _ProviderConfig(BaseModel):
     # Reject unknown keys so a config built for a different provider type (or a
     # typo) fails loudly on write instead of being stored and mis-read later.
@@ -37,6 +48,9 @@ class GoogleProviderConfig(_ProviderConfig):
     # Rows migrated from single-provider env config keep the redirect URI the
     # customer's IdP client already allowlists.
     legacy_callback: bool = False
+    # Optional absolute callback URL for deployments serving multiple public
+    # login domains from one backend.
+    callback_uri: str | None = None
 
 
 class OIDCProviderConfig(_ProviderConfig):
@@ -44,6 +58,9 @@ class OIDCProviderConfig(_ProviderConfig):
     client_secret: str
     openid_config_url: str
     legacy_callback: bool = False
+    # Optional absolute callback URL for deployments serving multiple public
+    # login domains from one backend.
+    callback_uri: str | None = None
 
 
 class SAMLProviderConfig(_ProviderConfig):
@@ -78,7 +95,11 @@ def validate_sso_config(
     dict for storage. Raises ValueError on a missing or unknown field so callers
     see one exception type regardless of the provider."""
     try:
-        return _CONFIG_MODEL_BY_TYPE[provider_type].model_validate(config).model_dump()
+        normalized_config = (
+            _CONFIG_MODEL_BY_TYPE[provider_type].model_validate(config).model_dump()
+        )
+        _validate_callback_uri(normalized_config.get("callback_uri"))
+        return normalized_config
     except ValidationError as e:
         raise ValueError(f"invalid {provider_type.value} provider config: {e}") from e
 
@@ -92,6 +113,10 @@ def sso_login_callback_uri(
     if provider.provider_type is SSOProviderType.SAML:
         # Single issuer-resolved ACS for every SAML row.
         return f"{web_domain}/api/auth/saml/callback"
+    callback_uri = config.get("callback_uri")
+    if isinstance(callback_uri, str) and callback_uri:
+        _validate_callback_uri(callback_uri)
+        return callback_uri
     if config.get("legacy_callback"):
         if provider.provider_type is SSOProviderType.GOOGLE_OAUTH:
             return f"{web_domain}/auth/oauth/callback"

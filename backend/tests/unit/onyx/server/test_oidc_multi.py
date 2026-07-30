@@ -49,7 +49,7 @@ def test_resolve_oidc_returns_config(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     resolved, config = oidc_multi._resolve_oidc_provider(_DB, "okta")
     assert resolved is provider
-    assert config == {**_OIDC_CONFIG, "legacy_callback": False}
+    assert config == {**_OIDC_CONFIG, "legacy_callback": False, "callback_uri": None}
 
 
 def test_resolve_google_returns_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -62,7 +62,7 @@ def test_resolve_google_returns_config(monkeypatch: pytest.MonkeyPatch) -> None:
         oidc_multi, "fetch_sso_provider_by_name", lambda **_kw: provider
     )
     _resolved, config = oidc_multi._resolve_oidc_provider(_DB, "google")
-    assert config == {**_GOOGLE_CONFIG, "legacy_callback": False}
+    assert config == {**_GOOGLE_CONFIG, "legacy_callback": False, "callback_uri": None}
 
 
 def test_resolve_fail_closed_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -222,6 +222,18 @@ def test_callback_uri_parametric_by_default() -> None:
     )
 
 
+def test_callback_uri_custom_override() -> None:
+    provider = _provider()
+    config: dict[str, object] = {
+        **_OIDC_CONFIG,
+        "callback_uri": "https://chat.magellanfinancial.com/api/auth/oidc/magellan/callback",
+    }
+    assert (
+        oidc_multi._callback_uri(provider, config)
+        == "https://chat.magellanfinancial.com/api/auth/oidc/magellan/callback"
+    )
+
+
 def test_callback_uri_legacy_oidc() -> None:
     provider = _provider()
     config: dict[str, object] = {**_OIDC_CONFIG, "legacy_callback": True}
@@ -245,6 +257,13 @@ def test_validate_config_accepts_legacy_callback_for_oauth_types() -> None:
         SSOProviderType.OIDC, {**_OIDC_CONFIG, "legacy_callback": True}
     )
     assert oidc["legacy_callback"] is True
+    custom_callback = "https://chat.fiwealth.com/api/auth/oidc/fiwealth/callback"
+    assert (
+        validate_sso_config(
+            SSOProviderType.OIDC, {**_OIDC_CONFIG, "callback_uri": custom_callback}
+        )["callback_uri"]
+        == custom_callback
+    )
     google = validate_sso_config(
         SSOProviderType.GOOGLE_OAUTH, {**_GOOGLE_CONFIG, "legacy_callback": True}
     )
@@ -254,6 +273,16 @@ def test_validate_config_accepts_legacy_callback_for_oauth_types() -> None:
         validate_sso_config(SSOProviderType.OIDC, dict(_OIDC_CONFIG))["legacy_callback"]
         is False
     )
+
+
+def test_validate_config_rejects_insecure_callback_uri() -> None:
+    from onyx.db.sso_provider import validate_sso_config
+
+    with pytest.raises(ValueError, match="callback_uri"):
+        validate_sso_config(
+            SSOProviderType.OIDC,
+            {**_OIDC_CONFIG, "callback_uri": "http://chat.fiwealth.com/callback"},
+        )
 
 
 def test_validate_config_rejects_legacy_callback_for_saml() -> None:

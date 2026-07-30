@@ -92,16 +92,21 @@ def only_test_providers_enabled(db_session: Session) -> Generator[None, None, No
             db_session.commit()
 
 
-def _build_oidc_request(name: str, client_secret: str) -> dict[str, Any]:
+def _build_oidc_request(
+    name: str, client_secret: str, callback_uri: str | None = None
+) -> dict[str, Any]:
+    config = {
+        "client_id": "client-id",
+        "client_secret": client_secret,
+        "openid_config_url": "https://idp.example.com/.well-known/openid-configuration",
+    }
+    if callback_uri is not None:
+        config["callback_uri"] = callback_uri
     return {
         "name": name,
         "display_name": "Company A",
         "provider_type": SSOProviderType.OIDC.value,
-        "config": {
-            "client_id": "client-id",
-            "client_secret": client_secret,
-            "openid_config_url": "https://idp.example.com/.well-known/openid-configuration",
-        },
+        "config": config,
         "allowed_email_domains": ["companya.com"],
     }
 
@@ -221,6 +226,30 @@ def test_sso_provider_crud_masks_and_restores_secrets(
     disabled_provider = _find_provider(disabled_list_response.json(), provider_id)
     assert disabled_provider["enabled"] is False
     assert is_masked_credential(disabled_provider["config"]["client_secret"]) is True
+
+
+def test_sso_provider_custom_callback_uri(
+    client: TestClient,
+    provider_names: list[str],
+    only_test_providers_enabled: None,
+) -> None:
+    assert only_test_providers_enabled is None
+    name = _new_provider_name()
+    callback_uri = "https://chat.magellanfinancial.com/api/auth/oidc/magellan/callback"
+
+    create_response = client.post(
+        "/admin/sso/provider",
+        json=_build_oidc_request(name, "super-secret-value", callback_uri),
+    )
+    assert create_response.status_code == 200
+    provider_names.append(name)
+    created_provider = create_response.json()
+    assert created_provider["redirect_uri"] == callback_uri
+
+    list_response = client.get("/admin/sso/provider")
+    assert list_response.status_code == 200
+    listed_provider = _find_provider(list_response.json(), created_provider["id"])
+    assert listed_provider["redirect_uri"] == callback_uri
 
 
 def test_update_partial_config_preserves_stored_keys(
