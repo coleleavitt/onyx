@@ -47,6 +47,7 @@ from onyx.document_index.opensearch.schema import get_opensearch_doc_chunk_id
 from onyx.document_index.opensearch.schema import GLOBAL_BOOST_FIELD_NAME
 from onyx.document_index.opensearch.schema import HIDDEN_FIELD_NAME
 from onyx.document_index.opensearch.schema import PERSONAS_FIELD_NAME
+from onyx.document_index.opensearch.schema import PUBLIC_FIELD_NAME
 from onyx.document_index.opensearch.schema import USER_PROJECTS_FIELD_NAME
 from onyx.document_index.opensearch.search import DocumentQuery
 from onyx.document_index.opensearch.search import (
@@ -579,10 +580,17 @@ class OpenSearchDocumentIndex(DocumentIndex):
             # we don't have to think about passing in the appropriate types into
             # this dict.
             if update_request.access is not None:
+                # The public marker lives in its own field, so both halves of the
+                # access state must be written together. Updating only the ACL
+                # leaves a revoked document matching the search filter's public
+                # clause forever.
                 properties_to_update[ACCESS_CONTROL_LIST_FIELD_NAME] = (
                     generate_opensearch_filtered_access_control_list(
                         update_request.access
                     )
+                )
+                properties_to_update[PUBLIC_FIELD_NAME] = (
+                    update_request.access.is_public
                 )
             if update_request.document_sets is not None:
                 properties_to_update[DOCUMENT_SETS_FIELD_NAME] = list(
