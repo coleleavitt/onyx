@@ -110,7 +110,7 @@ export default function SpaceCard({
         <div
           role="img"
           aria-label={`${project.owner.email} avatar`}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background-neutral-inverted-00"
+          className="hidden h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background-neutral-inverted-00 sm:flex"
           title={project.owner.full_name || project.owner.email}
         >
           <Text font="secondary-body" color="text-inverted-05" nowrap>
@@ -122,14 +122,14 @@ export default function SpaceCard({
         </div>
       ) : null}
 
-      <div className="flex w-28 shrink-0 items-center justify-end gap-1.5 text-text-03">
+      <div className="hidden w-28 shrink-0 items-center justify-end gap-1.5 text-text-03 md:flex">
         <VisibilityIcon className="h-3.5 w-3.5 stroke-current" />
         <Text font="secondary-body" color="inherit" nowrap>
           {visibilityLabel}
         </Text>
       </div>
 
-      <div className="w-20 shrink-0 text-right">
+      <div className="hidden w-20 shrink-0 text-right lg:block">
         {updated ? (
           <Text font="secondary-body" color="text-03" nowrap>
             {updated}
@@ -139,7 +139,7 @@ export default function SpaceCard({
 
       {/* Trailing cell: pin indicator ⇄ overflow menu (Perplexity-style swap) */}
       <div
-        className="relative flex h-7 w-7 shrink-0 items-center justify-center"
+        className="relative flex h-9 w-9 shrink-0 items-center justify-center"
         onClick={(event) => event.stopPropagation()}
       >
         {project.is_pinned ? (
@@ -164,7 +164,7 @@ export default function SpaceCard({
               <Button
                 icon={SvgMoreHorizontal}
                 prominence="tertiary"
-                size="xs"
+                size="sm"
                 aria-label={`Space actions for ${project.name}`}
               />
             </Popover.Trigger>
