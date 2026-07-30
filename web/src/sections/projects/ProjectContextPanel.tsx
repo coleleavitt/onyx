@@ -13,7 +13,7 @@ import {
 import { MinimalOnyxDocument } from "@/lib/search/interfaces";
 import { Button, Divider, LineItemButton, Text } from "@opal/components";
 import { timeAgo } from "@opal/time";
-import { Content, ContentAction } from "@opal/layouts";
+import { Content, ContentAction, toast } from "@opal/layouts";
 import AddInstructionModal from "@/sections/modals/AddInstructionModal";
 import ViewInstructionsModal from "@/sections/modals/ViewInstructionsModal";
 import EditSpaceDetailsModal from "@/sections/modals/EditSpaceDetailsModal";
@@ -180,6 +180,58 @@ export default function ProjectContextPanel({
   const connectedKnowledge =
     currentProjectDetails?.connected_knowledge ?? EMPTY_CONNECTED_KNOWLEDGE;
 
+  const updateConnectedKnowledgeSelection = useCallback(
+    async (documentIds: string[], hierarchyNodeIds: number[]) => {
+      if (currentProjectId === null) return;
+
+      await updateProjectConnectedKnowledge(currentProjectId, {
+        document_ids: documentIds,
+        hierarchy_node_ids: hierarchyNodeIds,
+      });
+    },
+    [currentProjectId, updateProjectConnectedKnowledge]
+  );
+
+  const removeConnectedDocument = useCallback(
+    async (documentId: string) => {
+      try {
+        await updateConnectedKnowledgeSelection(
+          connectedKnowledge.documents
+            .map((document) => document.id)
+            .filter((id) => id !== documentId),
+          connectedKnowledge.hierarchy_nodes.map((node) => node.id)
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to remove connected document";
+        toast.error(message);
+      }
+    },
+    [connectedKnowledge, updateConnectedKnowledgeSelection]
+  );
+
+  const removeConnectedHierarchyNode = useCallback(
+    async (nodeId: number) => {
+      try {
+        await updateConnectedKnowledgeSelection(
+          connectedKnowledge.documents.map((document) => document.id),
+          connectedKnowledge.hierarchy_nodes
+            .map((node) => node.id)
+            .filter((id) => id !== nodeId)
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to remove connected folder";
+        toast.error(message);
+      }
+    },
+    [connectedKnowledge, updateConnectedKnowledgeSelection]
+  );
+
   if (!currentProjectId) return null; // no selection yet
 
   // Detect if there are any non-image files in the displayed files
@@ -239,10 +291,10 @@ export default function ProjectContextPanel({
         onClose={() => setConnectedKnowledgeOpen(false)}
         onUploadFiles={handleUploadFiles}
         onSave={async (documentIds, hierarchyNodeIds) => {
-          await updateProjectConnectedKnowledge(currentProjectId, {
-            document_ids: documentIds,
-            hierarchy_node_ids: hierarchyNodeIds,
-          });
+          await updateConnectedKnowledgeSelection(
+            documentIds,
+            hierarchyNodeIds
+          );
         }}
       />
 
@@ -567,6 +619,8 @@ export default function ProjectContextPanel({
           canEdit={canEdit}
           compact={compact}
           onOpenPicker={() => setConnectedKnowledgeOpen(true)}
+          onRemoveDocument={removeConnectedDocument}
+          onRemoveHierarchyNode={removeConnectedHierarchyNode}
         />
 
         {/* Space-scoped memory — real, backed by /api/memory?project_id=... */}

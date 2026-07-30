@@ -9,6 +9,7 @@ import {
   SvgFileText,
   SvgFolder,
   SvgPlusCircle,
+  SvgX,
 } from "@opal/icons";
 import { getSourceMetadata } from "@/lib/sources";
 import type { ProjectConnectedKnowledge } from "@/lib/projects/types";
@@ -19,6 +20,8 @@ interface SpaceConnectedSourcesSectionProps {
   canEdit: boolean;
   compact?: boolean;
   onOpenPicker: () => void;
+  onRemoveDocument?: (documentId: string) => void;
+  onRemoveHierarchyNode?: (nodeId: number) => void;
 }
 
 // Beyond this the list stops being a summary and starts being a file browser —
@@ -27,10 +30,68 @@ const MAX_VISIBLE_ITEMS = 5;
 
 interface ConnectedItem {
   key: string;
+  kind: "document" | "folder";
+  id: string | number;
   title: string;
   icon: IconFunctionComponent;
   description?: string;
   link?: string | null;
+}
+
+interface ConnectedItemActionsProps {
+  item: ConnectedItem;
+  canEdit: boolean;
+  onRemoveDocument?: (documentId: string) => void;
+  onRemoveHierarchyNode?: (nodeId: number) => void;
+}
+
+function ConnectedItemActions({
+  item,
+  canEdit,
+  onRemoveDocument,
+  onRemoveHierarchyNode,
+}: ConnectedItemActionsProps) {
+  const canRemove =
+    canEdit &&
+    (item.kind === "document"
+      ? onRemoveDocument !== undefined
+      : onRemoveHierarchyNode !== undefined);
+
+  if (!item.link && !canRemove) return undefined;
+
+  return (
+    <div
+      className="flex items-center gap-1"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {item.link && (
+        <Button
+          href={item.link}
+          target="_blank"
+          icon={SvgExternalLink}
+          prominence="tertiary"
+          size="xs"
+          tooltip="Open source item"
+        />
+      )}
+      {canRemove && (
+        <Button
+          icon={SvgX}
+          prominence="tertiary"
+          size="xs"
+          aria-label={`Remove ${item.title} from connected sources`}
+          tooltip="Remove from space"
+          onClick={() => {
+            if (item.kind === "document") {
+              onRemoveDocument?.(String(item.id));
+            } else {
+              onRemoveHierarchyNode?.(Number(item.id));
+            }
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 function totalSelections(knowledge: ProjectConnectedKnowledge): number {
@@ -58,6 +119,8 @@ export default function SpaceConnectedSourcesSection({
   canEdit,
   compact = false,
   onOpenPicker,
+  onRemoveDocument,
+  onRemoveHierarchyNode,
 }: SpaceConnectedSourcesSectionProps) {
   // One row per thing actually connected. The previous shape also rendered a
   // per-source summary row above the items, so a single connected folder
@@ -69,15 +132,20 @@ export default function SpaceConnectedSourcesSection({
 
     const folders = knowledge.hierarchy_nodes.map((node) => ({
       key: `node-${node.id}`,
+      kind: "folder" as const,
+      id: node.id,
       title: node.title,
       icon: getSourceMetadata(node.source).icon,
       description: labelSources
         ? getSourceMetadata(node.source).displayName
         : undefined,
+      link: node.link,
     }));
 
     const documents = knowledge.documents.map((document) => ({
       key: `document-${document.id}`,
+      kind: "document" as const,
+      id: document.id,
       title: document.title,
       icon: document.source
         ? getSourceMetadata(document.source).icon
@@ -146,16 +214,12 @@ export default function SpaceConnectedSourcesSection({
               titleMaxLines={1}
               onClick={onOpenPicker}
               rightChildren={
-                item.link ? (
-                  <Button
-                    href={item.link}
-                    target="_blank"
-                    icon={SvgExternalLink}
-                    prominence="tertiary"
-                    size="xs"
-                    tooltip="Open source document"
-                  />
-                ) : undefined
+                <ConnectedItemActions
+                  item={item}
+                  canEdit={canEdit}
+                  onRemoveDocument={onRemoveDocument}
+                  onRemoveHierarchyNode={onRemoveHierarchyNode}
+                />
               }
             />
           ))}
