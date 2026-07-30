@@ -8,7 +8,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import useSWRInfinite from "swr/infinite";
-import { ChatSession, ChatSessionSharedStatus } from "@/app/app/interfaces";
+import {
+  ChatSession,
+  ChatSessionProjectVisibility,
+  ChatSessionSharedStatus,
+} from "@/app/app/interfaces";
 import { errorHandlingFetcher } from "@/lib/fetcher";
 import { SWR_KEYS } from "@/lib/swr-keys";
 import { MinimalAgent } from "@/lib/agents/types";
@@ -267,6 +271,7 @@ export default function useChatSessions(): UseChatSessionsOutput {
         time_created: now,
         time_updated: now,
         shared_status: ChatSessionSharedStatus.Private,
+        project_visibility: ChatSessionProjectVisibility.Private,
         project_id: projectId ?? null,
         current_alternate_model: "",
         current_temperature_override: null,
