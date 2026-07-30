@@ -345,7 +345,7 @@ export default function SpaceConnectedKnowledgeModal({
         <Modal.Header
           icon={SvgFolderOpen}
           title="Add knowledge to space"
-          description="Upload local files separately from indexed connector folders and documents. Connector selections scope retrieval without granting new permissions."
+          description="Attach indexed connector scopes or upload local files. Connector selections use admin-approved group permissions and never grant new document access by themselves."
           onClose={onClose}
         />
         <Modal.Body alignItems="stretch">
@@ -362,8 +362,9 @@ export default function SpaceConnectedKnowledgeModal({
                   </Text>
                   <Text font="secondary-body" color="text-03">
                     Connect and index SharePoint or another intranet connector
-                    in the admin panel first. This space can still use uploaded
-                    files.
+                    in the admin panel first, then grant this group access to
+                    governed source scopes from Admin, then Groups. This space
+                    can still use uploaded files.
                   </Text>
                 </div>
               ) : (
@@ -538,8 +539,8 @@ export default function SpaceConnectedKnowledgeModal({
                     </Text>
                     <Text font="secondary-body" color="text-03">
                       Use this for local files or folders. Use Connected sources
-                      for already-indexed SharePoint sites, folders, and
-                      documents.
+                      for admin-approved, already-indexed SharePoint sites,
+                      folders, and documents.
                     </Text>
                   </div>
                 </div>

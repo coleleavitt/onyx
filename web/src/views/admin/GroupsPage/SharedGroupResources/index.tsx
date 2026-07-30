@@ -355,7 +355,7 @@ function SharedGroupResources({
     <SimpleCollapsible>
       <SimpleCollapsible.Header
         title="Shared with This Group"
-        description="Share connectors, document sets, agents with members of this group."
+        description="Delegate connectors, document sets, agents, and governed Space source scopes to members of this group."
       />
       <SimpleCollapsible.Content>
         <Card>
@@ -447,10 +447,16 @@ function SharedGroupResources({
                 justifyContent="start"
               >
                 <Text mainUiAction text04>
-                  Space Connected Sources
+                  Space Source Permissions
+                </Text>
+                <Text secondaryBody text03>
+                  These governed SharePoint folders and connected-source scopes
+                  decide what this group may attach to Spaces. Space sharing
+                  still only shares the Space shell. Document retrieval remains
+                  limited by source ACLs.
                 </Text>
                 <ResourcePopover
-                  placeholder="Add source scopes"
+                  placeholder="Add governed source scopes"
                   searchValue={sourceScopeSearch}
                   onSearchChange={setSourceScopeSearch}
                   sections={sourceScopeSections}
@@ -488,8 +494,8 @@ function SharedGroupResources({
               ) : (
                 <Content
                   icon={SvgEmpty}
-                  title="No connected source scopes added"
-                  description="Add curated SharePoint departments or folders this group may browse in Spaces."
+                  title="No governed source scopes added"
+                  description="Add approved SharePoint departments, sites, or folders this group may attach to Spaces."
                   sizePreset="secondary"
                   variant="section"
                 />

@@ -317,6 +317,7 @@ export default function ShareProjectModal({
         <Modal.Header
           icon={SvgShare}
           title={markdown(`Share space *${project.name}*`)}
+          description="Share the Space shell with people or groups. Source permissions are still enforced separately, so sharing a Space does not grant access to restricted connector folders or documents."
           onClose={onClose}
         />
         <Modal.Body>
@@ -334,7 +335,9 @@ export default function ShareProjectModal({
             <div className="flex w-full flex-col gap-3">
               <div className="flex items-center justify-between gap-2 rounded-12 bg-background-tint-00 p-2">
                 <Text color="text-03" font="secondary-body">
-                  Share this private link with people who should request access.
+                  Copy this link for people who should request Space access.
+                  They still need connector or group permissions before
+                  restricted SharePoint sources return content.
                 </Text>
                 <Button
                   icon={SvgCopy}
@@ -410,7 +413,7 @@ export default function ShareProjectModal({
               </div>
 
               <Text color="text-03" font="secondary-action">
-                People with access
+                People and groups with Space access
               </Text>
               <div className="flex w-full flex-col gap-2 rounded-12 bg-background-tint-00 p-1">
                 {sharing.owner && (
