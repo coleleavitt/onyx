@@ -26,6 +26,7 @@ export interface UserRow {
   id: string | null;
   email: string;
   role: UserRole | null;
+  account_type?: AccountType | null;
   status: UserStatus;
   is_active: boolean;
   is_scim_synced: boolean;

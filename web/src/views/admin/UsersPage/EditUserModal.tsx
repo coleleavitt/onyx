@@ -12,7 +12,7 @@ import LineItem from "@/refresh-components/buttons/LineItem";
 import { ShadowDiv } from "@opal/components";
 import { Tooltip } from "@opal/components";
 import { Section } from "@/layouts/general-layouts";
-import { UserRole, USER_ROLE_LABELS } from "@/lib/types";
+import { AccountType, UserRole, USER_ROLE_LABELS } from "@/lib/types";
 import { useTierAtLeast } from "@/hooks/useTierAtLeast";
 import { Tier } from "@/lib/settings/types";
 import useGroups from "@/hooks/useGroups";
@@ -30,6 +30,24 @@ const ASSIGNABLE_ROLES: UserRole[] = [
   UserRole.GLOBAL_CURATOR,
   UserRole.BASIC,
 ];
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  [AccountType.STANDARD]: "Standard login account",
+  [AccountType.BOT]: "Bot-only account",
+  [AccountType.EXT_PERM_USER]: "External-permission placeholder",
+  [AccountType.SERVICE_ACCOUNT]: "Service account",
+  [AccountType.ANONYMOUS]: "Anonymous account",
+};
+
+const NON_ASSIGNABLE_ROLE_HELP: Partial<Record<UserRole, string>> = {
+  [UserRole.CURATOR]:
+    "Curator is granted from group membership, not this dropdown.",
+  [UserRole.LIMITED]: "Limited is assigned automatically by the API.",
+  [UserRole.SLACK_USER]:
+    "Slack User is assigned until the user signs into the web app.",
+  [UserRole.EXT_PERM_USER]:
+    "External Permissioned User is created by external permission sync.",
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -292,13 +310,34 @@ export default function EditUserModal({
                 )}
               </ShadowDiv>
             </Section>
+            {user.account_type && (
+              <>
+                <Divider paddingParallel="fit" paddingPerpendicular="fit" />
+                <ContentAction
+                  title="Account type"
+                  description="System-managed login/source identity. This is not changed by the role dropdown."
+                  sizePreset="main-ui"
+                  variant="section"
+                  padding="fit"
+                  rightChildren={
+                    <span className="text-text-02 text-sm">
+                      {ACCOUNT_TYPE_LABELS[user.account_type] ??
+                        user.account_type}
+                    </span>
+                  }
+                />
+              </>
+            )}
             {user.role && (
               <>
                 <Divider paddingParallel="fit" paddingPerpendicular="fit" />
 
                 <ContentAction
-                  title="User Role"
-                  description="This controls their general permissions."
+                  title="Global role"
+                  description={
+                    NON_ASSIGNABLE_ROLE_HELP[user.role] ??
+                    "Only Admin, Global Curator, and Basic are assigned here. Group-scoped permissions are managed through groups."
+                  }
                   sizePreset="main-ui"
                   variant="section"
                   padding="fit"

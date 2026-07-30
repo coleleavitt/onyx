@@ -100,7 +100,7 @@ function buildColumns(onMutate: () => void) {
       ),
     }),
     tc.column("role", {
-      header: "Account Type",
+      header: "Global Role",
       weight: 16,
       cell: (_value, row) => <UserRoleCell user={row} onMutate={onMutate} />,
     }),

@@ -42,6 +42,7 @@ from typing import cast
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from onyx.access.access import get_access_for_documents
 from onyx.chat.emitter import Emitter
 from onyx.configs.chat_configs import MAX_CHUNKS_FED_TO_CHAT
 from onyx.configs.constants import DocumentSource
@@ -132,6 +133,57 @@ from shared_configs.configs import MODEL_SERVER_HOST
 from shared_configs.configs import MODEL_SERVER_PORT
 
 logger = setup_logger()
+
+
+def _filter_chunks_by_current_db_access(
+    ranked_results: list[list[InferenceChunk]],
+    user: User,
+    acl_filters: list[str] | None,
+) -> list[list[InferenceChunk]]:
+    """Defensively re-check search results against current Postgres ACL state.
+
+    The document index is the primary search filter, but its ACL/public fields can
+    become stale after permission sync or connector-mode changes. Before any chunk
+    is ranked, selected by an LLM, emitted to the UI, or persisted as a SearchDoc,
+    compare each returned document against the current DB access state.
+    """
+    if acl_filters is None:
+        return ranked_results
+
+    document_ids = sorted(
+        {chunk.document_id for result in ranked_results for chunk in result}
+    )
+    if not document_ids:
+        return ranked_results
+
+    acl_filter_set = set(acl_filters)
+    with get_session_with_current_tenant() as db_session:
+        access_by_doc_id = get_access_for_documents(document_ids, db_session)
+
+    allowed_doc_ids = {
+        document_id
+        for document_id, access in access_by_doc_id.items()
+        if access.to_acl() & acl_filter_set
+    }
+    filtered_results = [
+        [chunk for chunk in result if chunk.document_id in allowed_doc_ids]
+        for result in ranked_results
+    ]
+
+    removed_doc_ids = sorted(set(document_ids) - allowed_doc_ids)
+    if removed_doc_ids:
+        logger.warning(
+            "Search result DB ACL post-filter removed %s/%s documents for user_id=%s. "
+            "This indicates stale or over-permissive document index ACL metadata. "
+            "removed_document_ids=%s",
+            len(removed_doc_ids),
+            len(document_ids),
+            user.id,
+            removed_doc_ids[:50],
+        )
+
+    return filtered_results
+
 
 QUERIES_FIELD = "queries"
 
@@ -1067,6 +1119,12 @@ class SearchTool(Tool[SearchToolOverrideKwargs]):
             ) from e
         if not all_search_results:
             all_search_results = []
+
+        all_search_results = _filter_chunks_by_current_db_access(
+            ranked_results=all_search_results,
+            user=self.user,
+            acl_filters=acl_filters,
+        )
 
         # Merge results using weighted Reciprocal Rank Fusion
         # This intelligently combines rankings from different queries

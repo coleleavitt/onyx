@@ -70,6 +70,9 @@ from onyx.server.features.projects.api import get_project_connected_knowledge
 from onyx.server.features.projects.api import update_project_connected_knowledge
 from onyx.server.features.projects.models import ProjectConnectedKnowledgeRequest
 from onyx.tools.models import SearchToolUsage
+from onyx.tools.tool_implementations.search.search_tool import (
+    _filter_chunks_by_current_db_access,
+)
 from onyx.tools.tool_implementations.search.search_tool import SearchTool
 from tests.external_dependency_unit.conftest import create_test_user
 from tests.external_dependency_unit.indexing_helpers import make_cc_pair
@@ -506,6 +509,58 @@ def test_search_tool_project_connected_knowledge_excludes_unauthorized_selected_
     assert private_owner_exact.id in filters.attached_document_ids
     assert folder.id in filters.hierarchy_node_ids
     assert prefix_user_email(viewer.email) in filters.access_control_list
+
+
+def test_search_tool_db_acl_post_filter_blocks_stale_public_index_metadata(
+    db_session: Session,
+) -> None:
+    viewer = create_test_user(db_session, "stale_public_index_viewer")
+    folder = _create_hierarchy_node(
+        db_session,
+        raw_id=f"stale-index-folder-{uuid4().hex}",
+        name="Stale Index Folder",
+    )
+    public_doc = _create_indexed_document(
+        db_session,
+        document_id=f"public-db-doc-{uuid4().hex}",
+        title="Public DB Document",
+        parent=folder,
+        is_public=True,
+    )
+    private_doc = _create_indexed_document(
+        db_session,
+        document_id=f"private-db-doc-{uuid4().hex}",
+        title="Private DB Document",
+        parent=folder,
+        is_public=False,
+    )
+
+    index_results = [
+        [
+            _chunk(
+                public_doc.id,
+                title="Public DB Document",
+                acl=[PUBLIC_DOC_PAT],
+                ancestor_node_ids=[folder.id],
+            ),
+            _chunk(
+                private_doc.id,
+                title="Stale public index document",
+                acl=[PUBLIC_DOC_PAT],
+                ancestor_node_ids=[folder.id],
+            ),
+        ]
+    ]
+
+    filtered = _filter_chunks_by_current_db_access(
+        ranked_results=index_results,
+        user=viewer,
+        acl_filters=list(get_acl_for_user(viewer, db_session)),
+    )
+
+    assert [[chunk.document_id for chunk in result] for result in filtered] == [
+        [public_doc.id]
+    ]
 
 
 def test_project_connected_knowledge_requires_edit_access(
