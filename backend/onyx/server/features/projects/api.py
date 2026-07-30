@@ -24,6 +24,7 @@ from onyx.configs.constants import USER_FILE_PROJECT_SYNC_MAX_QUEUE_DEPTH
 from onyx.db.connected_source_governance import create_connected_knowledge_preset
 from onyx.db.connected_source_governance import get_visible_presets_for_user
 from onyx.db.connected_source_governance import list_connected_source_scopes
+from onyx.db.connected_source_governance import provision_sharepoint_scope_to_connectors
 from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import Permission
@@ -75,6 +76,8 @@ from onyx.server.features.projects.models import ProjectMetadataUpdateRequest
 from onyx.server.features.projects.models import ProjectShareRequest
 from onyx.server.features.projects.models import ProjectSharingSnapshot
 from onyx.server.features.projects.models import ResolveProjectAccessRequest
+from onyx.server.features.projects.models import SharePointScopeProvisionRequest
+from onyx.server.features.projects.models import SharePointScopeProvisionResultSnapshot
 from onyx.server.features.projects.models import TokenCountResponse
 from onyx.server.features.projects.models import UserFileSnapshot
 from onyx.server.features.projects.models import UserProjectSnapshot
@@ -401,6 +404,37 @@ def upsert_connected_source_scope_policy(
         warning=body.warning,
     )
     return ConnectedSourceScopeSnapshot.from_model(scope)
+
+
+@router.post(
+    "/connected-source-scopes/{hierarchy_node_id}/provision-sharepoint",
+    tags=PUBLIC_API_TAGS,
+)
+def provision_connected_source_scope_to_sharepoint_connectors(
+    hierarchy_node_id: int,
+    body: SharePointScopeProvisionRequest,
+    _: User = Depends(require_permission(Permission.FULL_ADMIN_PANEL_ACCESS)),
+    db_session: Session = Depends(get_session),
+) -> list[SharePointScopeProvisionResultSnapshot]:
+    try:
+        results = provision_sharepoint_scope_to_connectors(
+            db_session=db_session,
+            hierarchy_node_id=hierarchy_node_id,
+            connector_ids=body.connector_ids,
+            dry_run=body.dry_run,
+        )
+    except ValueError as e:
+        raise OnyxError(OnyxErrorCode.INVALID_INPUT, str(e)) from e
+    return [
+        SharePointScopeProvisionResultSnapshot(
+            connector_id=result.connector_id,
+            connector_name=result.connector_name,
+            added_sites=list(result.added_sites),
+            added_excluded_paths=list(result.added_excluded_paths),
+            dry_run=result.dry_run,
+        )
+        for result in results
+    ]
 
 
 @router.get("/connected-knowledge-presets", tags=PUBLIC_API_TAGS)

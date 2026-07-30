@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import unquote
+from urllib.parse import urlsplit
+from urllib.parse import urlunsplit
 
 from sqlalchemy import func
 from sqlalchemy import select
@@ -19,6 +22,7 @@ from onyx.db.enums import ConnectorCredentialPairStatus
 from onyx.db.models import ConnectedSourceScope
 from onyx.db.models import ConnectedSourceScope__UserGroup
 from onyx.db.models import ConnectedSourceScopeExclusion
+from onyx.db.models import Connector
 from onyx.db.models import ConnectorCredentialPair
 from onyx.db.models import Document
 from onyx.db.models import HierarchyNode
@@ -97,6 +101,15 @@ class ConnectedSourceScopeMetadata:
 class GovernedHierarchyNodes:
     nodes: list[HierarchyNode]
     metadata_by_node_id: dict[int, ConnectedSourceScopeMetadata]
+
+
+@dataclass(frozen=True)
+class SharePointScopeProvisioningResult:
+    connector_id: int
+    connector_name: str
+    added_sites: tuple[str, ...]
+    added_excluded_paths: tuple[str, ...]
+    dry_run: bool
 
 
 def get_user_group_ids(db_session: Session, user: User | None) -> set[int]:
@@ -689,6 +702,167 @@ def get_project_connected_excluded_hierarchy_node_ids(
             selected_node_ids=selected_node_ids,
         )
     )
+
+
+def _canonical_url(value: str) -> str:
+    parsed = urlsplit(value.strip())
+    return urlunsplit(
+        (
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            parsed.path.rstrip("/"),
+            "",
+            "",
+        )
+    )
+
+
+def _sharepoint_folder_path_from_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    parsed = urlsplit(value)
+    parts = [unquote(part) for part in parsed.path.split("/") if part]
+    lower_parts = [part.lower() for part in parts]
+    site_type_index = None
+    for site_token in ("sites", "teams"):
+        if site_token in lower_parts:
+            site_type_index = lower_parts.index(site_token)
+            break
+    if site_type_index is None:
+        return None
+    remaining_parts = parts[site_type_index + 2 :]
+    if len(remaining_parts) <= 1:
+        return None
+    return "/".join(remaining_parts[1:]).strip("/") or None
+
+
+def _excluded_path_patterns_for_node(node: HierarchyNode) -> tuple[str, ...]:
+    folder_path = _sharepoint_folder_path_from_url(node.link)
+    if folder_path is None:
+        return ()
+    return (folder_path, f"{folder_path}/**")
+
+
+def _associated_sharepoint_connectors_for_scope(
+    *,
+    db_session: Session,
+    hierarchy_node_id: int,
+    connector_ids: list[int] | None,
+) -> list[Connector]:
+    stmt = (
+        select(Connector)
+        .join(
+            ConnectorCredentialPair,
+            ConnectorCredentialPair.connector_id == Connector.id,
+        )
+        .join(
+            HierarchyNodeByConnectorCredentialPair,
+            (HierarchyNodeByConnectorCredentialPair.connector_id == Connector.id)
+            & (
+                HierarchyNodeByConnectorCredentialPair.credential_id
+                == ConnectorCredentialPair.credential_id
+            ),
+        )
+        .where(
+            Connector.source == DocumentSource.SHAREPOINT,
+            HierarchyNodeByConnectorCredentialPair.hierarchy_node_id
+            == hierarchy_node_id,
+        )
+        .distinct()
+    )
+    if connector_ids is not None:
+        stmt = stmt.where(Connector.id.in_(connector_ids))
+    return list(db_session.scalars(stmt).all())
+
+
+def provision_sharepoint_scope_to_connectors(
+    *,
+    db_session: Session,
+    hierarchy_node_id: int,
+    connector_ids: list[int] | None = None,
+    dry_run: bool = False,
+) -> list[SharePointScopeProvisioningResult]:
+    scope = db_session.scalar(
+        select(ConnectedSourceScope)
+        .where(ConnectedSourceScope.hierarchy_node_id == hierarchy_node_id)
+        .options(
+            selectinload(ConnectedSourceScope.hierarchy_node),
+            selectinload(ConnectedSourceScope.excluded_links).selectinload(
+                ConnectedSourceScopeExclusion.excluded_hierarchy_node
+            ),
+        )
+    )
+    if scope is None:
+        raise ValueError("Connected source scope does not exist.")
+    node = scope.hierarchy_node
+    if node.source != DocumentSource.SHAREPOINT:
+        raise ValueError("Only SharePoint scopes can be provisioned to connectors.")
+    if not node.link:
+        raise ValueError("SharePoint hierarchy node must have a source link.")
+
+    selected_site_url = _canonical_url(node.link)
+    excluded_patterns: list[str] = []
+    for link in scope.excluded_links:
+        excluded_patterns.extend(
+            _excluded_path_patterns_for_node(link.excluded_hierarchy_node)
+        )
+
+    connectors = _associated_sharepoint_connectors_for_scope(
+        db_session=db_session,
+        hierarchy_node_id=hierarchy_node_id,
+        connector_ids=connector_ids,
+    )
+    if connector_ids is not None and len(connectors) != len(set(connector_ids)):
+        found_ids = {connector.id for connector in connectors}
+        missing_ids = sorted(set(connector_ids) - found_ids)
+        raise ValueError(
+            "Connector ids are not associated with this SharePoint scope: "
+            f"{missing_ids}"
+        )
+
+    results: list[SharePointScopeProvisioningResult] = []
+    for connector in connectors:
+        config = dict(connector.connector_specific_config or {})
+        sites = list(config.get("sites") or [])
+        existing_sites = {
+            _canonical_url(site) for site in sites if isinstance(site, str)
+        }
+        added_sites: list[str] = []
+        if selected_site_url not in existing_sites:
+            sites.append(selected_site_url)
+            added_sites.append(selected_site_url)
+
+        existing_excluded_paths = [
+            path
+            for path in list(config.get("excluded_paths") or [])
+            if isinstance(path, str)
+        ]
+        excluded_path_set = set(existing_excluded_paths)
+        added_excluded_paths: list[str] = []
+        for pattern in excluded_patterns:
+            if pattern and pattern not in excluded_path_set:
+                existing_excluded_paths.append(pattern)
+                excluded_path_set.add(pattern)
+                added_excluded_paths.append(pattern)
+
+        if not dry_run and (added_sites or added_excluded_paths):
+            config["sites"] = sites
+            config["excluded_paths"] = existing_excluded_paths
+            connector.connector_specific_config = config
+
+        results.append(
+            SharePointScopeProvisioningResult(
+                connector_id=connector.id,
+                connector_name=connector.name,
+                added_sites=tuple(added_sites),
+                added_excluded_paths=tuple(added_excluded_paths),
+                dry_run=dry_run,
+            )
+        )
+
+    if not dry_run:
+        db_session.commit()
+    return results
 
 
 def upsert_connected_source_scope(

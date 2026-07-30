@@ -232,6 +232,21 @@ class ConnectedSourceScopeRequest(BaseModel):
     excluded_hierarchy_node_ids: list[int] = Field(default_factory=list)
 
 
+class SharePointScopeProvisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    connector_ids: list[int] | None = None
+    dry_run: bool = False
+
+
+class SharePointScopeProvisionResultSnapshot(BaseModel):
+    connector_id: int
+    connector_name: str
+    added_sites: list[str]
+    added_excluded_paths: list[str]
+    dry_run: bool
+
+
 class ProjectConnectedKnowledgePresetSnapshot(BaseModel):
     id: int
     name: str

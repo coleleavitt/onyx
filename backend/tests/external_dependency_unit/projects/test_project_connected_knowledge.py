@@ -4,15 +4,18 @@ from collections.abc import Sequence
 from datetime import datetime
 from datetime import timezone
 from typing import Any
+from typing import cast
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine.row import RowMapping
 from sqlalchemy.orm import Session
 
 from onyx.access.access import get_acl_for_user
 from onyx.access.utils import prefix_user_email
 from onyx.auth.schemas import UserRole
+from onyx.chat.emitter import Emitter
 from onyx.chat.models import SearchParams
 from onyx.chat.process_message import apply_project_connected_knowledge_to_search_params
 from onyx.configs.constants import DocumentSource
@@ -24,6 +27,7 @@ from onyx.db.connected_source_governance import create_connected_knowledge_prese
 from onyx.db.connected_source_governance import filter_governed_hierarchy_node_ids
 from onyx.db.connected_source_governance import get_governed_hierarchy_nodes_for_source
 from onyx.db.connected_source_governance import get_visible_presets_for_user
+from onyx.db.connected_source_governance import provision_sharepoint_scope_to_connectors
 from onyx.db.connected_source_governance import upsert_connected_source_scope
 from onyx.db.enums import AccessType
 from onyx.db.enums import ConnectedSourceAccessType
@@ -47,7 +51,10 @@ from onyx.db.models import UserProject
 from onyx.db.projects import fetch_project_by_id
 from onyx.db.projects import replace_project_connected_knowledge
 from onyx.db.search_settings import get_current_search_settings
+from onyx.document_index.interfaces_new import DocumentIndex
 from onyx.error_handling.exceptions import OnyxError
+from onyx.llm.interfaces import LLM
+from onyx.natural_language_processing.search_nlp_models import EmbeddingModel
 from onyx.server.features.projects.api import create_project as create_project_api
 from onyx.server.features.projects.api import get_project_connected_knowledge
 from onyx.server.features.projects.api import update_project_connected_knowledge
@@ -66,7 +73,7 @@ _CREATED_DOCUMENT_IDS: list[str] = []
 
 
 def _restore_rows(
-    db_session: Session, table: str, rows: Sequence[Mapping[str, Any]]
+    db_session: Session, table: str, rows: Sequence[Mapping[str, Any] | RowMapping]
 ) -> None:
     """Re-insert rows verbatim, preserving their original ids."""
     for row in rows:
@@ -231,10 +238,12 @@ def _create_hierarchy_node(
     source: DocumentSource = DocumentSource.SHAREPOINT,
     is_public: bool = True,
     parent_id: int | None = None,
+    link: str | None = None,
 ) -> HierarchyNode:
     node = HierarchyNode(
         raw_node_id=raw_id,
         display_name=name,
+        link=link,
         source=source,
         node_type=HierarchyNodeType.FOLDER,
         is_public=is_public,
@@ -450,7 +459,7 @@ def test_search_tool_project_connected_knowledge_excludes_unauthorized_selected_
     )
     search_tool = SearchTool(
         tool_id=1,
-        emitter=None,  # type: ignore[arg-type]
+        emitter=cast(Emitter, None),
         user=viewer,
         persona_search_info=PersonaSearchInfo(
             document_set_names=[],
@@ -458,8 +467,8 @@ def test_search_tool_project_connected_knowledge_excludes_unauthorized_selected_
             attached_document_ids=params.project_attached_document_ids,
             hierarchy_node_ids=params.project_hierarchy_node_ids,
         ),
-        llm=None,  # type: ignore[arg-type]
-        document_index=fake_index,  # type: ignore[arg-type]
+        llm=cast(LLM, None),
+        document_index=cast(DocumentIndex, fake_index),
         user_selected_filters=None,
         project_id_filter=params.project_id_filter,
         persona_id_filter=params.persona_id_filter,
@@ -470,7 +479,7 @@ def test_search_tool_project_connected_knowledge_excludes_unauthorized_selected_
         hybrid_alpha=0.0,
         num_hits=10,
         acl_filters=list(get_acl_for_user(viewer, db_session)),
-        embedding_model=None,  # type: ignore[arg-type]
+        embedding_model=cast(EmbeddingModel, None),
         federated_retrieval_infos=[],
         effective_filters=None,
     )
@@ -479,12 +488,14 @@ def test_search_tool_project_connected_knowledge_excludes_unauthorized_selected_
         public_exact.id,
         public_folder_doc.id,
     }
-    assert fake_index.last_filters is not None
-    assert private_owner_exact.id in fake_index.last_filters.attached_document_ids
-    assert folder.id in fake_index.last_filters.hierarchy_node_ids
-    assert (
-        prefix_user_email(viewer.email) in fake_index.last_filters.access_control_list
-    )
+    filters = fake_index.last_filters
+    assert filters is not None
+    assert filters.attached_document_ids is not None
+    assert filters.hierarchy_node_ids is not None
+    assert filters.access_control_list is not None
+    assert private_owner_exact.id in filters.attached_document_ids
+    assert folder.id in filters.hierarchy_node_ids
+    assert prefix_user_email(viewer.email) in filters.access_control_list
 
 
 def test_project_connected_knowledge_requires_edit_access(
@@ -681,7 +692,7 @@ def test_project_connected_knowledge_applies_configured_excluded_child_scope(
     )
     search_tool = SearchTool(
         tool_id=1,
-        emitter=None,  # type: ignore[arg-type]
+        emitter=cast(Emitter, None),
         user=user,
         persona_search_info=PersonaSearchInfo(
             document_set_names=[],
@@ -690,8 +701,8 @@ def test_project_connected_knowledge_applies_configured_excluded_child_scope(
             hierarchy_node_ids=params.project_hierarchy_node_ids,
             excluded_hierarchy_node_ids=params.project_excluded_hierarchy_node_ids,
         ),
-        llm=None,  # type: ignore[arg-type]
-        document_index=fake_index,  # type: ignore[arg-type]
+        llm=cast(LLM, None),
+        document_index=cast(DocumentIndex, fake_index),
         user_selected_filters=None,
         project_id_filter=params.project_id_filter,
         persona_id_filter=params.persona_id_filter,
@@ -702,7 +713,7 @@ def test_project_connected_knowledge_applies_configured_excluded_child_scope(
         hybrid_alpha=0.0,
         num_hits=10,
         acl_filters=list(get_acl_for_user(user, db_session)),
-        embedding_model=None,  # type: ignore[arg-type]
+        embedding_model=cast(EmbeddingModel, None),
         federated_retrieval_infos=[],
         effective_filters=None,
     )
@@ -710,6 +721,123 @@ def test_project_connected_knowledge_applies_configured_excluded_child_scope(
     assert {chunk.document_id for chunk in chunks} == {active_doc.id}
     assert fake_index.last_filters is not None
     assert fake_index.last_filters.excluded_hierarchy_node_ids == [archive.id]
+
+
+def test_sharepoint_scope_provisioning_updates_associated_connector_config(
+    db_session: Session,
+) -> None:
+    scope_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sharepoint-scope-{uuid4().hex}",
+        name="Advisor Services",
+        link="https://contoso.sharepoint.com/sites/advisor/Shared%20Documents/Advisor%20Services",
+    )
+    excluded_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sharepoint-excluded-{uuid4().hex}",
+        name="Completed Transitions",
+        parent_id=scope_node.id,
+        link="https://contoso.sharepoint.com/sites/advisor/Shared%20Documents/Advisor%20Services/Completed%20Transitions",
+    )
+    pair = make_cc_pair(db_session, source=DocumentSource.SHAREPOINT, commit=False)
+    pair.connector.connector_specific_config = {
+        "sites": ["https://contoso.sharepoint.com/sites/advisor"],
+        "excluded_paths": ["*.tmp"],
+    }
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=scope_node.id,
+            connector_id=pair.connector_id,
+            credential_id=pair.credential_id,
+        )
+    )
+    db_session.commit()
+
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=scope_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[excluded_node.id],
+    )
+
+    dry_run_results = provision_sharepoint_scope_to_connectors(
+        db_session=db_session,
+        hierarchy_node_id=scope_node.id,
+        dry_run=True,
+    )
+
+    assert len(dry_run_results) == 1
+    assert dry_run_results[0].dry_run is True
+    assert dry_run_results[0].added_sites == (
+        "https://contoso.sharepoint.com/sites/advisor/Shared%20Documents/Advisor%20Services",
+    )
+    assert (
+        "Advisor Services/Completed Transitions/**"
+        in dry_run_results[0].added_excluded_paths
+    )
+    assert pair.connector.connector_specific_config["sites"] == [
+        "https://contoso.sharepoint.com/sites/advisor"
+    ]
+
+    results = provision_sharepoint_scope_to_connectors(
+        db_session=db_session,
+        hierarchy_node_id=scope_node.id,
+        dry_run=False,
+    )
+
+    config = pair.connector.connector_specific_config
+    assert len(results) == 1
+    assert results[0].dry_run is False
+    assert config["sites"] == [
+        "https://contoso.sharepoint.com/sites/advisor",
+        "https://contoso.sharepoint.com/sites/advisor/Shared%20Documents/Advisor%20Services",
+    ]
+    assert config["excluded_paths"] == [
+        "*.tmp",
+        "Advisor Services/Completed Transitions",
+        "Advisor Services/Completed Transitions/**",
+    ]
+
+
+def test_sharepoint_scope_provisioning_rejects_unassociated_connector(
+    db_session: Session,
+) -> None:
+    scope_node = _create_hierarchy_node(
+        db_session,
+        raw_id=f"sharepoint-scope-unassociated-{uuid4().hex}",
+        name="Billing",
+        link="https://contoso.sharepoint.com/sites/billing/Shared%20Documents/Billing",
+    )
+    associated_pair = make_cc_pair(
+        db_session, source=DocumentSource.SHAREPOINT, commit=False
+    )
+    unassociated_pair = make_cc_pair(
+        db_session, source=DocumentSource.SHAREPOINT, commit=False
+    )
+    db_session.add(
+        HierarchyNodeByConnectorCredentialPair(
+            hierarchy_node_id=scope_node.id,
+            connector_id=associated_pair.connector_id,
+            credential_id=associated_pair.credential_id,
+        )
+    )
+    db_session.commit()
+    upsert_connected_source_scope(
+        db_session=db_session,
+        hierarchy_node_id=scope_node.id,
+        curation_status=ConnectedSourceCurationStatus.STANDARD,
+        group_ids=[],
+        excluded_hierarchy_node_ids=[],
+    )
+
+    with pytest.raises(ValueError):
+        provision_sharepoint_scope_to_connectors(
+            db_session=db_session,
+            hierarchy_node_id=scope_node.id,
+            connector_ids=[unassociated_pair.connector_id],
+            dry_run=True,
+        )
 
 
 def test_governed_source_root_is_browsable_but_not_selectable(
