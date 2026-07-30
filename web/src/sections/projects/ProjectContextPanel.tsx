@@ -289,7 +289,6 @@ export default function ProjectContextPanel({
         canEdit={canEdit}
         knowledge={connectedKnowledge}
         onClose={() => setConnectedKnowledgeOpen(false)}
-        onUploadFiles={handleUploadFiles}
         onSave={async (documentIds, hierarchyNodeIds) => {
           await updateConnectedKnowledgeSelection(
             documentIds,

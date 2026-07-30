@@ -172,7 +172,6 @@ test("two tenants sharing a label stay distinguishable in the picker", async () 
       knowledge={{ documents: [], hierarchy_nodes: [] }}
       onClose={jest.fn()}
       onSave={jest.fn()}
-      onUploadFiles={jest.fn()}
     />
   );
 
@@ -184,7 +183,7 @@ test("two tenants sharing a label stay distinguishable in the picker", async () 
   expect(screen.queryByText(/Recommended/)).not.toBeInTheDocument();
 });
 
-test("space knowledge modal keeps uploads distinct from connected source selections and saves hierarchy toggles", async () => {
+test("space knowledge modal focuses on connected source selections and saves hierarchy toggles", async () => {
   const user = userEvent.setup();
   const onSave = jest.fn().mockResolvedValue(undefined);
   render(
@@ -194,27 +193,19 @@ test("space knowledge modal keeps uploads distinct from connected source selecti
       knowledge={baseKnowledge}
       onClose={jest.fn()}
       onSave={onSave}
-      onUploadFiles={jest.fn()}
     />
   );
 
-  expect(screen.getByRole("tab", { name: "Connected sources" })).toBeVisible();
+  expect(
+    screen.queryByRole("tab", { name: "Uploaded files" })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Upload local files" })
+  ).not.toBeInTheDocument();
   expect(await screen.findByText("Foundations")).toBeVisible();
   expect(screen.getByText("Advisor Services Intranet")).toBeVisible();
   await user.click(screen.getByText("Advisor Services Intranet"));
   expect(lastHierarchyBrowserProps.initialNodeId).toBe(10);
-  await user.click(screen.getByRole("tab", { name: "Uploaded files" }));
-  expect(
-    screen.getByText("Uploaded files are copied into this space")
-  ).toBeVisible();
-  expect(
-    screen.getByRole("button", { name: "Upload local files" })
-  ).toBeVisible();
-  expect(
-    screen.getByRole("button", { name: "Upload local folder" })
-  ).toBeVisible();
-
-  await user.click(screen.getByRole("tab", { name: "Connected sources" }));
   await user.click(
     screen.getByRole("button", { name: "Toggle mock document" })
   );
@@ -238,7 +229,6 @@ test("department row click browses without attaching; the checkbox attaches and 
       knowledge={{ documents: [], hierarchy_nodes: [] }}
       onClose={jest.fn()}
       onSave={onSave}
-      onUploadFiles={jest.fn()}
     />
   );
 
@@ -281,7 +271,6 @@ test("save-as-preset is admin-only and sends the current selection", async () =>
         knowledge={baseKnowledge}
         onClose={jest.fn()}
         onSave={jest.fn()}
-        onUploadFiles={jest.fn()}
       />
     );
     await screen.findByText("Advisor Services Intranet");
@@ -299,7 +288,6 @@ test("save-as-preset is admin-only and sends the current selection", async () =>
         knowledge={baseKnowledge}
         onClose={jest.fn()}
         onSave={jest.fn()}
-        onUploadFiles={jest.fn()}
       />
     );
     await screen.findByText("Advisor Services Intranet");

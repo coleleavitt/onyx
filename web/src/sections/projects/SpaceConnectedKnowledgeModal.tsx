@@ -22,11 +22,10 @@ import {
   Checkbox,
   Divider,
   LineItemButton,
-  Tabs,
   Text,
 } from "@opal/components";
 import { toast } from "@opal/layouts";
-import { SvgFiles, SvgFolderOpen, SvgPlusCircle } from "@opal/icons";
+import { SvgFolderOpen } from "@opal/icons";
 
 interface SpaceConnectedKnowledgeModalProps {
   open: boolean;
@@ -34,7 +33,6 @@ interface SpaceConnectedKnowledgeModalProps {
   knowledge: ProjectConnectedKnowledge;
   onClose: () => void;
   onSave: (documentIds: string[], hierarchyNodeIds: number[]) => Promise<void>;
-  onUploadFiles: (files: File[]) => void;
 }
 
 function toAgentAttachedDocument(
@@ -149,7 +147,6 @@ export default function SpaceConnectedKnowledgeModal({
   knowledge,
   onClose,
   onSave,
-  onUploadFiles,
 }: SpaceConnectedKnowledgeModalProps) {
   const { ccPairs } = useCCPairs(open);
   const { isAdmin } = useUser();
@@ -246,29 +243,6 @@ export default function SpaceConnectedKnowledgeModal({
     [knowledge.documents]
   );
 
-  function openLocalUploadPicker({ directory }: { directory: boolean }) {
-    const input = document.createElement("input") as HTMLInputElement & {
-      webkitdirectory?: boolean;
-      directory?: boolean;
-    };
-    input.type = "file";
-    input.multiple = true;
-    if (directory) {
-      input.webkitdirectory = true;
-      input.directory = true;
-    }
-    input.onchange = () => {
-      const files = Array.from(input.files ?? []).map((file) => {
-        const relativePath = file.webkitRelativePath;
-        if (!directory || !relativePath) return file;
-        return new File([file], relativePath, { type: file.type });
-      });
-      if (files.length > 0) onUploadFiles(files);
-      input.value = "";
-    };
-    input.click();
-  }
-
   async function handleSave() {
     setIsSaving(true);
     try {
@@ -344,226 +318,178 @@ export default function SpaceConnectedKnowledgeModal({
       <Modal.Content width="xl" height="full">
         <Modal.Header
           icon={SvgFolderOpen}
-          title="Add knowledge to space"
-          description="Attach indexed connector scopes or upload local files. Connector selections use admin-approved group permissions and never grant new document access by themselves."
+          title="Add connected sources to space"
+          description="Attach indexed connector scopes and documents. Connector selections use admin-approved group permissions and never grant new document access by themselves."
           onClose={onClose}
         />
         <Modal.Body alignItems="stretch">
-          <Tabs variant="pill" defaultValue="connected">
-            <Tabs.List>
-              <Tabs.Trigger value="connected">Connected sources</Tabs.Trigger>
-              <Tabs.Trigger value="uploads">Uploaded files</Tabs.Trigger>
-            </Tabs.List>
-            <Tabs.Content value="connected">
-              {connectedSources.length === 0 ? (
-                <div className="flex min-h-80 flex-col items-center justify-center gap-2 rounded-12 border border-dashed border-border-01 p-6 text-center">
-                  <Text font="main-ui-body" color="text-04">
-                    No indexed connector sources are available.
-                  </Text>
-                  <Text font="secondary-body" color="text-03">
-                    Connect and index SharePoint or another intranet connector
-                    in the admin panel first, then grant this group access to
-                    governed source scopes from Admin, then Groups. This space
-                    can still use uploaded files.
-                  </Text>
-                </div>
-              ) : (
-                <TableLayouts.TwoColumnLayout minHeight={28}>
-                  <TableLayouts.SidebarLayout aria-label="space-connected-source-sidebar">
-                    {connectedSources.map((source) => {
-                      const metadata = getSourceMetadata(source);
-                      const count = sourceCounts.get(source) ?? 0;
-                      if (source === ValidSources.Sharepoint) {
-                        return (
-                          <div key={source} className="flex flex-col gap-1">
-                            {sharePointDepartmentGroups.length > 0 ? (
-                              sharePointDepartmentGroups.map((group) => (
-                                <div
-                                  key={group.tenant}
-                                  className="flex flex-col gap-1"
-                                >
-                                  <Text font="secondary-body" color="text-03">
-                                    {group.tenant}
-                                  </Text>
-                                  {group.nodes.map((node) => (
-                                    <LineItemButton
-                                      key={node.id}
-                                      icon={metadata.icon}
-                                      title={sharePointNodeLabel(node)}
-                                      description={[
-                                        sharePointNodeDescription(node, {
-                                          showRecommended:
-                                            recommendedIsDistinguishing(
-                                              group.nodes
-                                            ),
-                                        }),
-                                        // The row highlight marks what you are
-                                        // browsing, so attachment needs to be
-                                        // legible without reading the checkbox.
-                                        selectedHierarchyNodeIds.includes(
-                                          node.id
-                                        )
-                                          ? "Attached"
-                                          : null,
-                                      ]
-                                        .filter(Boolean)
-                                        .join(" · ")}
-                                      width="full"
-                                      sizePreset="main-ui"
-                                      variant="section"
-                                      titleMaxLines={1}
-                                      selectVariant="select-light"
-                                      state={
-                                        activeSharePointNodeId === node.id
-                                          ? "selected"
-                                          : "empty"
-                                      }
-                                      onClick={() => {
-                                        // Navigate-only: browsing a department
-                                        // must never silently attach it. Use
-                                        // the checkbox to attach/detach.
-                                        setActiveSource(source);
-                                        setActiveSharePointNodeId(node.id);
-                                      }}
-                                      rightChildren={
-                                        <Checkbox
-                                          aria-label={`Attach ${sharePointNodeLabel(node)}`}
-                                          checked={selectedHierarchyNodeIds.includes(
-                                            node.id
-                                          )}
-                                          onCheckedChange={() =>
-                                            handleToggleFolder(node.id)
-                                          }
-                                        />
+          {connectedSources.length === 0 ? (
+            <div className="flex min-h-80 flex-col items-center justify-center gap-2 rounded-12 border border-dashed border-border-01 p-6 text-center">
+              <Text font="main-ui-body" color="text-04">
+                No indexed connector sources are available.
+              </Text>
+              <Text font="secondary-body" color="text-03">
+                Connect and index SharePoint or another intranet connector in
+                the admin panel first, then grant this group access to governed
+                source scopes from Admin, then Groups. Use the Files section in
+                the space sidebar for local uploads.
+              </Text>
+            </div>
+          ) : (
+            <TableLayouts.TwoColumnLayout minHeight={28}>
+              <TableLayouts.SidebarLayout aria-label="space-connected-source-sidebar">
+                {connectedSources.map((source) => {
+                  const metadata = getSourceMetadata(source);
+                  const count = sourceCounts.get(source) ?? 0;
+                  if (source === ValidSources.Sharepoint) {
+                    return (
+                      <div key={source} className="flex flex-col gap-1">
+                        {sharePointDepartmentGroups.length > 0 ? (
+                          sharePointDepartmentGroups.map((group) => (
+                            <div
+                              key={group.tenant}
+                              className="flex flex-col gap-1"
+                            >
+                              <Text font="secondary-body" color="text-03">
+                                {group.tenant}
+                              </Text>
+                              {group.nodes.map((node) => (
+                                <LineItemButton
+                                  key={node.id}
+                                  icon={metadata.icon}
+                                  title={sharePointNodeLabel(node)}
+                                  description={[
+                                    sharePointNodeDescription(node, {
+                                      showRecommended:
+                                        recommendedIsDistinguishing(
+                                          group.nodes
+                                        ),
+                                    }),
+                                    // The row highlight marks what you are
+                                    // browsing, so attachment needs to be
+                                    // legible without reading the checkbox.
+                                    selectedHierarchyNodeIds.includes(node.id)
+                                      ? "Attached"
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                  width="full"
+                                  sizePreset="main-ui"
+                                  variant="section"
+                                  titleMaxLines={1}
+                                  selectVariant="select-light"
+                                  state={
+                                    activeSharePointNodeId === node.id
+                                      ? "selected"
+                                      : "empty"
+                                  }
+                                  onClick={() => {
+                                    // Navigate-only: browsing a department
+                                    // must never silently attach it. Use
+                                    // the checkbox to attach/detach.
+                                    setActiveSource(source);
+                                    setActiveSharePointNodeId(node.id);
+                                  }}
+                                  rightChildren={
+                                    <Checkbox
+                                      aria-label={`Attach ${sharePointNodeLabel(node)}`}
+                                      checked={selectedHierarchyNodeIds.includes(
+                                        node.id
+                                      )}
+                                      onCheckedChange={() =>
+                                        handleToggleFolder(node.id)
                                       }
                                     />
-                                  ))}
-                                </div>
-                              ))
-                            ) : sharePointLoadError ? (
-                              <div className="rounded-08 border border-border-01 bg-background-tint-02 p-3">
-                                <Text font="secondary-body" color="text-04">
-                                  {sharePointLoadError}
-                                </Text>
-                              </div>
-                            ) : (
-                              <LineItemButton
-                                icon={metadata.icon}
-                                title={metadata.displayName}
-                                width="full"
-                                sizePreset="main-ui"
-                                variant="section"
-                                titleMaxLines={1}
-                                selectVariant="select-light"
-                                state={
-                                  activeSource === source ? "selected" : "empty"
-                                }
-                                onClick={() => {
-                                  setActiveSource(source);
-                                  setActiveSharePointNodeId(null);
-                                }}
-                                rightChildren={
-                                  count > 0 ? (
-                                    <Text font="main-ui-action" color="text-04">
-                                      {String(count)}
-                                    </Text>
-                                  ) : undefined
-                                }
-                              />
-                            )}
+                                  }
+                                />
+                              ))}
+                            </div>
+                          ))
+                        ) : sharePointLoadError ? (
+                          <div className="rounded-08 border border-border-01 bg-background-tint-02 p-3">
+                            <Text font="secondary-body" color="text-04">
+                              {sharePointLoadError}
+                            </Text>
                           </div>
-                        );
+                        ) : (
+                          <LineItemButton
+                            icon={metadata.icon}
+                            title={metadata.displayName}
+                            width="full"
+                            sizePreset="main-ui"
+                            variant="section"
+                            titleMaxLines={1}
+                            selectVariant="select-light"
+                            state={
+                              activeSource === source ? "selected" : "empty"
+                            }
+                            onClick={() => {
+                              setActiveSource(source);
+                              setActiveSharePointNodeId(null);
+                            }}
+                            rightChildren={
+                              count > 0 ? (
+                                <Text font="main-ui-action" color="text-04">
+                                  {String(count)}
+                                </Text>
+                              ) : undefined
+                            }
+                          />
+                        )}
+                      </div>
+                    );
+                  }
+                  return (
+                    <LineItemButton
+                      key={source}
+                      icon={metadata.icon}
+                      title={metadata.displayName}
+                      width="full"
+                      sizePreset="main-ui"
+                      variant="section"
+                      titleMaxLines={1}
+                      selectVariant="select-light"
+                      state={activeSource === source ? "selected" : "empty"}
+                      onClick={() => {
+                        setActiveSource(source);
+                        setActiveSharePointNodeId(null);
+                      }}
+                      rightChildren={
+                        count > 0 ? (
+                          <Text font="main-ui-action" color="text-04">
+                            {String(count)}
+                          </Text>
+                        ) : undefined
                       }
-                      return (
-                        <LineItemButton
-                          key={source}
-                          icon={metadata.icon}
-                          title={metadata.displayName}
-                          width="full"
-                          sizePreset="main-ui"
-                          variant="section"
-                          titleMaxLines={1}
-                          selectVariant="select-light"
-                          state={activeSource === source ? "selected" : "empty"}
-                          onClick={() => {
-                            setActiveSource(source);
-                            setActiveSharePointNodeId(null);
-                          }}
-                          rightChildren={
-                            count > 0 ? (
-                              <Text font="main-ui-action" color="text-04">
-                                {String(count)}
-                              </Text>
-                            ) : undefined
-                          }
-                        />
-                      );
-                    })}
-                  </TableLayouts.SidebarLayout>
-                  <TableLayouts.ContentColumn>
-                    {activeSource && (
-                      <SourceHierarchyBrowser
-                        source={activeSource}
-                        selectedDocumentIds={selectedDocumentIds}
-                        onToggleDocument={handleToggleDocument}
-                        onSetDocumentIds={setSelectedDocumentIds}
-                        selectedFolderIds={selectedHierarchyNodeIds}
-                        onToggleFolder={handleToggleFolder}
-                        onSetFolderIds={setSelectedHierarchyNodeIds}
-                        onDeselectAllDocuments={() =>
-                          setSelectedDocumentIds([])
-                        }
-                        onDeselectAllFolders={() =>
-                          setSelectedHierarchyNodeIds([])
-                        }
-                        initialAttachedDocuments={initialAttachedDocuments}
-                        initialNodeId={
-                          activeSource === ValidSources.Sharepoint
-                            ? (activeSharePointNodeId ?? undefined)
-                            : undefined
-                        }
-                        onSelectionCountChange={handleSelectionCountChange}
-                      />
-                    )}
-                  </TableLayouts.ContentColumn>
-                </TableLayouts.TwoColumnLayout>
-              )}
-            </Tabs.Content>
-            <Tabs.Content value="uploads">
-              <div className="flex flex-col gap-4 rounded-12 border border-border-01 p-4">
-                <div className="flex items-start gap-3">
-                  <SvgFiles className="mt-0.5 h-5 w-5 shrink-0 stroke-text-03" />
-                  <div className="flex flex-col gap-1">
-                    <Text font="main-ui-action" color="text-05">
-                      Uploaded files are copied into this space
-                    </Text>
-                    <Text font="secondary-body" color="text-03">
-                      Use this for local files or folders. Use Connected sources
-                      for admin-approved, already-indexed SharePoint sites,
-                      folders, and documents.
-                    </Text>
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    icon={SvgPlusCircle}
-                    disabled={!canEdit}
-                    onClick={() => openLocalUploadPicker({ directory: false })}
-                  >
-                    Upload local files
-                  </Button>
-                  <Button
-                    icon={SvgFolderOpen}
-                    prominence="secondary"
-                    disabled={!canEdit}
-                    onClick={() => openLocalUploadPicker({ directory: true })}
-                  >
-                    Upload local folder
-                  </Button>
-                </div>
-              </div>
-            </Tabs.Content>
-          </Tabs>
+                    />
+                  );
+                })}
+              </TableLayouts.SidebarLayout>
+              <TableLayouts.ContentColumn>
+                {activeSource && (
+                  <SourceHierarchyBrowser
+                    source={activeSource}
+                    selectedDocumentIds={selectedDocumentIds}
+                    onToggleDocument={handleToggleDocument}
+                    onSetDocumentIds={setSelectedDocumentIds}
+                    selectedFolderIds={selectedHierarchyNodeIds}
+                    onToggleFolder={handleToggleFolder}
+                    onSetFolderIds={setSelectedHierarchyNodeIds}
+                    onDeselectAllDocuments={() => setSelectedDocumentIds([])}
+                    onDeselectAllFolders={() => setSelectedHierarchyNodeIds([])}
+                    initialAttachedDocuments={initialAttachedDocuments}
+                    initialNodeId={
+                      activeSource === ValidSources.Sharepoint
+                        ? (activeSharePointNodeId ?? undefined)
+                        : undefined
+                    }
+                    onSelectionCountChange={handleSelectionCountChange}
+                  />
+                )}
+              </TableLayouts.ContentColumn>
+            </TableLayouts.TwoColumnLayout>
+          )}
         </Modal.Body>
         <Modal.Footer>
           <div className="flex w-full items-center justify-between gap-3">
