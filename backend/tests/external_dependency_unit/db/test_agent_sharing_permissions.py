@@ -4,7 +4,6 @@ extend edit org-wide, and the computed access level / sharing status helpers
 agree with the SQL filter."""
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from onyx.auth.schemas import UserRole
@@ -17,6 +16,8 @@ from onyx.db.persona import fetch_persona_by_id_for_user
 from onyx.db.persona import update_persona_access
 from onyx.db.persona_sharing import derive_persona_sharing_status
 from onyx.db.persona_sharing import get_persona_access_level
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from tests.external_dependency_unit.conftest import create_test_user
 from tests.external_dependency_unit.db.agent_sharing_helpers import create_test_persona
 from tests.external_dependency_unit.db.agent_sharing_helpers import (
@@ -35,7 +36,8 @@ def _can_fetch(
             get_editable=editable,
         )
         return True
-    except HTTPException:
+    except OnyxError as e:
+        assert e.error_code == OnyxErrorCode.INSUFFICIENT_PERMISSIONS
         return False
 
 

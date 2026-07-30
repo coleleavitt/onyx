@@ -3,7 +3,6 @@ every member full owner rights, leveled group shares gate edit access, group
 ownership transfers, and group deletion orphans or deletes owned personas."""
 
 import pytest
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from ee.onyx.db.persona import transfer_persona_ownership as ee_transfer
@@ -18,6 +17,8 @@ from onyx.db.models import User
 from onyx.db.persona import fetch_persona_by_id_for_user
 from onyx.db.persona_sharing import derive_persona_sharing_status
 from onyx.db.persona_sharing import get_persona_access_level
+from onyx.error_handling.error_codes import OnyxErrorCode
+from onyx.error_handling.exceptions import OnyxError
 from tests.external_dependency_unit.conftest import create_test_user
 from tests.external_dependency_unit.db.agent_sharing_helpers import create_test_persona
 from tests.external_dependency_unit.db.agent_sharing_helpers import (
@@ -36,7 +37,8 @@ def _can_edit(db_session: Session, persona_id: int, user: User) -> bool:
             db_session=db_session, persona_id=persona_id, user=user, get_editable=True
         )
         return True
-    except HTTPException:
+    except OnyxError as e:
+        assert e.error_code == OnyxErrorCode.INSUFFICIENT_PERMISSIONS
         return False
 
 
