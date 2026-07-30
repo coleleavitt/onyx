@@ -7,7 +7,7 @@ ARG BASE_IMAGE_REGISTRY=docker.io
 # not in `COPY --from=`. Use the glibc (Debian) build so it runs on the glibc DHI node images.
 FROM ${BASE_IMAGE_REGISTRY}/oven/bun:1@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS bun_source
 
-# Build stage. The DHI "-dev" variant runs as root and ships a shell, apt, and npm/npx.
+# Build stage. The DHI "-dev" variant runs as root and ships a shell and apt.
 # Refresh the digest with: docker buildx imagetools inspect dhi.io/node:24-debian13-dev
 FROM dhi.io/node:24-debian13-dev@sha256:25a83f18150669e9ce3c9437327add4d75ae4ea26cbdb5e8747b66d3b74a567a AS builder
 COPY --from=bun_source /usr/local/bin/bun /usr/local/bin/bun
@@ -90,12 +90,12 @@ ARG NODE_OPTIONS
 
 # SENTRY_AUTH_TOKEN is injected via BuildKit secret mount so it is never written
 # to any image layer, build cache, or registry manifest.
-# Use NODE_OPTIONS in the build command
+# Use Bun to run the local Next.js CLI from the Bun-installed dependency tree.
 RUN --mount=type=secret,id=sentry_auth_token \
     if [ -f /run/secrets/sentry_auth_token ]; then \
         export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token)"; \
     fi && \
-    NODE_OPTIONS="${NODE_OPTIONS}" npx next build
+    NODE_OPTIONS="${NODE_OPTIONS}" bunx next build
 
 # Runtime stage. The DHI runtime variant is near-distroless: no shell or package manager, runs
 # as the non-root `node` user (uid 1000) with WORKDIR /app pre-set.
