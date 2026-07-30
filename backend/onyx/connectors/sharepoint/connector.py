@@ -154,6 +154,24 @@ GRAPH_API_RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
 ROLE_ASSIGNMENTS_PROBE_MAX_SITES = 5
 
 
+def _drive_item_content_fingerprint(item: dict[str, Any]) -> str | None:
+    """Checksum of a drive item's bytes from the Graph `file.hashes` facet.
+
+    quickXorHash is what SharePoint/OneDrive compute for every file; sha256Hash
+    appears on some tenants. Either identifies the file's actual content, so two
+    filled copies of one template are correctly distinguished while true copies
+    of the same file across sites/folders are correctly matched.
+    """
+    hashes = item.get("file", {}).get("hashes") or {}
+    if not isinstance(hashes, dict):
+        return None
+    for key in ("quickXorHash", "sha256Hash", "sha1Hash", "crc32Hash"):
+        value = hashes.get(key)
+        if isinstance(value, str) and value.strip():
+            return f"{key}:{value.strip()}"
+    return None
+
+
 class DriveItemData(BaseModel):
     """Lightweight representation of a Graph API drive item, parsed from JSON.
 
@@ -173,6 +191,11 @@ class DriveItemData(BaseModel):
     last_modified_by_email: str | None = None
     parent_reference_path: str | None = None
     drive_id: str | None = None
+
+    # Checksum of the file's bytes, from the Graph `file.hashes` facet. Unlike a
+    # hash of extracted text, this never collides across distinct files that
+    # share a template, so it is a safe key for cross-source dedup/aliasing.
+    content_fingerprint: str | None = None
 
     @classmethod
     def from_graph_json(cls, item: dict[str, Any]) -> "DriveItemData":
@@ -205,6 +228,7 @@ class DriveItemData(BaseModel):
             ),
             parent_reference_path=parent_ref.get("path"),
             drive_id=parent_ref.get("driveId"),
+            content_fingerprint=_drive_item_content_fingerprint(item),
         )
 
     def to_sdk_driveitem(self, graph_client: GraphClient) -> DriveItem:
@@ -294,6 +318,16 @@ class SharepointListData(BaseModel):
     @property
     def is_document_library(self) -> bool:
         return self.template == "documentLibrary"
+
+    @property
+    def is_site_pages_library(self) -> bool:
+        """The Site Pages library, which holds a site's .aspx pages.
+
+        Its items carry no page body in their list fields, so ingesting them
+        through the generic list path yields metadata-only documents that
+        shadow the real pages fetched by the dedicated site-pages path.
+        """
+        return self.template == "sitePages" or self.display_name == "Site Pages"
 
 
 class SharepointListItemData(BaseModel):
@@ -1210,6 +1244,11 @@ def _convert_driveitem_to_document_with_permissions(
         metadata={
             "sharepoint_item_type": "document",
             "drive": drive_name,
+            **(
+                {"content_fingerprint": driveitem.content_fingerprint}
+                if driveitem.content_fingerprint
+                else {}
+            ),
             **({"version_summary": version_summaries} if version_summaries else {}),
             **({"activity_summary": activity_summaries} if activity_summaries else {}),
         },
@@ -2304,6 +2343,11 @@ class SharepointConnector(
                     list_data.is_document_library
                     and not self.include_document_library_lists
                 ):
+                    continue
+                if list_data.is_site_pages_library and self.include_site_pages:
+                    # The dedicated site-pages path indexes these with their
+                    # actual body text; the list path would only add
+                    # metadata-only duplicates of the same pages.
                     continue
                 yield list_data
             page_url = data.get("@odata.nextLink")
