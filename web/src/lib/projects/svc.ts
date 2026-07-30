@@ -76,6 +76,12 @@ export async function createProject(
       String(createInput.connected_knowledge_preset_id)
     );
   }
+  if (createInput.default_model_configuration_id != null) {
+    params.set(
+      "default_model_configuration_id",
+      String(createInput.default_model_configuration_id)
+    );
+  }
   const response = await fetch(
     `/api/user/projects/create?${params.toString()}`,
     {

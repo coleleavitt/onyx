@@ -5713,6 +5713,13 @@ class UserProject(Base):
         "ChatSession", back_populates="project", lazy="selectin"
     )
     instructions: Mapped[str] = mapped_column(String)
+    default_model_configuration_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_configuration.id", ondelete="SET NULL"), nullable=True
+    )
+    default_model_configuration: Mapped["ModelConfiguration | None"] = relationship(
+        "ModelConfiguration",
+        foreign_keys=[default_model_configuration_id],
+    )
     organization_permission: Mapped[ProjectSharePermission | None] = mapped_column(
         Enum(ProjectSharePermission, native_enum=False), nullable=True
     )

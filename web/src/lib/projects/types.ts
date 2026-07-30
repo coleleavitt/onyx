@@ -19,6 +19,7 @@ export interface Project {
   is_personal: boolean;
   is_pinned: boolean;
   instructions: string | null;
+  default_model_configuration_id: number | null;
   chat_sessions: ChatSession[];
 }
 
@@ -69,12 +70,14 @@ export interface CreateProjectInput {
   instructions?: string | null;
   emoji?: string | null;
   connected_knowledge_preset_id?: number | null;
+  default_model_configuration_id?: number | null;
 }
 
 export interface ProjectMetadataUpdate {
   name?: string;
   description?: string | null;
   emoji?: string | null;
+  default_model_configuration_id?: number | null;
 }
 
 export interface ProjectAccessRequestState {

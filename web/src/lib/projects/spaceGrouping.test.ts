@@ -17,6 +17,7 @@ function project(overrides: Partial<Project> & { id: number }): Project {
     is_personal: true,
     is_pinned: overrides.is_pinned ?? false,
     instructions: null,
+    default_model_configuration_id: null,
     chat_sessions: [],
   };
 }

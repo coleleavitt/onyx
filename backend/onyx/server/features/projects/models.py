@@ -300,6 +300,7 @@ class UserProjectSnapshot(BaseModel):
     is_personal: bool = True
     is_pinned: bool = False
     instructions: str | None = None
+    default_model_configuration_id: int | None = None
     chat_sessions: list[ChatSessionDetails]
 
     @classmethod
@@ -335,6 +336,7 @@ class UserProjectSnapshot(BaseModel):
             and not model.user_shares
             and not model.group_shares,
             instructions=model.instructions,
+            default_model_configuration_id=model.default_model_configuration_id,
             chat_sessions=[
                 ChatSessionDetails.from_model(chat)
                 for chat in model.chat_sessions
@@ -478,6 +480,7 @@ class ProjectMetadataUpdateRequest(BaseModel):
     name: str | None = None
     description: str | None = None
     emoji: str | None = None
+    default_model_configuration_id: int | None = None
 
     def normalized_name(self) -> str | None:
         if "name" not in self.model_fields_set:

@@ -15,6 +15,7 @@ import {
 import { useProjectsContext } from "@/providers/ProjectsContext";
 import { Button } from "@opal/components";
 import { InputVertical } from "@opal/layouts";
+import ModelSelector from "@/sections/model-selector/ModelSelector";
 import { SvgEdit } from "@opal/icons";
 
 interface EditSpaceDetailsModalProps {
@@ -62,6 +63,8 @@ export default function EditSpaceDetailsModal({
             name: project.name,
             emoji: project.emoji ?? "",
             description: project.description ?? "",
+            default_model_configuration_id:
+              project.default_model_configuration_id,
           }}
           validationSchema={validationSchema}
           enableReinitialize
@@ -72,6 +75,8 @@ export default function EditSpaceDetailsModal({
                 name: values.name,
                 emoji: values.emoji.trim() || null,
                 description: values.description,
+                default_model_configuration_id:
+                  values.default_model_configuration_id,
               });
               toast.success("Space details updated.");
               onClose();
@@ -86,7 +91,7 @@ export default function EditSpaceDetailsModal({
             }
           }}
         >
-          {({ isSubmitting, isValid }) => (
+          {({ isSubmitting, isValid, values, setFieldValue }) => (
             <Form>
               <Modal.Body alignItems="stretch">
                 <div className="flex flex-col gap-4">
@@ -121,6 +126,22 @@ export default function EditSpaceDetailsModal({
                       rows={5}
                       maxRows={8}
                       resizable={false}
+                    />
+                  </InputVertical>
+                  <InputVertical
+                    title="Default model"
+                    description="Used for new chats in this space unless a chat, assistant, or manual override selects a model."
+                  >
+                    <ModelSelector
+                      value={values.default_model_configuration_id}
+                      includeGlobalDefault
+                      side="bottom"
+                      onChange={(option) => {
+                        void setFieldValue(
+                          "default_model_configuration_id",
+                          option.modelConfigurationId ?? null
+                        );
+                      }}
                     />
                   </InputVertical>
                 </div>

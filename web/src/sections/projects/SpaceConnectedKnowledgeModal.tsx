@@ -174,6 +174,9 @@ export default function SpaceConnectedKnowledgeModal({
   const [sharePointNodes, setSharePointNodes] = useState<
     HierarchyNodeSummary[]
   >([]);
+  const [sharePointLoadError, setSharePointLoadError] = useState<string | null>(
+    null
+  );
   const [activeSharePointNodeId, setActiveSharePointNodeId] = useState<
     number | null
   >(null);
@@ -206,15 +209,27 @@ export default function SpaceConnectedKnowledgeModal({
       // Functional update that keeps the existing reference when already empty
       // so this reset never triggers a render loop by itself.
       setSharePointNodes((current) => (current.length === 0 ? current : []));
+      setSharePointLoadError(null);
       return;
     }
     let cancelled = false;
+    setSharePointLoadError(null);
     fetchHierarchyNodes(ValidSources.Sharepoint)
       .then((response) => {
-        if (!cancelled) setSharePointNodes(response.nodes);
+        if (!cancelled) {
+          setSharePointNodes(response.nodes);
+          setSharePointLoadError(null);
+        }
       })
-      .catch(() => {
-        if (!cancelled) setSharePointNodes([]);
+      .catch((error) => {
+        if (!cancelled) {
+          setSharePointNodes([]);
+          setSharePointLoadError(
+            error instanceof Error
+              ? error.message
+              : "Failed to load indexed SharePoint scopes."
+          );
+        }
       });
     return () => {
       cancelled = true;
@@ -424,6 +439,12 @@ export default function SpaceConnectedKnowledgeModal({
                                   ))}
                                 </div>
                               ))
+                            ) : sharePointLoadError ? (
+                              <div className="rounded-08 border border-border-01 bg-background-tint-02 p-3">
+                                <Text font="secondary-body" color="text-04">
+                                  {sharePointLoadError}
+                                </Text>
+                              </div>
                             ) : (
                               <LineItemButton
                                 icon={metadata.icon}

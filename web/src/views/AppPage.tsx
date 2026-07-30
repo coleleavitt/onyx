@@ -239,7 +239,11 @@ export default function AppPage({ firstMessage }: ChatPageProps) {
   const [presentingDocument, setPresentingDocument] =
     useState<MinimalOnyxDocument | null>(null);
 
-  const llmManager = useLlmManager(currentChatSession ?? undefined, liveAgent);
+  const llmManager = useLlmManager(
+    currentChatSession ?? undefined,
+    liveAgent,
+    currentProjectDetails?.project.default_model_configuration_id ?? null
+  );
 
   const {
     showOnboarding,

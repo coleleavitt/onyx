@@ -574,7 +574,8 @@ export function getValidLlmDescriptorForProviders(
 
 export function useLlmManager(
   currentChatSession?: ChatSession,
-  liveAgent?: MinimalAgent
+  liveAgent?: MinimalAgent,
+  projectDefaultModelConfigurationId?: number | null
 ): LlmManager {
   const { user } = useUser();
 
@@ -691,6 +692,25 @@ export function useLlmManager(
         agentOverride ??
         getDefaultLlmDescriptor(llmProviders, defaultText) ??
         manualLlm;
+    } else if (projectDefaultModelConfigurationId != null) {
+      const projectDefault = llmProviders
+        .flatMap((provider) =>
+          provider.model_configurations.map((modelConfiguration) => ({
+            provider,
+            modelConfiguration,
+          }))
+        )
+        .find(
+          ({ modelConfiguration }) =>
+            modelConfiguration.id === projectDefaultModelConfigurationId
+        );
+      resolved = projectDefault
+        ? {
+            name: projectDefault.provider.name ?? "",
+            provider: projectDefault.provider.provider,
+            modelName: projectDefault.modelConfiguration.name,
+          }
+        : (getDefaultLlmDescriptor(llmProviders, defaultText) ?? manualLlm);
     } else if (user?.preferences?.default_model) {
       resolved = getValidLlmDescriptorForProviders(
         user.preferences.default_model,
@@ -719,6 +739,7 @@ export function useLlmManager(
     userHasManuallyOverriddenLLM,
     manualLlm,
     liveAgent?.default_model_configuration_id,
+    projectDefaultModelConfigurationId,
     user?.preferences?.default_model,
   ]);
 

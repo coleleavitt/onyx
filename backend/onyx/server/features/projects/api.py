@@ -29,6 +29,7 @@ from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import Permission
 from onyx.db.enums import UserFileStatus
 from onyx.db.models import ChatSession
+from onyx.db.models import ModelConfiguration
 from onyx.db.models import Project__UserFile
 from onyx.db.models import User
 from onyx.db.models import UserFile
@@ -209,6 +210,7 @@ def create_project(
     instructions: str | None = None,
     emoji: str | None = None,
     connected_knowledge_preset_id: int | None = None,
+    default_model_configuration_id: int | None = None,
     user: User = Depends(require_permission(Permission.BASIC_ACCESS)),
     db_session: Session = Depends(get_session),
 ) -> UserProjectSnapshot:
@@ -233,12 +235,22 @@ def create_project(
                 "Connected knowledge preset is not available.",
             )
 
+    if (
+        default_model_configuration_id is not None
+        and db_session.get(ModelConfiguration, default_model_configuration_id) is None
+    ):
+        raise OnyxError(
+            OnyxErrorCode.INVALID_INPUT,
+            "Default model configuration does not exist.",
+        )
+
     project = UserProject(
         name=normalize_project_name(name),
         description=normalize_project_description(description),
         emoji=normalize_project_emoji(emoji),
         user_id=user.id,
         instructions=(instructions or "").strip(),
+        default_model_configuration_id=default_model_configuration_id,
     )
     db_session.add(project)
 
@@ -704,6 +716,18 @@ def update_project(
         db_session=db_session,
         policy=ProjectAccessPolicy.EDIT,
     )
+
+    if "default_model_configuration_id" in body.model_fields_set:
+        if body.default_model_configuration_id is not None:
+            model_configuration = db_session.get(
+                ModelConfiguration, body.default_model_configuration_id
+            )
+            if model_configuration is None:
+                raise OnyxError(
+                    OnyxErrorCode.INVALID_INPUT,
+                    "Default model configuration does not exist.",
+                )
+        project.default_model_configuration_id = body.default_model_configuration_id
 
     name = body.normalized_name()
     if name is not None:
