@@ -24,6 +24,7 @@ from httpx_oauth.oauth2 import BaseOAuth2
 from httpx_oauth.oauth2 import GetAccessTokenError
 from sqlalchemy.orm import Session
 
+from onyx.auth.oidc_client import log_code_exchange_failure
 from onyx.auth.oidc_client import VerifiedEmailOpenID
 from onyx.auth.users import auth_backend
 from onyx.auth.users import complete_login_flow
@@ -335,6 +336,7 @@ async def oidc_login_callback_for_provider(
     try:
         token = await client.get_access_token(code, redirect_uri, code_verifier)
     except GetAccessTokenError as e:
+        log_code_exchange_failure(provider_name, e)
         raise OnyxError(
             OnyxErrorCode.VALIDATION_ERROR,
             "Authorization code exchange failed",

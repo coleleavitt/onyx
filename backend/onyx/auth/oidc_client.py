@@ -10,10 +10,28 @@ from urllib.parse import urlsplit
 from httpx_oauth.clients.openid import BASE_SCOPES
 from httpx_oauth.clients.openid import OpenID
 from httpx_oauth.exceptions import GetIdEmailError
+from httpx_oauth.oauth2 import GetAccessTokenError
+
+from onyx.utils.logger import setup_logger
+
+logger = setup_logger()
 
 
 class OpenIDConfigurationIssuerMismatch(ValueError):
     """The discovery document's issuer does not own the configured URL."""
+
+
+def log_code_exchange_failure(provider_name: str, exc: GetAccessTokenError) -> None:
+    """The IdP's token-endpoint error body (e.g. Entra AADSTS codes) is the only
+    record of why an exchange failed; the user-facing response stays generic, so
+    the detail must land in the logs."""
+    response = getattr(exc, "response", None)
+    detail = response.text[:500] if response is not None else str(exc.args)[:500]
+    logger.error(
+        "OIDC authorization code exchange failed for provider %s: %s",
+        provider_name,
+        detail,
+    )
 
 
 def _fully_decoded(path: str) -> tuple[str, bool]:
