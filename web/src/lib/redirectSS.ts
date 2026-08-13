@@ -26,14 +26,27 @@ const allowedOrigins = (): string[] =>
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 
+/** The hostname the client actually addressed. request.nextUrl reflects the
+ * standalone server's own origin (localhost) behind a proxy, so the proxied
+ * Host header is the only usable signal. */
+const requestHostname = (request: NextRequest): string => {
+  const hostHeader =
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    "";
+  const hostname = hostHeader.split(",")[0]!.trim().split(":")[0]!;
+  return hostname || request.nextUrl.hostname;
+};
+
 export const getDomain = (request: NextRequest) => {
   // Redirects must stay on the domain that served the request in multi-domain
   // deployments (a login's session cookie is host-scoped), but the emitted
-  // origin must always come from the allowlist — never from X-Forwarded-* or
-  // an arbitrary Host header, which an attacker can spoof to poison redirect
-  // URLs. Unlisted hosts therefore fall back to the primary domain.
+  // origin must always come from the allowlist — a spoofed Host header can
+  // only ever select between allowlisted origins, never mint a new one, so
+  // redirect URLs cannot be poisoned. Unlisted hosts fall back to the primary
+  // domain.
   const allowed = allowedOrigins();
-  const trusted = resolveTrustedOrigin(allowed, request.nextUrl.hostname);
+  const trusted = resolveTrustedOrigin(allowed, requestHostname(request));
   if (trusted) {
     return trusted;
   }
